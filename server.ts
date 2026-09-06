@@ -7,7 +7,10 @@ import { Server } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 
-const __filename = fileURLToPath(import.meta.url);
+// Get __dirname compatible with both ESM (dev) and CJS (bundled production)
+const __filename = (typeof import.meta.url !== 'undefined')
+  ? fileURLToPath(import.meta.url)
+  : __filename || process.argv[1];
 const __dirname = path.dirname(__filename);
 
 const app = express();
