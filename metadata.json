@@ -1,0 +1,6 @@
+{
+  "name": "VEX Deals - Loyalty & Compensation",
+  "description": "VEX Deals (vex.deals) mobile application for betting compensation, wallet tracking, referral unfreezing, and balance transfers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
