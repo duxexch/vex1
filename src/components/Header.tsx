@@ -17,6 +17,7 @@ import {
   ArrowRightLeft,
   Users,
   History,
+  Ticket,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -103,6 +104,12 @@ export const Header: React.FC<HeaderProps> = ({
       label: lang === 'ar' ? 'المباريات والذكاء' : lang === 'es' ? 'Partidos e IA' : lang === 'ru' ? 'Матчи и ИИ' : 'Sports AI',
       icon: TrendingUp,
       active: activeTab === 'ai-sports',
+    },
+    {
+      id: 'lottery' as TabType,
+      label: lang === 'ar' ? 'اليانصيب' : lang === 'ru' ? 'Лотерея' : 'Lottery',
+      icon: Ticket,
+      active: activeTab === 'lottery',
     },
     {
       id: 'transfers' as TabType,

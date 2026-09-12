@@ -765,6 +765,37 @@ export const storage = {
     this.saveReferrals(list);
     return list[0];
   },
+
+  // 20. Lottery
+  getLotteryState(): any {
+    const defaultState = {
+      drawTypes: {
+        hourly: { draw_time: 0, tickets: [], tickets_sold: 0, prize_pool: 0, history: [] },
+        daily: { draw_time: 0, tickets: [], tickets_sold: 0, prize_pool: 0, history: [] },
+        weekly: { draw_time: 0, tickets: [], tickets_sold: 0, prize_pool: 0, history: [] },
+      },
+    };
+    return readJsonFile<any>('lottery_state.json', defaultState);
+  },
+  saveLotteryState(state: any): void {
+    writeJsonFile('lottery_state.json', state);
+  },
+  getLotteryConfig(): any {
+    return readJsonFile<any>('lottery_config.json', {
+      enabled: true,
+      hourly: { ticket_price: 50, duration: 3600, max_tickets: 1000 },
+      daily: { ticket_price: 100, duration: 86400, max_tickets: 1000 },
+      weekly: { ticket_price: 250, duration: 604800, max_tickets: 1000 },
+      rollover_pct: 0.5,
+      secondary_share: 0.7,
+      small_share: 0.3,
+      numbers_count: 5,
+      max_number: 30,
+    });
+  },
+  saveLotteryConfig(config: any): void {
+    writeJsonFile('lottery_config.json', config);
+  },
 };
 
 // Initial verification and seed on boot
@@ -782,3 +813,5 @@ storage.getGoldenHourState();
 storage.getUnluckyBets();
 storage.getAiChallenges();
 storage.getReferrals();
+storage.getLotteryState();
+storage.getLotteryConfig();

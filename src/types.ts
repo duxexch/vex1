@@ -567,7 +567,7 @@ export interface SportsNewsItem {
   url?: string;
 }
 
-export type TabType = 'companies' | 'wallets' | 'transfers' | 'referrals' | 'activity' | 'ai-sports' | 'unlucky-wall';
+export type TabType = 'companies' | 'wallets' | 'transfers' | 'referrals' | 'activity' | 'ai-sports' | 'unlucky-wall' | 'lottery';
 
 export interface SportsCategory {
   id: string;

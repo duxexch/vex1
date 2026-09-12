@@ -41,6 +41,7 @@ import { TransfersTab } from './components/TransfersTab';
 import { ActivityTab } from './components/ActivityTab';
 import { AiSportsHubTab } from './components/AiSportsHubTab';
 import { UnluckyWallTab } from './components/UnluckyWallTab';
+import { LotteryTab } from './components/LotteryTab';
 import { RegisterModal } from './components/RegisterModal';
 import { CompensationRequestModal } from './components/CompensationRequestModal';
 import { CompanyDetailsModal } from './components/CompanyDetailsModal';
@@ -753,6 +754,10 @@ export default function App() {
 
             {activeTab === 'unlucky-wall' && (
               <UnluckyWallTab lang={lang} />
+            )}
+
+            {activeTab === 'lottery' && (
+              <LotteryTab lang={lang} />
             )}
           </motion.div>
 

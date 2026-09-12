@@ -1,7 +1,7 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { TabType } from '../types';
 
-const TAB_ORDER: TabType[] = ['companies', 'wallets', 'ai-sports', 'unlucky-wall', 'transfers'];
+const TAB_ORDER: TabType[] = ['companies', 'wallets', 'ai-sports', 'lottery', 'transfers'];
 
 export function useSwipeNavigation(activeTab: TabType, onTabChange: (tab: TabType) => void) {
   const touchStart = useRef<{ x: number; y: number } | null>(null);
