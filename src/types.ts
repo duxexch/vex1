@@ -485,6 +485,8 @@ export interface AppBranding {
   targetCompanyId?: string; // 'all' or company id like 'CMP1XB001'
   exclusiveMode?: boolean; // true when app is transformed to a single company
   companyCustomWebsites?: Record<string, CompanyCustomWebsite>;
+  whatsappNumber?: string;
+  whatsappEnabled?: boolean;
   updatedAt?: string;
 }
 

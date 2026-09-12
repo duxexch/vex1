@@ -432,6 +432,8 @@ app.post('/api/app-branding', (req, res) => {
     backgroundColor,
     targetCompanyId,
     exclusiveMode,
+    whatsappNumber,
+    whatsappEnabled,
   } = req.body;
 
   if (appName && appName.trim()) {
@@ -466,6 +468,12 @@ app.post('/api/app-branding', (req, res) => {
   }
   if (exclusiveMode !== undefined) {
     currentBranding.exclusiveMode = exclusiveMode;
+  }
+  if (whatsappNumber !== undefined) {
+    currentBranding.whatsappNumber = whatsappNumber;
+  }
+  if (whatsappEnabled !== undefined) {
+    currentBranding.whatsappEnabled = whatsappEnabled;
   }
   currentBranding.updatedAt = new Date().toISOString();
 
