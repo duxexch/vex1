@@ -54,6 +54,7 @@ import { LegalTermsModal } from './components/LegalTermsModal';
 import { DirectDepositUnfreezeModal } from './components/DirectDepositUnfreezeModal';
 import { Toast } from './components/Toast';
 import { IosInstallModal } from './components/IosInstallModal';
+import { DownloadAppModal } from './components/DownloadAppModal';
 import { GoldenHourBanner } from './components/GoldenHourBanner';
 
 export default function App() {
@@ -127,6 +128,7 @@ export default function App() {
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState<boolean>(false);
   const [iosInstallModalOpen, setIosInstallModalOpen] = useState<boolean>(false);
+  const [downloadAppModalOpen, setDownloadAppModalOpen] = useState<boolean>(false);
   const [iosBannerDismissed, setIosBannerDismissed] = useState<boolean>(() => {
     return localStorage.getItem('vex_ios_banner_dismissed') === 'true';
   });
@@ -152,7 +154,7 @@ export default function App() {
 
   const handleInstallPwa = async () => {
     if (isIosDevice() && !isStandalone) {
-      setIosInstallModalOpen(true);
+      setDownloadAppModalOpen(true);
       return;
     }
     if (deferredInstallPrompt) {
@@ -162,7 +164,7 @@ export default function App() {
         setDeferredInstallPrompt(null);
       }
     } else {
-      showToast(lang === 'ar' ? 'افتح قائمة المتصفح واختر "إضافة إلى الشاشة الرئيسية"' : 'Open browser menu and select "Add to Home Screen"');
+      setDownloadAppModalOpen(true);
     }
   };
 
@@ -567,7 +569,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setIosInstallModalOpen(true)}
+              onClick={() => setDownloadAppModalOpen(true)}
               className="bg-white/20 hover:bg-white/30 text-white px-2.5 py-1 rounded-lg font-bold text-[11px] transition-colors cursor-pointer"
             >
               {lang === 'ar' ? 'الطريقة' : 'Guide'}
@@ -926,6 +928,14 @@ export default function App() {
         isOpen={iosInstallModalOpen}
         onClose={() => setIosInstallModalOpen(false)}
         lang={lang}
+      />
+
+      {/* Download App Modal (APK + iOS + PWA) */}
+      <DownloadAppModal
+        isOpen={downloadAppModalOpen}
+        onClose={() => setDownloadAppModalOpen(false)}
+        lang={lang}
+        apkUrl="/VEX-Deals.apk"
       />
 
       {/* Global Copy Success Toast Notification */}
