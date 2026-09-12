@@ -1818,19 +1818,51 @@ const LOTTERY_CONSTANTS = {
   },
 };
 
+function getAllUsedNumbers(state: any): Set<string> {
+  const used = new Set<string>();
+  for (const dt of Object.keys(LOTTERY_CONSTANTS.draw_types)) {
+    const round = state.drawTypes?.[dt];
+    if (!round) continue;
+    for (const t of round.tickets || []) {
+      if (t.status !== 'rejected' && t.numbers) {
+        used.add(t.numbers.sort((a: number, b: number) => a - b).join(','));
+      }
+    }
+  }
+  for (const p of state.pendingPurchases || []) {
+    if (p.status === 'pending' && p.numbers) {
+      used.add(p.numbers.sort((a: number, b: number) => a - b).join(','));
+    }
+  }
+  return used;
+}
+
+function generateUniqueNumbers(state: any): number[] {
+  const used = getAllUsedNumbers(state);
+  let attempts = 0;
+  while (attempts < 10000) {
+    const nums: number[] = [];
+    while (nums.length < LOTTERY_CONSTANTS.numbers_count) {
+      const n = Math.floor(Math.random() * LOTTERY_CONSTANTS.max_number) + 1;
+      if (!nums.includes(n)) nums.push(n);
+    }
+    nums.sort((a, b) => a - b);
+    if (!used.has(nums.join(','))) return nums;
+    attempts++;
+  }
+  return [];
+}
+
 function ensureLotteryRound(state: any, drawType: string): any {
   const config = storage.getLotteryConfig();
   const cfg = LOTTERY_CONSTANTS.draw_types[drawType as keyof typeof LOTTERY_CONSTANTS.draw_types];
   if (!cfg) return state;
-
   if (!state.drawTypes) state.drawTypes = {};
   if (!state.drawTypes[drawType]) {
-    state.drawTypes[drawType] = { draw_time: 0, tickets: [], tickets_sold: 0, prize_pool: 0, history: [] };
+    state.drawTypes[drawType] = { draw_time: 0, tickets: [], tickets_sold: 0, manual_tickets: 0, prize_pool: 0, history: [] };
   }
-
   const round = state.drawTypes[drawType];
   const now = Date.now() / 1000;
-
   if (!round.draw_time || now >= round.draw_time) {
     if (round.draw_time > 0 && round.tickets && round.tickets.length > 0) {
       performDraw(state, drawType);
@@ -1838,57 +1870,39 @@ function ensureLotteryRound(state: any, drawType: string): any {
     round.draw_time = now + cfg.duration;
     round.tickets = [];
     round.tickets_sold = 0;
+    round.manual_tickets = 0;
     round.prize_pool = 0;
   }
-
   return state;
 }
 
 function performDraw(state: any, drawType: string): void {
   const round = state.drawTypes[drawType];
   if (!round || !round.tickets || round.tickets.length === 0) return;
-
   const winningNumbers: number[] = [];
   while (winningNumbers.length < LOTTERY_CONSTANTS.numbers_count) {
     const n = Math.floor(Math.random() * LOTTERY_CONSTANTS.max_number) + 1;
     if (!winningNumbers.includes(n)) winningNumbers.push(n);
   }
   winningNumbers.sort((a, b) => a - b);
-
   const prizePool = round.prize_pool;
   const redistributable = prizePool * (1 - LOTTERY_CONSTANTS.rollover_pct);
-
   const winners = { jackpot: [] as any[], secondary: [] as any[], small: [] as any[] };
   let jackpotWinners = 0;
-
   for (const ticket of round.tickets) {
+    if (ticket.status === 'pending' || ticket.status === 'rejected') continue;
     const matches = (ticket.numbers || []).filter((n: number) => winningNumbers.includes(n)).length;
     ticket.drawn = winningNumbers;
     ticket.matches = matches;
-    if (matches === LOTTERY_CONSTANTS.numbers_count) {
-      ticket.status = 'win';
-      ticket.prize = 0;
-      winners.jackpot.push(ticket);
-      jackpotWinners++;
-    } else if (matches === 4) {
-      ticket.status = 'win';
-      ticket.prize = 0;
-      winners.secondary.push(ticket);
-    } else if (matches === 3) {
-      ticket.status = 'win';
-      ticket.prize = 0;
-      winners.small.push(ticket);
-    } else {
-      ticket.status = 'lose';
-      ticket.prize = 0;
-    }
+    if (matches === LOTTERY_CONSTANTS.numbers_count) { ticket.status = 'win'; ticket.prize = 0; winners.jackpot.push(ticket); jackpotWinners++; }
+    else if (matches === 4) { ticket.status = 'win'; ticket.prize = 0; winners.secondary.push(ticket); }
+    else if (matches === 3) { ticket.status = 'win'; ticket.prize = 0; winners.small.push(ticket); }
+    else { ticket.status = 'lose'; ticket.prize = 0; }
   }
-
   let rolloverAmount = 0;
   if (jackpotWinners > 0) {
     const perWinner = prizePool / jackpotWinners;
     winners.jackpot.forEach((t: any) => t.prize = perWinner);
-    rolloverAmount = 0;
   } else {
     rolloverAmount = prizePool * LOTTERY_CONSTANTS.rollover_pct;
     const secondaryPrize = winners.secondary.length > 0 ? (redistributable * LOTTERY_CONSTANTS.secondary_share) / winners.secondary.length : 0;
@@ -1896,183 +1910,219 @@ function performDraw(state: any, drawType: string): void {
     winners.secondary.forEach((t: any) => t.prize = secondaryPrize);
     winners.small.forEach((t: any) => t.prize = smallPrize);
   }
-
-  round.history.push({
-    winning_numbers: winningNumbers,
-    prize_pool: prizePool,
-    tickets_sold: round.tickets_sold,
-    winners: { jackpot: winners.jackpot.length, secondary: winners.secondary.length, small: winners.small.length },
-    rollover: rolloverAmount,
-    timestamp: new Date().toISOString(),
-  });
-
+  round.history.push({ winning_numbers: winningNumbers, prize_pool: prizePool, tickets_sold: round.tickets_sold, winners: { jackpot: winners.jackpot.length, secondary: winners.secondary.length, small: winners.small.length }, rollover: rolloverAmount, timestamp: new Date().toISOString() });
   round.rollover = rolloverAmount;
   round.drawn = winningNumbers;
 }
 
-// GET /api/lottery/state - Get current lottery state for all draw types
+// GET /api/lottery/state
 app.get('/api/lottery/state', (req, res) => {
   try {
     const config = storage.getLotteryConfig();
-    if (!config.enabled) {
-      return res.json({ enabled: false, draw_types: {} });
-    }
-
+    if (!config.enabled) return res.json({ enabled: false, draw_types: {} });
     let state = storage.getLotteryState();
     const uid = (req.query.uid as string) || 'anonymous';
-
+    const paymentMethods = (storage.getAppBranding().paymentMethods || []).filter((m: any) => m.is_active);
     const drawTypes: any = {};
     for (const [key, cfg] of Object.entries(LOTTERY_CONSTANTS.draw_types)) {
       state = ensureLotteryRound(state, key);
       const round = state.drawTypes[key];
-      const myTickets = (round.tickets || []).filter((t: any) => t.uid === uid);
-
+      const myTickets = (round.tickets || []).filter((t: any) => t.uid === uid && t.status !== 'rejected');
+      const soldNumbers = (round.tickets || []).filter((t: any) => t.status !== 'rejected').map((t: any) => ({ id: t.id, numbers: t.numbers, uid: t.uid, status: t.status, source: t.source || 'auto' }));
       drawTypes[key] = {
-        ...cfg,
-        draw_time: round.draw_time,
-        tickets_sold: round.tickets_sold,
-        max_tickets: config[key]?.max_tickets || 1000,
-        tickets_available: (config[key]?.max_tickets || 1000) - round.tickets_sold,
-        participants_count: new Set((round.tickets || []).map((t: any) => t.uid)).size,
-        prize_pool: round.prize_pool,
-        jackpot_estimate: round.prize_pool * cfg.multiplier,
-        drawn: round.drawn || null,
-        rollover: round.rollover || 0,
-        my_tickets: myTickets,
+        ...cfg, draw_time: round.draw_time, tickets_sold: round.tickets_sold, manual_tickets: round.manual_tickets || 0,
+        max_tickets: config[key]?.max_tickets || 1000, tickets_available: (config[key]?.max_tickets || 1000) - round.tickets_sold,
+        participants_count: new Set((round.tickets || []).filter((t: any) => t.status !== 'rejected').map((t: any) => t.uid)).size,
+        prize_pool: round.prize_pool, jackpot_estimate: round.prize_pool * cfg.multiplier,
+        drawn: round.drawn || null, rollover: round.rollover || 0, my_tickets: myTickets, sold_numbers: soldNumbers,
         history: (round.history || []).slice(-5),
       };
     }
-
+    const pendingPurchases = (state.pendingPurchases || []).filter((p: any) => p.uid === uid || true);
     storage.saveLotteryState(state);
-    res.json({ enabled: true, draw_types: drawTypes });
-  } catch (err) {
-    console.error('[Lottery] Error getting state:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
+    res.json({ enabled: true, draw_types: drawTypes, pending_purchases: pendingPurchases, payment_methods: paymentMethods });
+  } catch (err) { console.error('[Lottery] Error:', err); res.status(500).json({ error: 'Server error' }); }
 });
 
-// POST /api/lottery/buy - Buy lottery tickets
+// POST /api/lottery/buy - Create pending purchase request
 app.post('/api/lottery/buy', (req, res) => {
   try {
     const config = storage.getLotteryConfig();
-    if (!config.enabled) {
-      return res.status(400).json({ error: 'Lottery is disabled' });
-    }
-
-    const { count = 1, draw_type = 'hourly', uid = 'anonymous' } = req.body;
+    if (!config.enabled) return res.status(400).json({ error: 'Lottery is disabled' });
+    const { count = 1, draw_type = 'hourly', uid = 'anonymous', payment_method_id, transfer_wallet, transfer_amount } = req.body;
     const ticketCount = Math.max(1, Math.min(10, Number(count)));
     const drawType = LOTTERY_CONSTANTS.draw_types[draw_type as keyof typeof LOTTERY_CONSTANTS.draw_types];
     if (!drawType) return res.status(400).json({ error: 'Invalid draw type' });
-
     const cfg = config[draw_type] || { ticket_price: drawType.ticket_price, max_tickets: 1000 };
     const ticketPrice = cfg.ticket_price;
     const totalCost = ticketPrice * ticketCount;
-
     let state = storage.getLotteryState();
     state = ensureLotteryRound(state, draw_type);
     const round = state.drawTypes[draw_type];
-
-    if (round.tickets_sold + ticketCount > (cfg.max_tickets || 1000)) {
+    if (round.tickets_sold + ticketCount > (config[draw_type]?.max_tickets || 1000)) {
       return res.status(400).json({ error: 'Not enough tickets available' });
     }
-
-    const newTickets: any[] = [];
+    const numbersList: number[][] = [];
     for (let i = 0; i < ticketCount; i++) {
-      const nums: number[] = [];
-      while (nums.length < LOTTERY_CONSTANTS.numbers_count) {
-        const n = Math.floor(Math.random() * LOTTERY_CONSTANTS.max_number) + 1;
-        if (!nums.includes(n)) nums.push(n);
-      }
-      nums.sort((a, b) => a - b);
-      newTickets.push({
-        id: `T${Date.now()}_${Math.floor(Math.random() * 9000) + 1000}`,
-        uid,
-        numbers: nums,
-        status: 'pending',
-        drawn: null,
-        matches: 0,
-        prize: 0,
+      const nums = generateUniqueNumbers(state);
+      if (nums.length === 0) return res.status(400).json({ error: 'No unique numbers available' });
+      numbersList.push(nums);
+    }
+    const purchaseId = `LP-${Date.now()}-${Math.floor(Math.random() * 9000) + 1000}`;
+    const pendingPurchase = {
+      id: purchaseId, uid, draw_type, ticket_count: ticketCount, ticket_price: ticketPrice,
+      total_cost: totalCost, numbers: numbersList, payment_method_id: payment_method_id || 'manual',
+      transfer_wallet: transfer_wallet || '', transfer_amount: transfer_amount || totalCost,
+      status: 'pending', created_at: new Date().toISOString(),
+    };
+    if (!state.pendingPurchases) state.pendingPurchases = [];
+    state.pendingPurchases.push(pendingPurchase);
+    storage.saveLotteryState(state);
+    const notif = { id: `LOTIF-${Date.now()}`, title: '🎟️ طلب شراء تذكرة يانصيب', message: `طلب ${ticketCount} تذكرة (${drawType.name}) بقيمة ${totalCost} - بانتظار التأكيد`, category: 'lottery' as NotificationCategory, timestamp: new Date().toISOString(), read: false, data: { purchaseId, uid, draw_type: draw_type, ticket_count: ticketCount, total_cost: totalCost } };
+    storage.addNotification(notif);
+    io.emit('notification', notif);
+    io.emit('lottery_purchase_pending', pendingPurchase);
+    res.json({ success: true, pending: true, purchase_id: purchaseId, total_cost: totalCost, numbers: numbersList, message: 'تم إرسال طلب الشراء بانتظار تأكيد الإدارة' });
+  } catch (err) { console.error('[Lottery] Buy error:', err); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/lottery/approve/:purchaseId - Admin: approve pending purchase
+app.post('/api/lottery/approve/:purchaseId', (req, res) => {
+  try {
+    const { purchaseId } = req.params;
+    let state = storage.getLotteryState();
+    const idx = (state.pendingPurchases || []).findIndex((p: any) => p.id === purchaseId);
+    if (idx === -1) return res.status(404).json({ error: 'Request not found' });
+    const purchase = state.pendingPurchases[idx];
+    if (purchase.status !== 'pending') return res.status(400).json({ error: 'Already processed' });
+    state = ensureLotteryRound(state, purchase.draw_type);
+    const round = state.drawTypes[purchase.draw_type];
+    for (let i = 0; i < purchase.ticket_count; i++) {
+      const nums = purchase.numbers[i] || generateUniqueNumbers(state);
+      round.tickets.push({
+        id: `T${Date.now()}_${Math.floor(Math.random() * 9000) + 1000}`, uid: purchase.uid,
+        numbers: nums, status: 'active', drawn: null, matches: 0, prize: 0,
+        source: 'payment', payment_method_id: purchase.payment_method_id, purchase_id: purchase.id,
       });
     }
-
-    round.tickets.push(...newTickets);
-    round.tickets_sold += ticketCount;
-    round.prize_pool = Math.round((round.prize_pool + totalCost * 0.8) * 100) / 100;
-
+    round.tickets_sold += purchase.ticket_count;
+    round.prize_pool = Math.round((round.prize_pool + purchase.total_cost * 0.8) * 100) / 100;
+    purchase.status = 'approved';
+    purchase.approved_at = new Date().toISOString();
     storage.saveLotteryState(state);
+    io.emit('lottery_ticket_activated', { uid: purchase.uid, draw_type: purchase.draw_type, ticket_count: purchase.ticket_count });
+    res.json({ success: true, purchase });
+  } catch (err) { console.error('[Lottery] Approve error:', err); res.status(500).json({ error: 'Server error' }); }
+});
 
-    res.json({
-      success: true,
-      tickets: newTickets,
-      ticket_price: ticketPrice,
-      total_cost: totalCost,
-      prize_pool: round.prize_pool,
-      tickets_sold: round.tickets_sold,
+// POST /api/lottery/reject/:purchaseId - Admin: reject pending purchase
+app.post('/api/lottery/reject/:purchaseId', (req, res) => {
+  try {
+    const { purchaseId } = req.params;
+    const { reason } = req.body;
+    let state = storage.getLotteryState();
+    const idx = (state.pendingPurchases || []).findIndex((p: any) => p.id === purchaseId);
+    if (idx === -1) return res.status(404).json({ error: 'Request not found' });
+    state.pendingPurchases[idx].status = 'rejected';
+    state.pendingPurchases[idx].rejected_at = new Date().toISOString();
+    state.pendingPurchases[idx].rejection_reason = reason || '';
+    storage.saveLotteryState(state);
+    res.json({ success: true, purchase: state.pendingPurchases[idx] });
+  } catch (err) { res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/lottery/manual-ticket - Admin: add manual ticket
+app.post('/api/lottery/manual-ticket', (req, res) => {
+  try {
+    const { draw_type, numbers, uid = 'admin_manual' } = req.body;
+    if (!LOTTERY_CONSTANTS.draw_types[draw_type as keyof typeof LOTTERY_CONSTANTS.draw_types]) {
+      return res.status(400).json({ error: 'Invalid draw type' });
+    }
+    if (!Array.isArray(numbers) || numbers.length !== LOTTERY_CONSTANTS.numbers_count) {
+      return res.status(400).json({ error: `Must provide exactly ${LOTTERY_CONSTANTS.numbers_count} numbers` });
+    }
+    const sorted = [...numbers].sort((a: number, b: number) => a - b);
+    for (const n of sorted) { if (n < 1 || n > LOTTERY_CONSTANTS.max_number) return res.status(400).json({ error: `Numbers must be 1-${LOTTERY_CONSTANTS.max_number}` }); }
+    let state = storage.getLotteryState();
+    const keyCombo = sorted.join(',');
+    for (const dt of Object.keys(LOTTERY_CONSTANTS.draw_types)) {
+      const r = state.drawTypes?.[dt];
+      for (const t of r?.tickets || []) {
+        if (t.status !== 'rejected' && t.numbers?.sort((a: number, b: number) => a - b).join(',') === keyCombo) {
+          return res.status(400).json({ error: 'These numbers are already taken' });
+        }
+      }
+    }
+    for (const p of state.pendingPurchases || []) {
+      if (p.status === 'pending') {
+        for (const nums of p.numbers || []) {
+          if (nums.sort((a: number, b: number) => a - b).join(',') === keyCombo) {
+            return res.status(400).json({ error: 'These numbers are pending in another purchase' });
+          }
+        }
+      }
+    }
+    state = ensureLotteryRound(state, draw_type);
+    const round = state.drawTypes[draw_type];
+    const ticketPrice = LOTTERY_CONSTANTS.draw_types[draw_type as keyof typeof LOTTERY_CONSTANTS.draw_types].ticket_price;
+    round.tickets.push({
+      id: `TM${Date.now()}_${Math.floor(Math.random() * 9000) + 1000}`, uid,
+      numbers: sorted, status: 'active', drawn: null, matches: 0, prize: 0, source: 'manual',
     });
-  } catch (err) {
-    console.error('[Lottery] Buy error:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
+    round.tickets_sold += 1;
+    round.manual_tickets = (round.manual_tickets || 0) + 1;
+    round.prize_pool = Math.round((round.prize_pool + ticketPrice * 0.8) * 100) / 100;
+    storage.saveLotteryState(state);
+    res.json({ success: true, ticket: round.tickets[round.tickets.length - 1], tickets_sold: round.tickets_sold, manual_tickets: round.manual_tickets });
+  } catch (err) { console.error('[Lottery] Manual ticket error:', err); res.status(500).json({ error: 'Server error' }); }
 });
 
 // POST /api/lottery/draw/:drawType - Admin: execute draw
 app.post('/api/lottery/draw/:drawType', (req, res) => {
   try {
     const { drawType } = req.params;
-    if (!LOTTERY_CONSTANTS.draw_types[drawType as keyof typeof LOTTERY_CONSTANTS.draw_types]) {
-      return res.status(400).json({ error: 'Invalid draw type' });
-    }
-
+    if (!LOTTERY_CONSTANTS.draw_types[drawType as keyof typeof LOTTERY_CONSTANTS.draw_types]) return res.status(400).json({ error: 'Invalid draw type' });
     let state = storage.getLotteryState();
     const round = state.drawTypes?.[drawType];
-    if (!round || !round.tickets || round.tickets.length === 0) {
-      return res.status(400).json({ error: 'No tickets to draw' });
-    }
-
+    if (!round || !round.tickets || round.tickets.length === 0) return res.status(400).json({ error: 'No tickets to draw' });
     performDraw(state, drawType);
     const result = round.history[round.history.length - 1];
     storage.saveLotteryState(state);
-
     res.json({ success: true, result });
-  } catch (err) {
-    console.error('[Lottery] Draw error:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
+  } catch (err) { console.error('[Lottery] Draw error:', err); res.status(500).json({ error: 'Server error' }); }
 });
 
-// POST /api/lottery/config - Admin: update lottery config
+// GET /api/lottery/config
+app.get('/api/lottery/config', (req, res) => {
+  try {
+    const config = storage.getLotteryConfig();
+    res.json({ success: true, config });
+  } catch (err) { res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/lottery/config
 app.post('/api/lottery/config', (req, res) => {
   try {
     const config = storage.getLotteryConfig();
     const updates = req.body;
     if (updates.enabled !== undefined) config.enabled = updates.enabled;
-    for (const key of ['hourly', 'daily', 'weekly']) {
-      if (updates[key]) {
-        config[key] = { ...config[key], ...updates[key] };
-      }
-    }
+    for (const key of ['hourly', 'daily', 'weekly']) { if (updates[key]) config[key] = { ...config[key], ...updates[key] }; }
     storage.saveLotteryConfig(config);
     res.json({ success: true, config });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error' });
-  }
+  } catch (err) { res.status(500).json({ error: 'Server error' }); }
 });
 
-// GET /api/lottery/history - Get draw history
+// GET /api/lottery/history
 app.get('/api/lottery/history', (req, res) => {
   try {
     const state = storage.getLotteryState();
     const history: any[] = [];
     for (const [key, round] of Object.entries(state.drawTypes || {})) {
-      for (const h of (round as any).history || []) {
-        history.push({ ...h, draw_type: key });
-      }
+      for (const h of (round as any).history || []) { history.push({ ...h, draw_type: key }); }
     }
     history.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     res.json({ history: history.slice(0, 50) });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error' });
-  }
+  } catch (err) { res.status(500).json({ error: 'Server error' }); }
 });
 
 // ==========================================

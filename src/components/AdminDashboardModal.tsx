@@ -15,6 +15,7 @@ import {
   PaymentMethod,
 } from '../types';
 import { AgentSkillsManager } from './AgentSkillsManager';
+import { LotteryAdminPanel } from './LotteryAdminPanel';
 import { AppIconRenderer } from './AppIconRenderer';
 import { CompanyBrandLogo } from './CompanyBrandLogo';
 import { CompanyApiIntegration } from './CompanyApiIntegration';
@@ -101,6 +102,7 @@ import {
   ListChecks,
   DollarSign,
   FolderOpen,
+  Ticket,
 } from 'lucide-react';
 import { AbTestingTab } from './AbTestingTab';
 import { SportsAgentManager } from './admin/SportsAgentManager';
@@ -309,7 +311,8 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     | 'notifications'
     | 'payment_methods'
     | 'compliance'
-    | 'skills';
+    | 'skills'
+    | 'lottery_admin';
 
   const [activeTab, setActiveTab] = useState<AdminTab>('dedicated_brand');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -1797,6 +1800,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                     { id: 'payment_methods', label: t('إدارة وسائل الدفع المصرية', 'Egyptian Payment Methods', 'Египетские платежные методы'), icon: DollarSign },
                     { id: 'compliance', label: t('امتثال المتاجر', 'Store Compliance', 'Соответствие магазинам'), icon: FileText },
                     { id: 'skills', label: t('ملفات مهارات الوكلاء', 'Agent Skill Files', 'Файлы навыков агентов'), icon: FolderOpen },
+                    { id: 'lottery_admin', label: t('إدارة اليانصيب', 'Lottery Admin', 'Управление лотереей'), icon: Ticket },
                   ].map((tab) => {
                     const IconComponent = tab.icon;
                     const isSelected = activeTab === tab.id;
@@ -6665,6 +6669,11 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
               <div className="p-5">
                 <AgentSkillsManager lang={lang} onCopyToast={(msg) => {}} />
               </div>
+            )}
+
+            {/* Lottery Admin */}
+            {activeTab === 'lottery_admin' && (
+              <LotteryAdminPanel lang={lang} />
             )}
 
             {/* Admin Footer */}

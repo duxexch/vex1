@@ -770,10 +770,11 @@ export const storage = {
   getLotteryState(): any {
     const defaultState = {
       drawTypes: {
-        hourly: { draw_time: 0, tickets: [], tickets_sold: 0, prize_pool: 0, history: [] },
-        daily: { draw_time: 0, tickets: [], tickets_sold: 0, prize_pool: 0, history: [] },
-        weekly: { draw_time: 0, tickets: [], tickets_sold: 0, prize_pool: 0, history: [] },
+        hourly: { draw_time: 0, tickets: [], tickets_sold: 0, manual_tickets: 0, prize_pool: 0, history: [] },
+        daily: { draw_time: 0, tickets: [], tickets_sold: 0, manual_tickets: 0, prize_pool: 0, history: [] },
+        weekly: { draw_time: 0, tickets: [], tickets_sold: 0, manual_tickets: 0, prize_pool: 0, history: [] },
       },
+      pendingPurchases: [],
     };
     return readJsonFile<any>('lottery_state.json', defaultState);
   },

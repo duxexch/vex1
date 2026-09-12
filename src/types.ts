@@ -490,7 +490,7 @@ export interface AppBranding {
   updatedAt?: string;
 }
 
-export type NotificationCategory = 'ai_prediction' | 'sports_news' | 'compensation' | 'transfer' | 'security' | 'system';
+export type NotificationCategory = 'ai_prediction' | 'sports_news' | 'compensation' | 'transfer' | 'security' | 'system' | 'lottery';
 
 export interface AppNotification {
   id: string;
