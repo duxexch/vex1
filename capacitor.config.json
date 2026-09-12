@@ -8,13 +8,22 @@
   },
   "plugins": {
     "SplashScreen": {
-      "launchShowDuration": 1500,
-      "backgroundColor": "#ffffff",
-      "showSpinner": false
+      "launchShowDuration": 2000,
+      "launchAutoHide": true,
+      "androidScaleType": "CENTER_CROP",
+      "splashFullScreen": true,
+      "splashImmersive": true,
+      "showSpinner": false,
+      "backgroundColor": "#090d16"
     },
     "StatusBar": {
       "style": "DARK",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#090d16",
+      "overlaysWebView": false
+    },
+    "App": {
+      "backButtonDefaultLabel": "رجوع",
+      "backButtonSupressWarning": true
     }
   }
 }

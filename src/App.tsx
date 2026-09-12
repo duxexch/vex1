@@ -8,6 +8,7 @@ import {
   ArrowRightLeft,
   ShieldCheck,
 } from 'lucide-react';
+import { useSwipeNavigation, useAndroidBackButton } from './hooks/useSwipeNavigation';
 import {
   Company,
   CompensationAccount,
@@ -447,9 +448,30 @@ export default function App() {
   const pendingRequestsCount = requests.filter((r) => r.status === 'pending').length;
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
 
+  // Swipe navigation + Android back button
+  useSwipeNavigation(activeTab, setActiveTab);
+  useAndroidBackButton(activeTab, setActiveTab, () => {
+    // Close any open modal
+    if (settingsOpen) setSettingsOpen(false);
+    else if (phoneModalOpen) setPhoneModalOpen(false);
+    else if (notifCenterOpen) setNotifCenterOpen(false);
+    else if (responsibleGamingOpen) setResponsibleGamingOpen(false);
+    else if (securityAnalysisOpen) setSecurityAnalysisOpen(false);
+    else if (iosInstallModalOpen) setIosInstallModalOpen(false);
+    else if (downloadAppModalOpen) setDownloadAppModalOpen(false);
+    else if (selectedFixtureForAi) setSelectedFixtureForAi(null);
+    else {
+      // Navigate back through tabs
+      const tabs = ['companies', 'wallets', 'ai-sports', 'unlucky-wall', 'transfers'];
+      const idx = tabs.indexOf(activeTab);
+      if (idx > 0) setActiveTab(tabs[idx - 1] as any);
+    }
+  });
+
   return (
     <div
-      className="min-h-screen w-full flex flex-col bg-slate-50 text-slate-900 selection:bg-emerald-100 selection:text-emerald-900"
+      id="swipe-container"
+      className="min-h-screen w-full flex flex-col bg-slate-50 text-slate-900 selection:bg-emerald-100 selection:text-emerald-900 touch-pan-y"
       dir={lang === 'ar' ? 'rtl' : 'ltr'}
     >
       <GoldenHourBanner lang={lang === 'ar' ? 'ar' : 'en'} />
