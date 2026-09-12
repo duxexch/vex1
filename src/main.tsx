@@ -12,3 +12,10 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 );
 
+// Register Service Worker for offline support + PWA install
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
