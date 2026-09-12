@@ -238,6 +238,89 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ============================================================================
+// AGENT SKILL FILES MANAGEMENT (Admin uploads skill files for agents)
+// ============================================================================
+const SKILLS_DIR = path.join(process.cwd(), 'data', 'agent-skills');
+
+// Simple file upload middleware (no multer dependency needed)
+function parseMultipartBody(req: any): Promise<{ fields: Record<string, string>; file: { data: Buffer; name: string; type: string } | null }> {
+  return new Promise((resolve) => {
+    const contentType = req.headers['content-type'] || '';
+    if (!contentType.includes('multipart/form-data')) {
+      resolve({ fields: {}, file: null });
+      return;
+    }
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => {
+      try {
+        const body = Buffer.concat(chunks);
+        const boundary = contentType.split('boundary=')[1];
+        if (!boundary) { resolve({ fields: {}, file: null }); return; }
+        const parts = body.toString('binary').split('--' + boundary);
+        const fields: Record<string, string> = {};
+        let file: { data: Buffer; name: string; type: string } | null = null;
+        for (const part of parts) {
+          const headerEnd = part.indexOf('\r\n\r\n');
+          if (headerEnd === -1) continue;
+          const header = part.substring(0, headerEnd);
+          const content = part.substring(headerEnd + 4);
+          const nameMatch = header.match(/name="([^"]+)"/);
+          const filenameMatch = header.match(/filename="([^"]+)"/);
+          const typeMatch = header.match(/Content-Type:\s*(\S+)/);
+          if (filenameMatch && nameMatch) {
+            const dataStr = content.substring(0, content.lastIndexOf('\r\n'));
+            file = { data: Buffer.from(dataStr, 'binary'), name: filenameMatch[1], type: typeMatch ? typeMatch[1] : 'application/octet-stream' };
+          } else if (nameMatch) {
+            fields[nameMatch[1]] = content.trim();
+          }
+        }
+        resolve({ fields, file });
+      } catch { resolve({ fields: {}, file: null }); }
+    });
+    req.on('error', () => resolve({ fields: {}, file: null }));
+  });
+}
+
+app.get('/api/agent-skills', (req, res) => {
+  try {
+    if (!fs.existsSync(SKILLS_DIR)) { res.json({ success: true, skills: [] }); return; }
+    const files = fs.readdirSync(SKILLS_DIR).filter(f => !f.startsWith('.'));
+    const skills = files.map(f => {
+      const stat = fs.statSync(path.join(SKILLS_DIR, f));
+      return { filename: f, size: stat.size, modified: stat.mtime.toISOString() };
+    });
+    res.json({ success: true, skills });
+  } catch (e: any) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+app.post('/api/agent-skills', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
+  try {
+    if (!fs.existsSync(SKILLS_DIR)) fs.mkdirSync(SKILLS_DIR, { recursive: true });
+    const { fields, file } = await parseMultipartBody(req);
+    if (!file) { res.status(400).json({ success: false, error: 'No file provided' }); return; }
+    const agentId = fields.agentId || 'general';
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filename = `${agentId}_${safeName}`;
+    fs.writeFileSync(path.join(SKILLS_DIR, filename), file.data);
+    res.json({ success: true, filename, size: file.data.length, agentId });
+  } catch (e: any) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+app.get('/api/agent-skills/download/:filename', (req, res) => {
+  const filePath = path.join(SKILLS_DIR, req.params.filename);
+  if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'Not found' }); return; }
+  res.download(filePath);
+});
+
+app.delete('/api/agent-skills/:filename', (req, res) => {
+  const filePath = path.join(SKILLS_DIR, req.params.filename);
+  if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'Not found' }); return; }
+  fs.unlinkSync(filePath);
+  res.json({ success: true });
+});
+
 // Companies Directory Management Endpoints (Replica-Synced)
 app.get('/api/companies', (req, res) => {
   const companies = storage.getCompanies();

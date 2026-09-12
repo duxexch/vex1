@@ -14,6 +14,7 @@ import {
   PhoneChangeRequest,
   PaymentMethod,
 } from '../types';
+import { AgentSkillsManager } from './AgentSkillsManager';
 import { AppIconRenderer } from './AppIconRenderer';
 import { CompanyBrandLogo } from './CompanyBrandLogo';
 import { CompanyApiIntegration } from './CompanyApiIntegration';
@@ -99,6 +100,7 @@ import {
   Square,
   ListChecks,
   DollarSign,
+  FolderOpen,
 } from 'lucide-react';
 import { AbTestingTab } from './AbTestingTab';
 import { SportsAgentManager } from './admin/SportsAgentManager';
@@ -306,7 +308,8 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     | 'ab_testing'
     | 'notifications'
     | 'payment_methods'
-    | 'compliance';
+    | 'compliance'
+    | 'skills';
 
   const [activeTab, setActiveTab] = useState<AdminTab>('dedicated_brand');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -1785,6 +1788,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                     { id: 'notifications', label: t('مركز الإشعارات الفورية', 'Notifications Hub', 'Центр уведомлений'), icon: Bell },
                     { id: 'payment_methods', label: t('إدارة وسائل الدفع المصرية', 'Egyptian Payment Methods', 'Египетские платежные методы'), icon: DollarSign },
                     { id: 'compliance', label: t('امتثال المتاجر', 'Store Compliance', 'Соответствие магазинам'), icon: FileText },
+                    { id: 'skills', label: t('ملفات مهارات الوكلاء', 'Agent Skill Files', 'Файлы навыков агентов'), icon: FolderOpen },
                   ].map((tab) => {
                     const IconComponent = tab.icon;
                     const isSelected = activeTab === tab.id;
@@ -6604,6 +6608,13 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
               )}
               </div>
             </div>
+            )}
+
+            {/* Agent Skill Files Manager */}
+            {activeTab === 'skills' && (
+              <div className="p-5">
+                <AgentSkillsManager lang={lang} onCopyToast={(msg) => {}} />
+              </div>
             )}
 
             {/* Admin Footer */}
