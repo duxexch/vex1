@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
@@ -10,7 +11,7 @@ import { storage } from './server/storage';
 import { ServerCompensationRequest } from './server/seedData';
 import { agentEngine, calculateNotificationTiming } from './server/agentEngine';
 
-const currentFilename = process.cwd();
+const currentFilename = '';
 const currentDirname = process.cwd();
 
 const app = express();
@@ -236,89 +237,6 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     aiReady: !!process.env.GEMINI_API_KEY,
   });
-});
-
-// ============================================================================
-// AGENT SKILL FILES MANAGEMENT (Admin uploads skill files for agents)
-// ============================================================================
-const SKILLS_DIR = path.join(process.cwd(), 'data', 'agent-skills');
-
-// Simple file upload middleware (no multer dependency needed)
-function parseMultipartBody(req: any): Promise<{ fields: Record<string, string>; file: { data: Buffer; name: string; type: string } | null }> {
-  return new Promise((resolve) => {
-    const contentType = req.headers['content-type'] || '';
-    if (!contentType.includes('multipart/form-data')) {
-      resolve({ fields: {}, file: null });
-      return;
-    }
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => {
-      try {
-        const body = Buffer.concat(chunks);
-        const boundary = contentType.split('boundary=')[1];
-        if (!boundary) { resolve({ fields: {}, file: null }); return; }
-        const parts = body.toString('binary').split('--' + boundary);
-        const fields: Record<string, string> = {};
-        let file: { data: Buffer; name: string; type: string } | null = null;
-        for (const part of parts) {
-          const headerEnd = part.indexOf('\r\n\r\n');
-          if (headerEnd === -1) continue;
-          const header = part.substring(0, headerEnd);
-          const content = part.substring(headerEnd + 4);
-          const nameMatch = header.match(/name="([^"]+)"/);
-          const filenameMatch = header.match(/filename="([^"]+)"/);
-          const typeMatch = header.match(/Content-Type:\s*(\S+)/);
-          if (filenameMatch && nameMatch) {
-            const dataStr = content.substring(0, content.lastIndexOf('\r\n'));
-            file = { data: Buffer.from(dataStr, 'binary'), name: filenameMatch[1], type: typeMatch ? typeMatch[1] : 'application/octet-stream' };
-          } else if (nameMatch) {
-            fields[nameMatch[1]] = content.trim();
-          }
-        }
-        resolve({ fields, file });
-      } catch { resolve({ fields: {}, file: null }); }
-    });
-    req.on('error', () => resolve({ fields: {}, file: null }));
-  });
-}
-
-app.get('/api/agent-skills', (req, res) => {
-  try {
-    if (!fs.existsSync(SKILLS_DIR)) { res.json({ success: true, skills: [] }); return; }
-    const files = fs.readdirSync(SKILLS_DIR).filter(f => !f.startsWith('.'));
-    const skills = files.map(f => {
-      const stat = fs.statSync(path.join(SKILLS_DIR, f));
-      return { filename: f, size: stat.size, modified: stat.mtime.toISOString() };
-    });
-    res.json({ success: true, skills });
-  } catch (e: any) { res.status(500).json({ success: false, error: e.message }); }
-});
-
-app.post('/api/agent-skills', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
-  try {
-    if (!fs.existsSync(SKILLS_DIR)) fs.mkdirSync(SKILLS_DIR, { recursive: true });
-    const { fields, file } = await parseMultipartBody(req);
-    if (!file) { res.status(400).json({ success: false, error: 'No file provided' }); return; }
-    const agentId = fields.agentId || 'general';
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const filename = `${agentId}_${safeName}`;
-    fs.writeFileSync(path.join(SKILLS_DIR, filename), file.data);
-    res.json({ success: true, filename, size: file.data.length, agentId });
-  } catch (e: any) { res.status(500).json({ success: false, error: e.message }); }
-});
-
-app.get('/api/agent-skills/download/:filename', (req, res) => {
-  const filePath = path.join(SKILLS_DIR, req.params.filename);
-  if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'Not found' }); return; }
-  res.download(filePath);
-});
-
-app.delete('/api/agent-skills/:filename', (req, res) => {
-  const filePath = path.join(SKILLS_DIR, req.params.filename);
-  if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'Not found' }); return; }
-  fs.unlinkSync(filePath);
-  res.json({ success: true });
 });
 
 // Companies Directory Management Endpoints (Replica-Synced)
@@ -1802,330 +1720,6 @@ app.post('/api/viral/referrals', (req, res) => {
 });
 
 // ==========================================
-// LOTTERY (YANASIB) ENDPOINTS
-// ==========================================
-
-const LOTTERY_CONSTANTS = {
-  numbers_count: 5,
-  max_number: 30,
-  rollover_pct: 0.5,
-  secondary_share: 0.7,
-  small_share: 0.3,
-  draw_types: {
-    hourly: { name: 'سحب كل ساعة', icon: '⏰', ticket_price: 50, duration: 3600, multiplier: 1.0 },
-    daily: { name: 'سحب يومي', icon: '📅', ticket_price: 100, duration: 86400, multiplier: 2.5 },
-    weekly: { name: 'سحب أسبوعي', icon: '🏆', ticket_price: 250, duration: 604800, multiplier: 10.0 },
-  },
-};
-
-function getAllUsedNumbers(state: any): Set<string> {
-  const used = new Set<string>();
-  for (const dt of Object.keys(LOTTERY_CONSTANTS.draw_types)) {
-    const round = state.drawTypes?.[dt];
-    if (!round) continue;
-    for (const t of round.tickets || []) {
-      if (t.status !== 'rejected' && t.numbers) {
-        used.add(t.numbers.sort((a: number, b: number) => a - b).join(','));
-      }
-    }
-  }
-  for (const p of state.pendingPurchases || []) {
-    if (p.status === 'pending' && p.numbers) {
-      used.add(p.numbers.sort((a: number, b: number) => a - b).join(','));
-    }
-  }
-  return used;
-}
-
-function generateUniqueNumbers(state: any): number[] {
-  const used = getAllUsedNumbers(state);
-  let attempts = 0;
-  while (attempts < 10000) {
-    const nums: number[] = [];
-    while (nums.length < LOTTERY_CONSTANTS.numbers_count) {
-      const n = Math.floor(Math.random() * LOTTERY_CONSTANTS.max_number) + 1;
-      if (!nums.includes(n)) nums.push(n);
-    }
-    nums.sort((a, b) => a - b);
-    if (!used.has(nums.join(','))) return nums;
-    attempts++;
-  }
-  return [];
-}
-
-function ensureLotteryRound(state: any, drawType: string): any {
-  const config = storage.getLotteryConfig();
-  const cfg = LOTTERY_CONSTANTS.draw_types[drawType as keyof typeof LOTTERY_CONSTANTS.draw_types];
-  if (!cfg) return state;
-  if (!state.drawTypes) state.drawTypes = {};
-  if (!state.drawTypes[drawType]) {
-    state.drawTypes[drawType] = { draw_time: 0, tickets: [], tickets_sold: 0, manual_tickets: 0, prize_pool: 0, history: [] };
-  }
-  const round = state.drawTypes[drawType];
-  const now = Date.now() / 1000;
-  if (!round.draw_time || now >= round.draw_time) {
-    if (round.draw_time > 0 && round.tickets && round.tickets.length > 0) {
-      performDraw(state, drawType);
-    }
-    round.draw_time = now + cfg.duration;
-    round.tickets = [];
-    round.tickets_sold = 0;
-    round.manual_tickets = 0;
-    round.prize_pool = 0;
-  }
-  return state;
-}
-
-function performDraw(state: any, drawType: string): void {
-  const round = state.drawTypes[drawType];
-  if (!round || !round.tickets || round.tickets.length === 0) return;
-  const winningNumbers: number[] = [];
-  while (winningNumbers.length < LOTTERY_CONSTANTS.numbers_count) {
-    const n = Math.floor(Math.random() * LOTTERY_CONSTANTS.max_number) + 1;
-    if (!winningNumbers.includes(n)) winningNumbers.push(n);
-  }
-  winningNumbers.sort((a, b) => a - b);
-  const prizePool = round.prize_pool;
-  const redistributable = prizePool * (1 - LOTTERY_CONSTANTS.rollover_pct);
-  const winners = { jackpot: [] as any[], secondary: [] as any[], small: [] as any[] };
-  let jackpotWinners = 0;
-  for (const ticket of round.tickets) {
-    if (ticket.status === 'pending' || ticket.status === 'rejected') continue;
-    const matches = (ticket.numbers || []).filter((n: number) => winningNumbers.includes(n)).length;
-    ticket.drawn = winningNumbers;
-    ticket.matches = matches;
-    if (matches === LOTTERY_CONSTANTS.numbers_count) { ticket.status = 'win'; ticket.prize = 0; winners.jackpot.push(ticket); jackpotWinners++; }
-    else if (matches === 4) { ticket.status = 'win'; ticket.prize = 0; winners.secondary.push(ticket); }
-    else if (matches === 3) { ticket.status = 'win'; ticket.prize = 0; winners.small.push(ticket); }
-    else { ticket.status = 'lose'; ticket.prize = 0; }
-  }
-  let rolloverAmount = 0;
-  if (jackpotWinners > 0) {
-    const perWinner = prizePool / jackpotWinners;
-    winners.jackpot.forEach((t: any) => t.prize = perWinner);
-  } else {
-    rolloverAmount = prizePool * LOTTERY_CONSTANTS.rollover_pct;
-    const secondaryPrize = winners.secondary.length > 0 ? (redistributable * LOTTERY_CONSTANTS.secondary_share) / winners.secondary.length : 0;
-    const smallPrize = winners.small.length > 0 ? (redistributable * LOTTERY_CONSTANTS.small_share) / winners.small.length : 0;
-    winners.secondary.forEach((t: any) => t.prize = secondaryPrize);
-    winners.small.forEach((t: any) => t.prize = smallPrize);
-  }
-  round.history.push({ winning_numbers: winningNumbers, prize_pool: prizePool, tickets_sold: round.tickets_sold, winners: { jackpot: winners.jackpot.length, secondary: winners.secondary.length, small: winners.small.length }, rollover: rolloverAmount, timestamp: new Date().toISOString() });
-  round.rollover = rolloverAmount;
-  round.drawn = winningNumbers;
-}
-
-// GET /api/lottery/state
-app.get('/api/lottery/state', (req, res) => {
-  try {
-    const config = storage.getLotteryConfig();
-    if (!config.enabled) return res.json({ enabled: false, draw_types: {} });
-    let state = storage.getLotteryState();
-    const uid = (req.query.uid as string) || 'anonymous';
-    const paymentMethods = (storage.getAppBranding().paymentMethods || []).filter((m: any) => m.is_active);
-    const drawTypes: any = {};
-    for (const [key, cfg] of Object.entries(LOTTERY_CONSTANTS.draw_types)) {
-      state = ensureLotteryRound(state, key);
-      const round = state.drawTypes[key];
-      const myTickets = (round.tickets || []).filter((t: any) => t.uid === uid && t.status !== 'rejected');
-      const soldNumbers = (round.tickets || []).filter((t: any) => t.status !== 'rejected').map((t: any) => ({ id: t.id, numbers: t.numbers, uid: t.uid, status: t.status, source: t.source || 'auto' }));
-      drawTypes[key] = {
-        ...cfg, draw_time: round.draw_time, tickets_sold: round.tickets_sold, manual_tickets: round.manual_tickets || 0,
-        max_tickets: config[key]?.max_tickets || 1000, tickets_available: (config[key]?.max_tickets || 1000) - round.tickets_sold,
-        participants_count: new Set((round.tickets || []).filter((t: any) => t.status !== 'rejected').map((t: any) => t.uid)).size,
-        prize_pool: round.prize_pool, jackpot_estimate: round.prize_pool * cfg.multiplier,
-        drawn: round.drawn || null, rollover: round.rollover || 0, my_tickets: myTickets, sold_numbers: soldNumbers,
-        history: (round.history || []).slice(-5),
-      };
-    }
-    const pendingPurchases = (state.pendingPurchases || []).filter((p: any) => p.uid === uid || true);
-    storage.saveLotteryState(state);
-    res.json({ enabled: true, draw_types: drawTypes, pending_purchases: pendingPurchases, payment_methods: paymentMethods });
-  } catch (err) { console.error('[Lottery] Error:', err); res.status(500).json({ error: 'Server error' }); }
-});
-
-// POST /api/lottery/buy - Create pending purchase request
-app.post('/api/lottery/buy', (req, res) => {
-  try {
-    const config = storage.getLotteryConfig();
-    if (!config.enabled) return res.status(400).json({ error: 'Lottery is disabled' });
-    const { count = 1, draw_type = 'hourly', uid = 'anonymous', payment_method_id, transfer_wallet, transfer_amount } = req.body;
-    const ticketCount = Math.max(1, Math.min(10, Number(count)));
-    const drawType = LOTTERY_CONSTANTS.draw_types[draw_type as keyof typeof LOTTERY_CONSTANTS.draw_types];
-    if (!drawType) return res.status(400).json({ error: 'Invalid draw type' });
-    const cfg = config[draw_type] || { ticket_price: drawType.ticket_price, max_tickets: 1000 };
-    const ticketPrice = cfg.ticket_price;
-    const totalCost = ticketPrice * ticketCount;
-    let state = storage.getLotteryState();
-    state = ensureLotteryRound(state, draw_type);
-    const round = state.drawTypes[draw_type];
-    if (round.tickets_sold + ticketCount > (config[draw_type]?.max_tickets || 1000)) {
-      return res.status(400).json({ error: 'Not enough tickets available' });
-    }
-    const numbersList: number[][] = [];
-    for (let i = 0; i < ticketCount; i++) {
-      const nums = generateUniqueNumbers(state);
-      if (nums.length === 0) return res.status(400).json({ error: 'No unique numbers available' });
-      numbersList.push(nums);
-    }
-    const purchaseId = `LP-${Date.now()}-${Math.floor(Math.random() * 9000) + 1000}`;
-    const pendingPurchase = {
-      id: purchaseId, uid, draw_type, ticket_count: ticketCount, ticket_price: ticketPrice,
-      total_cost: totalCost, numbers: numbersList, payment_method_id: payment_method_id || 'manual',
-      transfer_wallet: transfer_wallet || '', transfer_amount: transfer_amount || totalCost,
-      status: 'pending', created_at: new Date().toISOString(),
-    };
-    if (!state.pendingPurchases) state.pendingPurchases = [];
-    state.pendingPurchases.push(pendingPurchase);
-    storage.saveLotteryState(state);
-    const notif = { id: `LOTIF-${Date.now()}`, title: '🎟️ طلب شراء تذكرة يانصيب', message: `طلب ${ticketCount} تذكرة (${drawType.name}) بقيمة ${totalCost} - بانتظار التأكيد`, category: 'lottery' as NotificationCategory, timestamp: new Date().toISOString(), read: false, data: { purchaseId, uid, draw_type: draw_type, ticket_count: ticketCount, total_cost: totalCost } };
-    storage.addNotification(notif);
-    io.emit('notification', notif);
-    io.emit('lottery_purchase_pending', pendingPurchase);
-    res.json({ success: true, pending: true, purchase_id: purchaseId, total_cost: totalCost, numbers: numbersList, message: 'تم إرسال طلب الشراء بانتظار تأكيد الإدارة' });
-  } catch (err) { console.error('[Lottery] Buy error:', err); res.status(500).json({ error: 'Server error' }); }
-});
-
-// POST /api/lottery/approve/:purchaseId - Admin: approve pending purchase
-app.post('/api/lottery/approve/:purchaseId', (req, res) => {
-  try {
-    const { purchaseId } = req.params;
-    let state = storage.getLotteryState();
-    const idx = (state.pendingPurchases || []).findIndex((p: any) => p.id === purchaseId);
-    if (idx === -1) return res.status(404).json({ error: 'Request not found' });
-    const purchase = state.pendingPurchases[idx];
-    if (purchase.status !== 'pending') return res.status(400).json({ error: 'Already processed' });
-    state = ensureLotteryRound(state, purchase.draw_type);
-    const round = state.drawTypes[purchase.draw_type];
-    for (let i = 0; i < purchase.ticket_count; i++) {
-      const nums = purchase.numbers[i] || generateUniqueNumbers(state);
-      round.tickets.push({
-        id: `T${Date.now()}_${Math.floor(Math.random() * 9000) + 1000}`, uid: purchase.uid,
-        numbers: nums, status: 'active', drawn: null, matches: 0, prize: 0,
-        source: 'payment', payment_method_id: purchase.payment_method_id, purchase_id: purchase.id,
-      });
-    }
-    round.tickets_sold += purchase.ticket_count;
-    round.prize_pool = Math.round((round.prize_pool + purchase.total_cost * 0.8) * 100) / 100;
-    purchase.status = 'approved';
-    purchase.approved_at = new Date().toISOString();
-    storage.saveLotteryState(state);
-    io.emit('lottery_ticket_activated', { uid: purchase.uid, draw_type: purchase.draw_type, ticket_count: purchase.ticket_count });
-    res.json({ success: true, purchase });
-  } catch (err) { console.error('[Lottery] Approve error:', err); res.status(500).json({ error: 'Server error' }); }
-});
-
-// POST /api/lottery/reject/:purchaseId - Admin: reject pending purchase
-app.post('/api/lottery/reject/:purchaseId', (req, res) => {
-  try {
-    const { purchaseId } = req.params;
-    const { reason } = req.body;
-    let state = storage.getLotteryState();
-    const idx = (state.pendingPurchases || []).findIndex((p: any) => p.id === purchaseId);
-    if (idx === -1) return res.status(404).json({ error: 'Request not found' });
-    state.pendingPurchases[idx].status = 'rejected';
-    state.pendingPurchases[idx].rejected_at = new Date().toISOString();
-    state.pendingPurchases[idx].rejection_reason = reason || '';
-    storage.saveLotteryState(state);
-    res.json({ success: true, purchase: state.pendingPurchases[idx] });
-  } catch (err) { res.status(500).json({ error: 'Server error' }); }
-});
-
-// POST /api/lottery/manual-ticket - Admin: add manual ticket
-app.post('/api/lottery/manual-ticket', (req, res) => {
-  try {
-    const { draw_type, numbers, uid = 'admin_manual' } = req.body;
-    if (!LOTTERY_CONSTANTS.draw_types[draw_type as keyof typeof LOTTERY_CONSTANTS.draw_types]) {
-      return res.status(400).json({ error: 'Invalid draw type' });
-    }
-    if (!Array.isArray(numbers) || numbers.length !== LOTTERY_CONSTANTS.numbers_count) {
-      return res.status(400).json({ error: `Must provide exactly ${LOTTERY_CONSTANTS.numbers_count} numbers` });
-    }
-    const sorted = [...numbers].sort((a: number, b: number) => a - b);
-    for (const n of sorted) { if (n < 1 || n > LOTTERY_CONSTANTS.max_number) return res.status(400).json({ error: `Numbers must be 1-${LOTTERY_CONSTANTS.max_number}` }); }
-    let state = storage.getLotteryState();
-    const keyCombo = sorted.join(',');
-    for (const dt of Object.keys(LOTTERY_CONSTANTS.draw_types)) {
-      const r = state.drawTypes?.[dt];
-      for (const t of r?.tickets || []) {
-        if (t.status !== 'rejected' && t.numbers?.sort((a: number, b: number) => a - b).join(',') === keyCombo) {
-          return res.status(400).json({ error: 'These numbers are already taken' });
-        }
-      }
-    }
-    for (const p of state.pendingPurchases || []) {
-      if (p.status === 'pending') {
-        for (const nums of p.numbers || []) {
-          if (nums.sort((a: number, b: number) => a - b).join(',') === keyCombo) {
-            return res.status(400).json({ error: 'These numbers are pending in another purchase' });
-          }
-        }
-      }
-    }
-    state = ensureLotteryRound(state, draw_type);
-    const round = state.drawTypes[draw_type];
-    const ticketPrice = LOTTERY_CONSTANTS.draw_types[draw_type as keyof typeof LOTTERY_CONSTANTS.draw_types].ticket_price;
-    round.tickets.push({
-      id: `TM${Date.now()}_${Math.floor(Math.random() * 9000) + 1000}`, uid,
-      numbers: sorted, status: 'active', drawn: null, matches: 0, prize: 0, source: 'manual',
-    });
-    round.tickets_sold += 1;
-    round.manual_tickets = (round.manual_tickets || 0) + 1;
-    round.prize_pool = Math.round((round.prize_pool + ticketPrice * 0.8) * 100) / 100;
-    storage.saveLotteryState(state);
-    res.json({ success: true, ticket: round.tickets[round.tickets.length - 1], tickets_sold: round.tickets_sold, manual_tickets: round.manual_tickets });
-  } catch (err) { console.error('[Lottery] Manual ticket error:', err); res.status(500).json({ error: 'Server error' }); }
-});
-
-// POST /api/lottery/draw/:drawType - Admin: execute draw
-app.post('/api/lottery/draw/:drawType', (req, res) => {
-  try {
-    const { drawType } = req.params;
-    if (!LOTTERY_CONSTANTS.draw_types[drawType as keyof typeof LOTTERY_CONSTANTS.draw_types]) return res.status(400).json({ error: 'Invalid draw type' });
-    let state = storage.getLotteryState();
-    const round = state.drawTypes?.[drawType];
-    if (!round || !round.tickets || round.tickets.length === 0) return res.status(400).json({ error: 'No tickets to draw' });
-    performDraw(state, drawType);
-    const result = round.history[round.history.length - 1];
-    storage.saveLotteryState(state);
-    res.json({ success: true, result });
-  } catch (err) { console.error('[Lottery] Draw error:', err); res.status(500).json({ error: 'Server error' }); }
-});
-
-// GET /api/lottery/config
-app.get('/api/lottery/config', (req, res) => {
-  try {
-    const config = storage.getLotteryConfig();
-    res.json({ success: true, config });
-  } catch (err) { res.status(500).json({ error: 'Server error' }); }
-});
-
-// POST /api/lottery/config
-app.post('/api/lottery/config', (req, res) => {
-  try {
-    const config = storage.getLotteryConfig();
-    const updates = req.body;
-    if (updates.enabled !== undefined) config.enabled = updates.enabled;
-    for (const key of ['hourly', 'daily', 'weekly']) { if (updates[key]) config[key] = { ...config[key], ...updates[key] }; }
-    storage.saveLotteryConfig(config);
-    res.json({ success: true, config });
-  } catch (err) { res.status(500).json({ error: 'Server error' }); }
-});
-
-// GET /api/lottery/history
-app.get('/api/lottery/history', (req, res) => {
-  try {
-    const state = storage.getLotteryState();
-    const history: any[] = [];
-    for (const [key, round] of Object.entries(state.drawTypes || {})) {
-      for (const h of (round as any).history || []) { history.push({ ...h, draw_type: key }); }
-    }
-    history.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    res.json({ history: history.slice(0, 50) });
-  } catch (err) { res.status(500).json({ error: 'Server error' }); }
-});
-
-// ==========================================
 // COMPENSATION & DEPOSIT UNFREEZE ENDPOINTS
 // ==========================================
 
@@ -2620,67 +2214,6 @@ app.post('/api/admin/phone-change-requests/reject', (req, res) => {
     message: 'تم رفض طلب تغيير رقم الهاتف.',
   });
 });
-
-// ============================================================================
-// SEO: Multilingual Landing Pages, Sitemap, Robots for ALL domains and languages
-// ============================================================================
-const LANGUAGES = ['ar', 'en', 'es', 'ru', 'fr', 'de', 'tr', 'pt'];
-const LANG_META: Record<string, {name: string; dir: string; iso: string; homeLabel: string}> = {
-  ar: { name: 'Arabic', dir: 'rtl', iso: 'ar-SA', homeLabel: 'الرئيسية' },
-  en: { name: 'English', dir: 'ltr', iso: 'en-US', homeLabel: 'Home' },
-  es: { name: 'Spanish', dir: 'ltr', iso: 'es-ES', homeLabel: 'Inicio' },
-  ru: { name: 'Russian', dir: 'ltr', iso: 'ru-RU', homeLabel: 'Главная' },
-  fr: { name: 'French', dir: 'ltr', iso: 'fr-FR', homeLabel: 'Accueil' },
-  de: { name: 'German', dir: 'ltr', iso: 'de-DE', homeLabel: 'Startseite' },
-  tr: { name: 'Turkish', dir: 'ltr', iso: 'tr-TR', homeLabel: 'Ana Sayfa' },
-  pt: { name: 'Portuguese', dir: 'ltr', iso: 'pt-BR', homeLabel: 'Inicio' },
-};
-const LABELS: Record<string, Record<string, string>> = {
-  ar: { bonus: 'مكافآت', code: 'كود الوكالة', back: 'العودة للتطبيق', desc1: 'وكالة رسمية', desc2: 'بونص ترحيبي + تعويض خسائر + فك تجميد' },
-  en: { bonus: 'Bonus', code: 'Agency Code', back: 'Back to App', desc1: 'Official agency', desc2: 'Welcome bonus + loss compensation + unfreezing' },
-  es: { bonus: 'Bonos', code: 'Codigo Agencia', back: 'Volver a la App', desc1: 'Agencia oficial', desc2: 'Bonos de bienvenida + compensacion de perdidas' },
-  ru: { bonus: 'Бонусы', code: 'Код Агентства', back: 'Назад к Приложению', desc1: 'Официальное агентство', desc2: 'Приветственный бонус + компенсация потерь' },
-  fr: { bonus: 'Bonus', code: 'Code Agence', back: "Retour a l'App", desc1: 'Agence officielle', desc2: 'Bonus de bienvenue + compensation des pertes' },
-  de: { bonus: 'Bonus', code: 'Agentur-Code', back: 'Zurueck zur App', desc1: 'Offizielle Agentur', desc2: 'Willkommensbonus + Verlustkompensation' },
-  tr: { bonus: 'Bonuslar', code: 'Ajans Kodu', back: 'Uygulamaya Don', desc1: 'Resmi ajans', desc2: 'Hosgeldiniz bonusu + kayip tazminati' },
-  pt: { bonus: 'Bonus', code: 'Codigo Agencia', back: 'Voltar ao App', desc1: 'Agencia oficial', desc2: 'Bonus de boas-vindas + compensacao de perdas' },
-};
-let SEO_COMPANIES: Record<string, any> = {};
-try {
-  const data = fs.readFileSync(path.join(process.cwd(), 'data', 'companies.json'), 'utf-8');
-  for (const c of JSON.parse(data)) { SEO_COMPANIES[c.name.toLowerCase().replace(/[^a-z0-9]/g, '')] = c; }
-} catch(e) {}
-function escapeHtml(s: string): string { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function getCompanyPage(slug: string, domain: string, lang: string): string {
-  const c = SEO_COMPANIES[slug]; if (!c) return '';
-  const lm = LANG_META[lang] || LANG_META['ar']; const lb = LABELS[lang] || LABELS['ar'];
-  const name = c.name_ar || c.name; const desc = c.description || c.name_ar || c.name; const code = c.promo_code || '';
-  const fullTitle = name + ' - ' + lb.bonus + ' | ' + domain;
-  const canonical = 'https://' + domain + '/company/' + slug + '?lang=' + lang;
-  const hreflangs = LANGUAGES.map(l => '    <link rel="alternate" hreflang="' + l + '" href="https://' + domain + '/company/' + slug + '?lang=' + l + '" />').join('\n') + '\n    <link rel="alternate" hreflang="x-default" href="https://' + domain + '/company/' + slug + '" />';
-  const jsonLd = JSON.stringify({ "@context": "https://schema.org", "@type": "WebPage", "name": name, "description": desc, "url": canonical, "inLanguage": lang, "mainEntity": { "@type": "Organization", "name": c.name }, "breadcrumb": { "@type": "BreadcrumbList", "itemListElement": [{ "@type": "ListItem", "position": 1, "name": lm.homeLabel, "item": "https://" + domain + "/?lang=" + lang }, { "@type": "ListItem", "position": 2, "name": c.name, "item": canonical }] } });
-  return '<!DOCTYPE html>\n<html lang="' + lang + '" dir="' + lm.dir + '">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>' + escapeHtml(fullTitle) + '</title>\n  <meta name="description" content="' + escapeHtml(name + ' - ' + lb.desc1 + '. ' + lb.desc2 + ' ' + lb.code + ': ' + code) + '">\n  <meta name="keywords" content="' + escapeHtml(c.name + ', ' + name + ', ' + lb.bonus + ', ' + lb.code + ', ' + code + ', betting, sports, ' + domain) + '">\n  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">\n  <link rel="canonical" href="' + canonical + '">\n  <meta property="og:title" content="' + escapeHtml(fullTitle) + '">\n  <meta property="og:description" content="' + escapeHtml(desc) + '">\n  <meta property="og:type" content="website">\n  <meta property="og:url" content="' + canonical + '">\n  <meta property="og:site_name" content="' + domain + '">\n  <meta property="og:locale" content="' + lm.iso + '">\n  <meta name="twitter:card" content="summary_large_image">\n  <meta name="twitter:title" content="' + escapeHtml(fullTitle) + '">\n  <meta name="twitter:description" content="' + escapeHtml(desc) + '">\n' + hreflangs + '\n  <script type="application/ld+json">' + jsonLd + '</script>\n</head>\n<body>\n  <h1>' + escapeHtml(name) + '</h1>\n  <p>' + escapeHtml(desc) + '</p>\n  <p>' + lb.code + ': <strong>' + escapeHtml(code) + '</strong></p>\n  <p>' + lb.bonus + ': ' + escapeHtml(c.bonus_text || '') + '</p>\n  <a href="/?lang=' + lang + '">' + lb.back + '</a>\n</body>\n</html>';
-}
-function getSitemapXml(domain: string): string {
-  const entries: string[] = [];
-  entries.push('  <url><loc>https://' + domain + '/</loc><lastmod>2026-09-11</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>');
-  for (const [slug] of Object.entries(SEO_COMPANIES)) {
-    entries.push('  <url><loc>https://' + domain + '/company/' + slug + '</loc><lastmod>2026-09-11</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>');
-    for (const lang of LANGUAGES) { entries.push('  <url><loc>https://' + domain + '/company/' + slug + '?lang=' + lang + '</loc><lastmod>2026-09-11</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>'); }
-  }
-  return '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n' + entries.join('\n') + '\n</urlset>';
-}
-function getRobotsTxt(domain: string): string { return 'User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\n\nSitemap: https://' + domain + '/sitemap.xml\n\nUser-agent: Googlebot\nAllow: /\n\nUser-agent: OAI-SearchBot\nAllow: /\n'; }
-
-app.get('/company/:slug', (req, res) => {
-  const slug = req.params.slug as string; const domain = req.hostname;
-  const lang = (req.query.lang as string) || 'ar'; const validLang = LANGUAGES.includes(lang) ? lang : 'ar';
-  const html = getCompanyPage(slug, domain, validLang);
-  if (!html) return res.status(404).send('Company not found');
-  res.set('Content-Type', 'text/html; charset=utf-8'); res.send(html);
-});
-app.get('/sitemap.xml', (req, res) => { res.set('Content-Type', 'application/xml'); res.send(getSitemapXml(req.hostname)); });
-app.get('/robots.txt', (req, res) => { res.set('Content-Type', 'text/plain'); res.send(getRobotsTxt(req.hostname)); });
 
 // ============================================================================
 // TELEGRAM BOT VERIFICATION ENGINE (Token in Admin, Contact Sharing, 6-Digit OTP)
@@ -3277,6 +2810,251 @@ app.post('/api/telegram/webhook', async (req, res) => {
   res.sendStatus(200);
 });
 
+// ========================================================
+// VEX Mega Lottery 1-Hour Pre-Draw Push Notification Engine
+// ========================================================
+interface ServerLotteryState {
+  activeDrawId: string;
+  titleAr: string;
+  titleEn: string;
+  closeAt: string;
+  jackpotAmount: number;
+  oneHourReminderSent: boolean;
+  thirtyMinReminderSent: boolean;
+  tierAlertSubscriptions: Record<string, boolean>;
+}
+
+let serverLotteryState: ServerLotteryState = {
+  activeDrawId: 'DRAW-2026-088',
+  titleAr: 'سحب VEX التكافلي الذهبي الأسبوعي #88',
+  titleEn: 'VEX Weekly Solidarity Gold Draw #88',
+  closeAt: new Date(Date.now() + 4 * 3600 * 1000).toISOString(),
+  jackpotAmount: 18450.0,
+  oneHourReminderSent: false,
+  thirtyMinReminderSent: false,
+  tierAlertSubscriptions: {
+    tier1_jackpot: true,
+    tier2_match5: true,
+    tier3_match4_2: true,
+    tier4_match3: true,
+    tier5_match2: true,
+  },
+};
+
+function dispatchLotteryOneHourNotification(drawState: ServerLotteryState, isManualTest = false) {
+  const notifId = `NOTIF-LOTTERY-1HR-${drawState.activeDrawId}-${Date.now()}`;
+  const newNotif = {
+    id: notifId,
+    title: `⏳ سحب اليانصيب الكبرى يبدأ بعد ساعة واحدة! (${drawState.activeDrawId})`,
+    message: `باقي 60 دقيقة فقط على إغلاق تذاكر سحب VEX الكبرى. الجائزة المتراكمة: $${drawState.jackpotAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}! بادر باختيار أرقامك الرابحة الآن.`,
+    category: 'lottery',
+    timestamp: new Date().toISOString(),
+    read: false,
+    translations: {
+      ar: {
+        title: `⏳ سحب اليانصيب الكبرى يبدأ بعد ساعة واحدة! (${drawState.activeDrawId})`,
+        message: `باقي 60 دقيقة فقط على إغلاق تذاكر سحب VEX الكبرى. الجائزة المتراكمة: $${drawState.jackpotAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}! بادر باختيار أرقامك الرابحة الآن.`,
+      },
+      en: {
+        title: `⏳ 1 Hour Until Big Lottery Draw! (${drawState.activeDrawId})`,
+        message: `Only 60 minutes left before ticket sales close for ${drawState.titleEn}. Progressive Jackpot is $${drawState.jackpotAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}! Pick your lucky numbers now.`,
+      },
+      ru: {
+        title: `⏳ 1 час до розыгрыша лотереи! (${drawState.activeDrawId})`,
+        message: `Осталось всего 60 минут до закрытия продажи билетов. Джекпот: $${drawState.jackpotAmount.toLocaleString()}! Выберите счастливые номера.`,
+      },
+      es: {
+        title: `⏳ ¡1 hora para el gran sorteo! (${drawState.activeDrawId})`,
+        message: `Solo quedan 60 minutos para el cierre de venta de boletos. ¡El bote acumulado es de $${drawState.jackpotAmount.toLocaleString()}!`,
+      },
+    },
+    data: {
+      drawId: drawState.activeDrawId,
+      targetTab: 'lottery',
+      actionUrl: '/#lottery',
+      jackpotAmount: drawState.jackpotAmount,
+      isOneHourReminder: true,
+      manualTest: isManualTest,
+    },
+  };
+
+  storage.addNotification(newNotif);
+  io.emit('notification', newNotif);
+  console.log(`🎟️ [Lottery Engine] Dispatched 1-Hour Pre-Draw Push Notification for ${drawState.activeDrawId}`);
+  return newNotif;
+}
+
+function dispatchLotteryThirtyMinTierNotification(
+  drawState: ServerLotteryState,
+  tierId: string = 'tier1_jackpot',
+  isManualTest = false
+) {
+  const notifId = `NOTIF-LOTTERY-30MIN-${tierId}-${Date.now()}`;
+  
+  const tierNames: Record<string, { ar: string; en: string; highlight: string }> = {
+    tier1_jackpot: {
+      ar: 'الجائزة الكبرى ($10,000+)',
+      en: 'Jackpot Tier ($10,000+)',
+      highlight: `$${drawState.jackpotAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+    },
+    tier2_match5: {
+      ar: 'المستوى الثاني (5 أرقام + 1 ذهبي)',
+      en: 'Tier 2 (5 Numbers + 1 Star)',
+      highlight: '$2,500+',
+    },
+    tier3_match4_2: {
+      ar: 'المستوى الثالث (4 أرقام + 2 ذهبيين)',
+      en: 'Tier 3 (4 Numbers + 2 Stars)',
+      highlight: '$1,000+',
+    },
+    tier4_match3: {
+      ar: 'مستوى التكافل الرابع (3 أرقام)',
+      en: 'Solidarity Tier 4 (3 Numbers)',
+      highlight: '$25.00',
+    },
+    tier5_match2: {
+      ar: 'مستوى التكافل الخامس (تذاكر مجانية / كاش)',
+      en: 'Tier 5 (Free Tickets / Cash)',
+      highlight: '$2.50 / Free Ticket',
+    },
+  };
+
+  const tierInfo = tierNames[tierId] || tierNames.tier1_jackpot;
+
+  const newNotif = {
+    id: notifId,
+    title: `🔔 تنبيه السحب: 30 دقيقة متبقية لبدء سحب [${tierInfo.ar}]`,
+    message: `تنبيه سحب مخصص عبر Firebase Cloud Messaging (FCM): باقي 30 دقيقة فقط على انطلاق ${drawState.titleAr}. الجائزة المرتقبة: ${tierInfo.highlight}! ثبت تذكرتك الآن قبل إغلاق القفل التشفيري.`,
+    category: 'lottery',
+    timestamp: new Date().toISOString(),
+    read: false,
+    translations: {
+      ar: {
+        title: `🔔 تنبيه السحب: 30 دقيقة متبقية لبدء سحب [${tierInfo.ar}]`,
+        message: `تنبيه سحب مخصص عبر Firebase Cloud Messaging (FCM): باقي 30 دقيقة فقط على انطلاق ${drawState.titleAr}. الجائزة المرتقبة: ${tierInfo.highlight}! ثبت تذكرتك الآن قبل إغلاق القفل التشفيري.`,
+      },
+      en: {
+        title: `🔔 Draw Alert: 30 Mins Until [${tierInfo.en}] Starts`,
+        message: `Customized Draw Alert via Firebase Cloud Messaging (FCM): Only 30 minutes left before ${drawState.titleEn} locks in. Target prize: ${tierInfo.highlight}! Lock in your lucky numbers now.`,
+      },
+      ru: {
+        title: `🔔 Оповещение: 30 минут до розыгрыша [${tierInfo.en}]`,
+        message: `Осталось всего 30 минут до начала тиража ${drawState.titleEn}. Приз: ${tierInfo.highlight}!`,
+      },
+      es: {
+        title: `🔔 Alerta de Sorteo: 30 minutos para [${tierInfo.en}]`,
+        message: `Solo quedan 30 minutos antes del sorteo ${drawState.titleEn}. Premio: ${tierInfo.highlight}!`,
+      },
+    },
+    data: {
+      drawId: drawState.activeDrawId,
+      tierId,
+      targetTab: 'lottery',
+      actionUrl: '/#lottery',
+      jackpotAmount: drawState.jackpotAmount,
+      isThirtyMinReminder: true,
+      fcmProvider: 'Firebase Cloud Messaging (FCM)',
+      manualTest: isManualTest,
+    },
+  };
+
+  storage.addNotification(newNotif);
+  io.emit('notification', newNotif);
+  console.log(`🎟️ [Lottery Engine] Dispatched 30-Minute Tier Push Alert (${tierId}) for ${drawState.activeDrawId}`);
+  return newNotif;
+}
+
+function checkAndDispatchLotteryReminders() {
+  if (!serverLotteryState) return;
+
+  const closeTime = new Date(serverLotteryState.closeAt).getTime();
+  const now = Date.now();
+  const diffMs = closeTime - now;
+  const diffMinutes = diffMs / (1000 * 60);
+
+  // 1. If time left is 60 minutes or less: trigger 1-hour general alert
+  if (diffMinutes > 0 && diffMinutes <= 60 && !serverLotteryState.oneHourReminderSent) {
+    serverLotteryState.oneHourReminderSent = true;
+    dispatchLotteryOneHourNotification(serverLotteryState);
+  }
+
+  // 2. If time left is 30 minutes or less: trigger 30-min per-tier draw alert
+  if (diffMinutes > 0 && diffMinutes <= 30 && !serverLotteryState.thirtyMinReminderSent) {
+    serverLotteryState.thirtyMinReminderSent = true;
+    Object.keys(serverLotteryState.tierAlertSubscriptions).forEach((tId) => {
+      if (serverLotteryState.tierAlertSubscriptions[tId]) {
+        dispatchLotteryThirtyMinTierNotification(serverLotteryState, tId);
+      }
+    });
+  }
+}
+
+// Lottery Push Endpoints
+app.get('/api/lottery/status', (req, res) => {
+  res.json({
+    success: true,
+    lottery: serverLotteryState,
+  });
+});
+
+app.post('/api/lottery/sync-draw', (req, res) => {
+  const { drawId, titleAr, titleEn, closeAt, jackpotAmount } = req.body;
+  const isNewDraw = drawId && drawId !== serverLotteryState.activeDrawId;
+  const isNewTime = closeAt && closeAt !== serverLotteryState.closeAt;
+
+  serverLotteryState = {
+    activeDrawId: drawId || serverLotteryState.activeDrawId,
+    titleAr: titleAr || serverLotteryState.titleAr,
+    titleEn: titleEn || serverLotteryState.titleEn,
+    closeAt: closeAt || serverLotteryState.closeAt,
+    jackpotAmount: Number(jackpotAmount) || serverLotteryState.jackpotAmount,
+    oneHourReminderSent: isNewDraw || isNewTime ? false : serverLotteryState.oneHourReminderSent,
+    thirtyMinReminderSent: isNewDraw || isNewTime ? false : serverLotteryState.thirtyMinReminderSent,
+    tierAlertSubscriptions: serverLotteryState.tierAlertSubscriptions,
+  };
+
+  res.json({
+    success: true,
+    lottery: serverLotteryState,
+    message: 'تمت مزامنة بيانات السحب بنجاح مع محرك التنبيهات!',
+  });
+});
+
+app.post('/api/lottery/trigger-1hour-alert', (req, res) => {
+  const notif = dispatchLotteryOneHourNotification(serverLotteryState, true);
+  res.json({
+    success: true,
+    notification: notif,
+    message: 'تم إرسال تنبيه الدفع (قبل ساعة من السحب) بنجاح لجميع المستخدمين!',
+  });
+});
+
+app.post('/api/lottery/trigger-30min-tier-alert', (req, res) => {
+  const { tierId } = req.body;
+  const targetTier = tierId || 'tier1_jackpot';
+  const notif = dispatchLotteryThirtyMinTierNotification(serverLotteryState, targetTier, true);
+  res.json({
+    success: true,
+    notification: notif,
+    message: `تم إرسال تنبيه السحب المخصص (قبل 30 دقيقة) لمستوى [${targetTier}] عبر Firebase Cloud Messaging!`,
+  });
+});
+
+app.post('/api/lottery/update-tier-alert-settings', (req, res) => {
+  const { tierAlertSubscriptions } = req.body;
+  if (tierAlertSubscriptions && typeof tierAlertSubscriptions === 'object') {
+    serverLotteryState.tierAlertSubscriptions = {
+      ...serverLotteryState.tierAlertSubscriptions,
+      ...tierAlertSubscriptions,
+    };
+  }
+  res.json({
+    success: true,
+    tierAlertSubscriptions: serverLotteryState.tierAlertSubscriptions,
+    message: 'تم تحديث اشتراكات تنبيهات جوائز السحب (30 دقيقة) بنجاح!',
+  });
+});
+
 // BACKGROUND NOTIFICATION WORKER FOR DOCKER (Standalone Fallback & Heuristic Scheduler)
 function startDockerNotificationWorker() {
   console.log('🤖 [VEX Docker Notification Worker] Initialized and running in background daemon mode...');
@@ -3291,7 +3069,10 @@ function startDockerNotificationWorker() {
         });
       }
 
-      // 2. Pulse active notifications
+      // 2. Check and dispatch 1-hour pre-draw lottery reminder if due
+      checkAndDispatchLotteryReminders();
+
+      // 3. Pulse active notifications
       const notifs = storage.getNotifications();
       const unreadCount = notifs.filter((n) => !n.read).length;
       io.emit('worker_pulse', { timestamp: new Date().toISOString(), unreadCount });

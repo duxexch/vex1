@@ -55,6 +55,21 @@ input, textarea {
   }
 }
 
+@keyframes smartPulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6), 0 0 8px rgba(245, 158, 11, 0.4);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.25), 0 0 16px rgba(245, 158, 11, 0.65);
+    transform: scale(1.04);
+  }
+}
+
 .animate-fade-in {
   animation: fadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-smart-glow {
+  animation: smartPulseGlow 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }

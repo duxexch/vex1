@@ -487,6 +487,7 @@ export interface AppBranding {
   companyCustomWebsites?: Record<string, CompanyCustomWebsite>;
   whatsappNumber?: string;
   whatsappEnabled?: boolean;
+  paymentMethods?: PaymentMethod[];
   updatedAt?: string;
 }
 
@@ -596,6 +597,31 @@ export interface UserSportsPreferences {
   subscribedCategories: string[]; // IDs of SportsCategory
   subscribedLeagues: string[];
   notificationTypes: ('match_start' | 'goals' | 'ai_predictions' | 'news')[];
+}
+
+export interface UserSubscriptionRecord {
+  userId: string;
+  subscribedLeagues: string[];
+  smartAlertLeagues?: string[];
+  notificationTypes: string[];
+  updatedAt?: string;
+}
+
+export interface SmartOddsShiftAlert {
+  id: string;
+  fixtureId: string;
+  matchTitle: string;
+  league: string;
+  marketType: string;
+  previousOdds: number;
+  currentOdds: number;
+  shiftPercentage: number;
+  volatilityLevel: 'high' | 'extreme' | 'moderate';
+  direction: 'shortening' | 'drifting';
+  suggestedPick: string;
+  reasoningAr: string;
+  reasoningEn: string;
+  timestamp: string;
 }
 
 export interface WebhookTestRecord {
@@ -794,4 +820,132 @@ export interface ReferralRecord {
   rewardAmount: number;
   timestamp: string;
 }
+
+// ==========================================
+// VEX Deals Provably Fair Lottery Types
+// ==========================================
+
+export type LotteryDrawStatus = 'upcoming' | 'open' | 'closed' | 'drawing' | 'completed' | 'cancelled';
+
+export type LotteryTierId = 'tier1_jackpot' | 'tier2_match5' | 'tier3_match4_2' | 'tier4_match3' | 'tier5_match2';
+
+export interface LotteryPrizeTier {
+  id: LotteryTierId;
+  nameAr: string;
+  nameEn: string;
+  matchMain: number; // e.g. 5
+  matchLucky: number; // e.g. 2
+  sharePercent: number; // e.g. 50%
+  guaranteedAmount?: number;
+  fixedPrize?: number;
+  odds?: string;
+  termsAr?: string;
+  termsEn?: string;
+  payoutTermsAr?: string;
+  payoutTermsEn?: string;
+}
+
+export interface LotteryUserWonPrize {
+  id: string;
+  ticketId: string;
+  drawId: string;
+  drawNumber?: number;
+  drawTitleAr?: string;
+  drawTitleEn?: string;
+  date: string;
+  prizeNameAr: string;
+  prizeNameEn: string;
+  tierId: LotteryTierId;
+  amountWon: number;
+  matchedMainCount: number;
+  matchedLuckyCount: number;
+  mainNumbers: number[];
+  luckyNumbers: number[];
+  deliveryStatus: 'deposited_to_wallet' | 'processing' | 'claimed' | 'claimed_cash' | 'claimed_free_tickets';
+  payoutWalletCompanyId?: string;
+  transactionRef: string;
+  claimedAt?: string;
+}
+
+export interface ProvablyFairProof {
+  serverSeed: string; // Revealed after draw
+  serverSeedHash: string; // SHA-256 published before draw
+  clientSeed: string; // Derived from participants & timestamps
+  nonce: number;
+  verified: boolean;
+}
+
+export interface LotteryDraw {
+  id: string; // e.g., "DRAW-2026-001"
+  drawNumber: number;
+  titleAr: string;
+  titleEn: string;
+  status: LotteryDrawStatus;
+  ticketPrice: number; // in USD or company wallet unit (e.g., $1.00)
+  currency: string; // "USD"
+  jackpotAmount: number; // Progressive jackpot pool
+  initialJackpot: number;
+  totalPool: number;
+  ticketsSoldCount: number;
+  participantsCount: number;
+  openAt: string;
+  closeAt: string;
+  drawAt: string;
+  winningMainNumbers?: number[]; // 5 sorted numbers from 1 to 50
+  winningLuckyNumbers?: number[]; // 2 sorted numbers from 1 to 12
+  provablyFair: ProvablyFairProof;
+  tiers: LotteryPrizeTier[];
+  winnersCount?: Record<string, number>;
+  totalPaidOut?: number;
+  isRollover?: boolean;
+}
+
+export interface LotteryTicket {
+  id: string;
+  drawId: string;
+  drawNumber: number;
+  userId: string;
+  userPhoneMasked?: string;
+  companyId?: string; // If bought using specific wallet
+  mainNumbers: number[]; // 5 numbers from 1 to 50
+  luckyNumbers: number[]; // 2 numbers from 1 to 12
+  pricePaid: number;
+  paymentMethod: 'wallet_balance' | 'compassion_free_ticket' | 'promo_credit';
+  purchasedAt: string;
+  matchedMainCount?: number;
+  matchedLuckyCount?: number;
+  matchedTier?: LotteryTierId;
+  prizeWon?: number;
+  isClaimed?: boolean;
+  claimedAt?: string;
+  transactionId?: string;
+}
+
+export interface LotteryStats {
+  totalDrawsCompleted: number;
+  totalPrizesPaid: number;
+  totalTicketsSold: number;
+  biggestJackpotWon: number;
+  compassionTicketsAwarded: number;
+  hotNumbers: { number: number; frequency: number }[];
+  coldNumbers: { number: number; frequency: number }[];
+}
+
+export interface LotteryTierAlertConfig {
+  tierId: LotteryTierId;
+  enabled: boolean;
+  leadTimeMinutes: number; // e.g. 30 minutes before draw
+  minPoolThreshold?: number; // optional threshold in USD
+  soundEnabled?: boolean;
+}
+
+export interface LotteryAlertSettings {
+  fcmEnabled: boolean;
+  fcmToken?: string | null;
+  globalDrawAlert: boolean; // 1-hour / general alert
+  thirtyMinTierAlertsEnabled: boolean; // 30-min per-tier alerts
+  tierConfigs: Record<LotteryTierId, LotteryTierAlertConfig>;
+  lastUpdated: string;
+}
+
 

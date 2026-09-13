@@ -25,12 +25,38 @@
         "updated_at": { "type": "string" }
       },
       "required": ["id", "name", "instructions", "is_active"]
+    },
+    "UserSubscription": {
+      "title": "UserSubscription",
+      "description": "User preferences and subscribed sports leagues for real-time match alerts and notifications",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "subscribedLeagues": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "smartAlertLeagues": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "notificationTypes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "subscribedLeagues"]
     }
   },
   "firestore": {
     "/payment_methods/{methodId}": {
       "schema": "PaymentMethod",
       "description": "Publicly readable payment methods configured by administrators for deposit and balance unfreeze"
+    },
+    "/UserSubscriptions/{userId}": {
+      "schema": "UserSubscription",
+      "description": "User subscriptions and alert preferences for sports leagues and real-time matches"
     }
   }
 }

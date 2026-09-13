@@ -17,7 +17,7 @@ import {
   ArrowRightLeft,
   Users,
   History,
-  Ticket,
+  Trophy,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -107,8 +107,8 @@ export const Header: React.FC<HeaderProps> = ({
     },
     {
       id: 'lottery' as TabType,
-      label: lang === 'ar' ? 'اليانصيب' : lang === 'ru' ? 'Лотерея' : 'Lottery',
-      icon: Ticket,
+      label: lang === 'ar' ? 'اليانصيب والجوائز' : lang === 'es' ? 'Lotería' : lang === 'ru' ? 'Лотерея' : 'Lottery',
+      icon: Trophy,
       active: activeTab === 'lottery',
     },
     {

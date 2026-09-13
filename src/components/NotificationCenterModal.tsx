@@ -91,6 +91,12 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
           label: isAr ? 'أمان النظام' : 'Security',
           color: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800',
         };
+      case 'lottery':
+        return {
+          icon: Trophy,
+          label: isAr ? 'اليانصيب والجوائز' : 'Lottery & Draw',
+          color: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+        };
       default:
         return {
           icon: Bell,
@@ -161,6 +167,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
             <div className="px-4 py-2.5 bg-slate-100/60 dark:bg-slate-950/40 border-b border-slate-200 dark:border-slate-800/80 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
               {[
                 { id: 'all', label: isAr ? 'الكل' : 'All' },
+                { id: 'lottery', label: isAr ? '🏆 اليانصيب' : '🏆 Lottery' },
                 { id: 'ai_prediction', label: isAr ? '🤖 توقعات AI' : '🤖 AI Picks' },
                 { id: 'sports_news', label: isAr ? '⚽ رياضة' : '⚽ Sports' },
                 { id: 'compensation', label: isAr ? '💰 التعويضات' : '💰 Comp' },
@@ -252,6 +259,19 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                                   {n.data.confidence}% ثقة
                                 </span>
                               )}
+                            </div>
+                          )}
+
+                          {/* Action Pill if lottery draw is linked */}
+                          {(n.category === 'lottery' || n.data?.targetTab === 'lottery') && (
+                            <div className="mt-2 flex items-center justify-between bg-amber-50/90 dark:bg-amber-950/50 border border-amber-300/80 dark:border-amber-700/60 rounded-xl px-2.5 py-1.5 text-xs text-amber-950 dark:text-amber-200 font-bold">
+                              <span className="flex items-center gap-1.5">
+                                <Trophy className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                <span>{isAr ? 'اضغط هنا لفتح قسم اليانصيب واختيار تذكرتك' : 'Tap to open Lottery & pick tickets'}</span>
+                              </span>
+                              <span className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] px-2 py-0.5 rounded-md font-black shrink-0 transition-colors">
+                                {isAr ? 'فتح اليانصيب ←' : 'Open Draw →'}
+                              </span>
                             </div>
                           )}
                         </div>

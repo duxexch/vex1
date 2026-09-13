@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { UnluckyBetPost, Language } from '../types';
 import { Flame, Share2, AlertTriangle, MessageSquare, ThumbsUp } from 'lucide-react';
 import { vexApi } from '../services/api';

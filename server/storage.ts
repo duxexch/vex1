@@ -377,7 +377,112 @@ export const storage = {
   },
 
   getUserProfiles(): any[] {
-    const defaultProfiles: any[] = [];
+    const defaultProfiles: any[] = [
+      {
+        user_id: 'WCm5x8k2ab3f',
+        phone_number: '201012345678',
+        country_code: '+20',
+        country_iso: 'EG',
+        language: 'ar',
+        is_phone_verified: true,
+        phone_locked: true,
+        pin_set: true,
+        failed_pin_attempts: 0,
+        created_at: '2026-02-15T10:00:00.000Z',
+        engagementBehavior: {
+          hourlyActivity: {
+            0: 4, 1: 1, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 1, 8: 3, 9: 6,
+            10: 12, 11: 15, 12: 18, 13: 14, 14: 22, 15: 45, 16: 62, 17: 78,
+            18: 95, 19: 142, 20: 188, 21: 175, 22: 110, 23: 35
+          },
+          peakEngagementHours: [20, 21, 19],
+          optimalEngagementWindow: {
+            startHour: 19,
+            endHour: 22,
+            labelAr: 'نافذة المساء والذروة (19:00 - 22:00)',
+            labelEn: 'Peak Evening Window (19:00 - 22:00)',
+          },
+          lastInteractionAt: new Date().toISOString(),
+          totalInteractions: 1029,
+        }
+      },
+      {
+        user_id: 'USR_VIP_8821',
+        phone_number: '966509876543',
+        country_code: '+966',
+        country_iso: 'SA',
+        language: 'ar',
+        is_phone_verified: true,
+        phone_locked: true,
+        pin_set: true,
+        failed_pin_attempts: 0,
+        created_at: '2026-02-20T14:30:00.000Z',
+        engagementBehavior: {
+          hourlyActivity: {
+            0: 2, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 4, 9: 8,
+            10: 14, 11: 19, 12: 25, 13: 20, 14: 31, 15: 55, 16: 70, 17: 85,
+            18: 112, 19: 165, 20: 210, 21: 190, 22: 130, 23: 42
+          },
+          peakEngagementHours: [20, 21, 19],
+          optimalEngagementWindow: {
+            startHour: 19,
+            endHour: 22,
+            labelAr: 'نافذة المساء والذروة (19:00 - 22:00)',
+            labelEn: 'Peak Evening Window (19:00 - 22:00)',
+          },
+          lastInteractionAt: new Date().toISOString(),
+          totalInteractions: 1182,
+        }
+      },
+      {
+        user_id: 'USR_FR_CASABLANCA',
+        phone_number: '212612345678',
+        country_code: '+212',
+        country_iso: 'MA',
+        language: 'fr',
+        is_phone_verified: true,
+        phone_locked: false,
+        pin_set: true,
+        failed_pin_attempts: 0,
+        created_at: '2026-02-22T16:00:00.000Z',
+        engagementBehavior: {
+          hourlyActivity: { 18: 45, 19: 90, 20: 130, 21: 120, 22: 60 },
+          peakEngagementHours: [20, 19, 21],
+          optimalEngagementWindow: {
+            startHour: 19,
+            endHour: 22,
+            labelAr: 'نافذة شمال أفريقيا (19:00 - 22:00)',
+            labelEn: 'Maghreb Window (19:00 - 22:00)',
+          },
+          lastInteractionAt: new Date().toISOString(),
+          totalInteractions: 445,
+        }
+      },
+      {
+        user_id: 'USR_EN_GLOBAL',
+        phone_number: '447911123456',
+        country_code: '+44',
+        country_iso: 'GLOBAL',
+        language: 'en',
+        is_phone_verified: true,
+        phone_locked: false,
+        pin_set: true,
+        failed_pin_attempts: 0,
+        created_at: '2026-02-25T11:00:00.000Z',
+        engagementBehavior: {
+          hourlyActivity: { 17: 30, 18: 60, 19: 110, 20: 140, 21: 95 },
+          peakEngagementHours: [20, 19, 21],
+          optimalEngagementWindow: {
+            startHour: 18,
+            endHour: 21,
+            labelAr: 'النافذة الأوروبية والعالمية (18:00 - 21:00 UTC)',
+            labelEn: 'Global Window (18:00 - 21:00 UTC)',
+          },
+          lastInteractionAt: new Date().toISOString(),
+          totalInteractions: 388,
+        }
+      }
+    ];
     return readJsonFile<any[]>('user_profiles.json', defaultProfiles);
   },
   saveUserProfiles(profiles: any[]): void {
@@ -765,38 +870,6 @@ export const storage = {
     this.saveReferrals(list);
     return list[0];
   },
-
-  // 20. Lottery
-  getLotteryState(): any {
-    const defaultState = {
-      drawTypes: {
-        hourly: { draw_time: 0, tickets: [], tickets_sold: 0, manual_tickets: 0, prize_pool: 0, history: [] },
-        daily: { draw_time: 0, tickets: [], tickets_sold: 0, manual_tickets: 0, prize_pool: 0, history: [] },
-        weekly: { draw_time: 0, tickets: [], tickets_sold: 0, manual_tickets: 0, prize_pool: 0, history: [] },
-      },
-      pendingPurchases: [],
-    };
-    return readJsonFile<any>('lottery_state.json', defaultState);
-  },
-  saveLotteryState(state: any): void {
-    writeJsonFile('lottery_state.json', state);
-  },
-  getLotteryConfig(): any {
-    return readJsonFile<any>('lottery_config.json', {
-      enabled: true,
-      hourly: { ticket_price: 50, duration: 3600, max_tickets: 1000 },
-      daily: { ticket_price: 100, duration: 86400, max_tickets: 1000 },
-      weekly: { ticket_price: 250, duration: 604800, max_tickets: 1000 },
-      rollover_pct: 0.5,
-      secondary_share: 0.7,
-      small_share: 0.3,
-      numbers_count: 5,
-      max_number: 30,
-    });
-  },
-  saveLotteryConfig(config: any): void {
-    writeJsonFile('lottery_config.json', config);
-  },
 };
 
 // Initial verification and seed on boot
@@ -814,5 +887,3 @@ storage.getGoldenHourState();
 storage.getUnluckyBets();
 storage.getAiChallenges();
 storage.getReferrals();
-storage.getLotteryState();
-storage.getLotteryConfig();

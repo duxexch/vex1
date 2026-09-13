@@ -1,6 +1,6 @@
 import React from 'react';
 import { Language, TabType } from '../types';
-import { Building2, Wallet, TrendingUp, ArrowRightLeft, Ticket } from 'lucide-react';
+import { Building2, Wallet, TrendingUp, ArrowRightLeft, Flame, Trophy } from 'lucide-react';
 
 interface BottomNavProps {
   activeTab: TabType;
@@ -23,12 +23,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
         return lang === 'ar' ? 'المحفظة' : lang === 'es' ? 'Billetera' : lang === 'ru' ? 'Кошелек' : 'Wallets';
       case 'ai-sports':
         return lang === 'ar' ? 'المباريات' : lang === 'es' ? 'Partidos' : lang === 'ru' ? 'Матчи' : 'Sports';
+      case 'lottery':
+        return lang === 'ar' ? 'اليانصيب' : lang === 'es' ? 'Lotería' : lang === 'ru' ? 'Лотерея' : 'Lottery';
       case 'transfers':
         return lang === 'ar' ? 'التحويلات' : lang === 'es' ? 'Transferencias' : lang === 'ru' ? 'Переводы' : 'Transfers';
       case 'unlucky-wall':
         return lang === 'ar' ? 'المنحوسين' : 'Unlucky';
-      case 'lottery':
-        return lang === 'ar' ? 'اليانصيب' : lang === 'ru' ? 'Лотерея' : 'Lottery';
       default:
         return '';
     }
@@ -56,8 +56,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     {
       id: 'lottery' as TabType,
       tooltip: getTooltip('lottery'),
-      icon: Ticket,
+      icon: Trophy,
       isActive: activeTab === 'lottery',
+    },
+    {
+      id: 'unlucky-wall' as TabType,
+      tooltip: getTooltip('unlucky-wall'),
+      icon: Flame,
+      isActive: activeTab === 'unlucky-wall',
     },
     {
       id: 'transfers' as TabType,

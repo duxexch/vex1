@@ -1,8 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { SportsMatchFixture, SportsNewsItem, Language, AiMatchAnalysis } from '../types';
+import { 
+  SportsMatchFixture, 
+  SportsNewsItem, 
+  Language, 
+  AiMatchAnalysis, 
+  SportsCategory,
+  SmartOddsShiftAlert 
+} from '../types';
 import { SportsFixturesSkeleton } from './SkeletonLoader';
 import { SportsNotificationsModal } from './SportsNotificationsModal';
+import { vexApi } from '../services/api';
+import { 
+  getUserSubscription, 
+  saveUserSubscription, 
+  subscribeToUserSubscriptions,
+  DEFAULT_SUBSCRIBED_LEAGUES,
+  DEFAULT_SMART_ALERT_LEAGUES,
+  evaluateMarketVolatility
+} from '../services/userSubscriptionsService';
 import {
   Bot,
   Sparkles,
@@ -11,6 +27,7 @@ import {
   Newspaper,
   ShieldCheck,
   TrendingUp,
+  TrendingDown,
   RefreshCw,
   Clock,
   Filter,
@@ -19,7 +36,71 @@ import {
   ChevronRight,
   Send,
   BellRing,
+  Sliders,
+  Bell,
+  BellOff,
+  CheckCheck,
+  Cloud,
+  Zap,
+  Activity,
+  AlertCircle,
 } from 'lucide-react';
+
+const DEFAULT_SPORTS_CATEGORIES: SportsCategory[] = [
+  {
+    id: 'cat-football',
+    name: 'Football',
+    nameAr: 'كرة القدم',
+    icon: '⚽',
+    enabled: true,
+    leagues: [
+      'الدوري الإسباني - الكلاسيكو',
+      'الدوري الإنجليزي الممتاز',
+      'دوري أبطال أوروبا',
+      'الدوري الألماني - دير كلاسيكر',
+      'دوري روشن السعودي - ديربي الرياض',
+      'الدوري الإيطالي (Serie A)',
+    ],
+  },
+  {
+    id: 'cat-basketball',
+    name: 'Basketball',
+    nameAr: 'كرة السلة',
+    icon: '🏀',
+    enabled: true,
+    leagues: [
+      'NBA Basketball',
+      'EuroLeague Basketball',
+      'FIBA World Championship',
+    ],
+  },
+  {
+    id: 'cat-tennis',
+    name: 'Tennis',
+    nameAr: 'تنس',
+    icon: '🎾',
+    enabled: true,
+    leagues: [
+      'بطولات الغراند سلام (Grand Slam)',
+      'بطولة ويمبلدون (Wimbledon)',
+      'دورة رولان غاروس (Roland Garros)',
+      'جولة ATP العالمية',
+      'جولة WTA للسيدات',
+    ],
+  },
+  {
+    id: 'cat-combat',
+    name: 'Combat & MMA',
+    nameAr: 'فنون قتالية وملاكمة',
+    icon: '🥊',
+    enabled: true,
+    leagues: [
+      'UFC Championship',
+      'مواجهات الملاكمة العالمية (WBC/WBA)',
+      'ONE Championship',
+    ],
+  },
+];
 
 interface AiSportsHubTabProps {
   fixtures?: SportsMatchFixture[];
@@ -28,6 +109,7 @@ interface AiSportsHubTabProps {
   onAnalyzeMatch: (fixture: SportsMatchFixture) => void;
   onTriggerAgentBroadcast?: () => void;
   lang: Language;
+  userId?: string;
 }
 
 export const AiSportsHubTab: React.FC<AiSportsHubTabProps> = ({
@@ -37,18 +119,160 @@ export const AiSportsHubTab: React.FC<AiSportsHubTabProps> = ({
   onAnalyzeMatch,
   onTriggerAgentBroadcast,
   lang,
+  userId,
 }) => {
 
   const isAr = lang === 'ar';
   const [activeSubTab, setActiveSubTab] = useState<'fixtures' | 'news'>('fixtures');
   const [broadcastLoading, setBroadcastLoading] = useState(false);
   const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
+  const [targetCategoryIdForAlerts, setTargetCategoryIdForAlerts] = useState<string | null>(null);
+
+  const effectiveUserId = userId || vexApi.getUserId();
+  const [isSyncingWithFirestore, setIsSyncingWithFirestore] = useState(false);
+  const [firestoreSynced, setFirestoreSynced] = useState(false);
+
+  const [subscribedLeagues, setSubscribedLeagues] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('vex_subscribed_leagues');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return DEFAULT_SUBSCRIBED_LEAGUES;
+  });
+
+  const [smartAlertLeagues, setSmartAlertLeagues] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('vex_smart_alert_leagues');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return DEFAULT_SMART_ALERT_LEAGUES;
+  });
+
+  const [selectedSmartAlertForInspection, setSelectedSmartAlertForInspection] = useState<SmartOddsShiftAlert | null>(null);
+
+  // Sync with Firestore UserSubscriptions collection on mount and subscribe to real-time changes
+  useEffect(() => {
+    if (!effectiveUserId) return;
+
+    let isMounted = true;
+    setIsSyncingWithFirestore(true);
+
+    // Initial load from Firestore document /UserSubscriptions/{userId}
+    getUserSubscription(effectiveUserId)
+      .then((record) => {
+        if (isMounted && record) {
+          if (Array.isArray(record.subscribedLeagues)) {
+            setSubscribedLeagues(record.subscribedLeagues);
+          }
+          if (Array.isArray(record.smartAlertLeagues)) {
+            setSmartAlertLeagues(record.smartAlertLeagues);
+          }
+          setFirestoreSynced(true);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load initial subscription from Firestore:', err);
+      })
+      .finally(() => {
+        if (isMounted) setIsSyncingWithFirestore(false);
+      });
+
+    // Real-time onSnapshot listener
+    const unsubscribe = subscribeToUserSubscriptions(effectiveUserId, (record) => {
+      if (isMounted && record) {
+        if (Array.isArray(record.subscribedLeagues)) {
+          setSubscribedLeagues(record.subscribedLeagues);
+        }
+        if (Array.isArray(record.smartAlertLeagues)) {
+          setSmartAlertLeagues(record.smartAlertLeagues);
+        }
+        setFirestoreSynced(true);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [effectiveUserId]);
+
+  // Direct toggle for individual league alerts (writes directly to Firestore)
+  const handleToggleLeagueAlert = async (leagueName: string) => {
+    if (!leagueName) return;
+
+    const isSubscribed = subscribedLeagues.includes(leagueName);
+    const updated = isSubscribed 
+      ? subscribedLeagues.filter(l => l !== leagueName)
+      : [...subscribedLeagues, leagueName];
+
+    // Optimistic local state update
+    setSubscribedLeagues(updated);
+    setIsSyncingWithFirestore(true);
+
+    try {
+      await saveUserSubscription(effectiveUserId, {
+        subscribedLeagues: updated,
+        smartAlertLeagues,
+      });
+      setFirestoreSynced(true);
+    } catch (err) {
+      console.warn('Failed to persist league subscription to Firestore:', err);
+    } finally {
+      setIsSyncingWithFirestore(false);
+    }
+  };
+
+  // Direct toggle for AI-powered Smart Alert (Odds shifts & High Volatility)
+  const handleToggleSmartAlert = async (leagueName: string) => {
+    if (!leagueName) return;
+
+    const isSmart = smartAlertLeagues.includes(leagueName);
+    const updated = isSmart
+      ? smartAlertLeagues.filter(l => l !== leagueName)
+      : [...smartAlertLeagues, leagueName];
+
+    // Optimistic local state update
+    setSmartAlertLeagues(updated);
+    setIsSyncingWithFirestore(true);
+
+    try {
+      await saveUserSubscription(effectiveUserId, {
+        subscribedLeagues,
+        smartAlertLeagues: updated,
+      });
+      setFirestoreSynced(true);
+    } catch (err) {
+      console.warn('Failed to persist smart alert league to Firestore:', err);
+    } finally {
+      setIsSyncingWithFirestore(false);
+    }
+  };
   
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedDate, setSelectedDate] = useState<string>('All');
 
+  const openManageAlerts = (categoryId?: string) => {
+    setTargetCategoryIdForAlerts(categoryId || null);
+    setNotificationsModalOpen(true);
+  };
+
   const categories = ['All', ...Array.from(new Set(fixtures.map(f => f.category).filter(Boolean)))];
   const dates = ['All', ...Array.from(new Set(fixtures.map(f => f.date).filter(Boolean)))];
+
+  // Detect real-time leagues with active high-volatility betting markets or odds shifts
+  const activeOddsShiftLeagues = useMemo(() => {
+    const set = new Set<string>();
+    fixtures.forEach((f) => {
+      if (evaluateMarketVolatility(f)) {
+        set.add(f.league);
+      }
+    });
+    return Array.from(set);
+  }, [fixtures]);
 
   const filteredFixtures = fixtures.filter(f => {
     const matchCategory = selectedCategory === 'All' || f.category === selectedCategory;
@@ -209,44 +433,301 @@ END:VCALENDAR`;
 
       {/* Filters & Settings (Only for fixtures) */}
       {activeSubTab === 'fixtures' && (
-        <div className="flex gap-2 mb-2">
-          <div className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 flex items-center gap-2">
-            <Filter className="w-4 h-4 text-slate-400" />
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full bg-transparent text-xs font-bold text-slate-700 outline-none"
-            >
-              {categories.map(cat => (
-                <option key={cat as string} value={cat as string}>
-                  {cat === 'All' ? (isAr ? 'كل الرياضات' : 'All Sports') : (cat as string)}
-                </option>
-              ))}
-            </select>
-          </div>
-          
-          <div className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-slate-400" />
-            <select
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full bg-transparent text-xs font-bold text-slate-700 outline-none"
-            >
-              {dates.map(d => (
-                <option key={d as string} value={d as string}>
-                  {d === 'All' ? (isAr ? 'كل التواريخ' : 'All Dates') : (d as string)}
-                </option>
-              ))}
-            </select>
+        <div className="space-y-2.5 mb-3">
+          {/* Sports Categories Strip with 'Manage Alerts' */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-3 shadow-xs space-y-2.5">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{isAr ? 'أقسام الرياضات وتنبيهات الدوريات' : 'Sports Categories & League Alerts'}</span>
+                </span>
+                <div className="hidden sm:flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
+                  <Cloud className={`w-3 h-3 text-emerald-600 ${isSyncingWithFirestore ? 'animate-pulse' : ''}`} />
+                  <span>{isSyncingWithFirestore ? (isAr ? 'مزامنة سحابية...' : 'Syncing...') : (isAr ? 'متزامن مع Firestore' : 'Firestore Synced')}</span>
+                </div>
+              </div>
+              <button
+                onClick={() => openManageAlerts()}
+                className="text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1.5 cursor-pointer transition-colors text-[11px] bg-emerald-50/70 hover:bg-emerald-100/70 px-2.5 py-1 rounded-lg border border-emerald-200/60"
+              >
+                <BellRing className="w-3 h-3 text-emerald-600" />
+                <span>{isAr ? 'إدارة جميع التنبيهات' : 'Manage All Alerts'}</span>
+                <span className="px-1.5 py-0.2 rounded-full bg-emerald-600 text-white text-[10px] font-mono font-bold">
+                  {subscribedLeagues.length}
+                </span>
+              </button>
+            </div>
+
+            {/* Categories Cards Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {DEFAULT_SPORTS_CATEGORIES.map((cat) => {
+                const isFiltered = selectedCategory === cat.name;
+                const catLeagues = cat.leagues || [];
+                const activeCount = catLeagues.filter(l => subscribedLeagues.includes(l)).length;
+
+                return (
+                  <div
+                    key={cat.id}
+                    className={`relative p-2.5 rounded-xl border transition-all flex flex-col justify-between gap-2 ${
+                      isFiltered
+                        ? 'bg-emerald-50/80 border-emerald-300 ring-1 ring-emerald-200 shadow-2xs'
+                        : 'bg-slate-50/60 border-slate-200/80 hover:border-slate-300 hover:bg-white'
+                    }`}
+                  >
+                    {/* Category Details & Filter toggle */}
+                    <div 
+                      onClick={() => setSelectedCategory(isFiltered ? 'All' : cat.name)}
+                      className="cursor-pointer select-none group"
+                      title={isAr ? `تصفية حسب ${cat.nameAr}` : `Filter by ${cat.name}`}
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-lg p-1 rounded-lg bg-white border border-slate-200/70 shadow-2xs group-hover:scale-105 transition-transform">
+                          {cat.icon}
+                        </span>
+                        {activeCount > 0 ? (
+                          <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                            {activeCount} {isAr ? 'مفعل' : 'Active'}
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded-md text-[9px] font-medium bg-slate-200/70 text-slate-500">
+                            {isAr ? 'معطل' : 'Muted'}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="mt-1.5">
+                        <h4 className={`font-black text-xs transition-colors truncate ${
+                          isFiltered ? 'text-emerald-900' : 'text-slate-800 group-hover:text-emerald-700'
+                        }`}>
+                          {isAr ? cat.nameAr : cat.name}
+                        </h4>
+                        <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                          {catLeagues.length} {isAr ? 'دوريات وبطولات' : 'sub-leagues'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Dedicated 'Manage Alerts' Button for Category */}
+                    <button
+                      onClick={() => openManageAlerts(cat.id)}
+                      className="w-full h-7 px-2 bg-white hover:bg-emerald-600 hover:text-white border border-slate-200 hover:border-emerald-600 rounded-lg text-[10px] font-bold text-slate-700 flex items-center justify-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
+                      title={isAr ? `إدارة تنبيهات ${cat.nameAr} وقائمة الدوريات` : `Manage Alerts for ${cat.name}`}
+                    >
+                      <Bell className="w-3 h-3 text-emerald-600 group-hover:text-white shrink-0" />
+                      <span className="truncate">{isAr ? 'إدارة التنبيهات' : 'Manage Alerts'}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          <button
-            onClick={() => setNotificationsModalOpen(true)}
-            className="h-[38px] px-3 bg-white border border-slate-200 rounded-xl flex items-center justify-center text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors shrink-0 shadow-2xs"
-            title={isAr ? 'إعدادات الإشعارات' : 'Notification Settings'}
-          >
-            <BellRing className="w-4 h-4" />
-          </button>
+          {/* Secondary Dropdown Filters */}
+          <div className="flex gap-2">
+            <div className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 flex items-center gap-2">
+              <Filter className="w-4 h-4 text-slate-400" />
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="w-full bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer"
+              >
+                {categories.map(cat => (
+                  <option key={cat as string} value={cat as string}>
+                    {cat === 'All' ? (isAr ? 'كل الرياضات' : 'All Sports') : (cat as string)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-slate-400" />
+              <select
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-full bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer"
+              >
+                {dates.map(d => (
+                  <option key={d as string} value={d as string}>
+                    {d === 'All' ? (isAr ? 'كل التواريخ' : 'All Dates') : (d as string)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              onClick={() => openManageAlerts()}
+              className="h-[38px] px-3 bg-white border border-slate-200 rounded-xl flex items-center justify-center text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors shrink-0 shadow-2xs cursor-pointer"
+              title={isAr ? 'إدارة التنبيهات المباشرة' : 'Manage Alerts'}
+            >
+              <BellRing className="w-4 h-4 text-emerald-600" />
+            </button>
+          </div>
+
+          {/* AI Smart Alerts (High-Volatility Betting Markets & Odds Shifts) Panel */}
+          <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-300/90 rounded-2xl p-3.5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-2xs">
+                  <Zap className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="font-black text-xs text-amber-950">
+                      {isAr ? 'التنبيهات الذكية: تقلبات المراهنات وتحركات الاحتمالات (Smart Alerts)' : 'AI Smart Alerts: Betting Odds Volatility'}
+                    </h3>
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-200 text-amber-900">
+                      AI Engine
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-amber-800">
+                    {isAr 
+                      ? 'يقترح تلقائياً تنبيهات فورية عند رصد سيولة مفاجئة أو هبوط حاد في احتمالات الأسواق للدوريات المفعلة.'
+                      : 'Automatically suggests alerts based on high-volatility betting markets or significant odds shifts.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-lg flex items-center gap-1.5">
+                  {activeOddsShiftLeagues.length > 0 && (
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                    </span>
+                  )}
+                  <span>{smartAlertLeagues.length} {isAr ? 'دوريات ذكية مفعلة' : 'Smart Leagues'}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => openManageAlerts()}
+                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1"
+                >
+                  <Sliders className="w-3 h-3" />
+                  <span>{isAr ? 'تخصيص الدوريات' : 'Configure'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Smart Volatility Suggestions Grid */}
+            {(() => {
+              const detected = fixtures
+                .map(f => evaluateMarketVolatility(f))
+                .filter((a): a is SmartOddsShiftAlert => a !== null);
+
+              if (detected.length === 0) {
+                return (
+                  <div className="bg-white/70 rounded-xl p-2.5 text-center text-xs text-amber-800 border border-amber-200/60">
+                    {isAr 
+                      ? 'الأسواق مستقرة حالياً ولا توجد تحركات احتمالات حادة غير اعتيادية.' 
+                      : 'Betting markets currently stable; no sharp odds volatility detected.'}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-0.5">
+                  {detected.map((alert) => {
+                    const isMonitored = smartAlertLeagues.includes(alert.league);
+                    const matchingFixture = fixtures.find(f => f.id === alert.fixtureId);
+
+                    return (
+                      <div
+                        key={alert.fixtureId}
+                        className={`p-3 rounded-xl border transition-all flex flex-col justify-between gap-2 shadow-2xs ${
+                          isMonitored 
+                            ? 'bg-white border-amber-300 ring-1 ring-amber-200/70' 
+                            : 'bg-white/70 border-slate-200/80 opacity-90'
+                        }`}
+                      >
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between gap-1.5 text-xs">
+                            <span className="font-bold text-slate-800 truncate flex items-center gap-1">
+                              <Trophy className="w-3 h-3 text-amber-500 shrink-0" />
+                              {alert.matchTitle}
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className={`text-[9px] font-black px-1.5 py-0.2 rounded-md ${
+                                alert.volatilityLevel === 'extreme' 
+                                  ? 'bg-rose-100 text-rose-800' 
+                                  : alert.volatilityLevel === 'high'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {isAr ? 'تقلب:' : 'Volatility:'} {
+                                  alert.volatilityLevel === 'extreme' ? (isAr ? 'حاد' : 'Extreme') :
+                                  alert.volatilityLevel === 'high' ? (isAr ? 'عالي' : 'High') :
+                                  (isAr ? 'متوسط' : 'Moderate')
+                                }
+                              </span>
+                              <span className="text-[10px] font-mono font-black text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
+                                {alert.shiftPercentage}%
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500 font-medium">{isAr ? 'السوق المتأثر:' : 'Market:'} {alert.marketType}</span>
+                              <span className="font-mono text-slate-700 font-bold">
+                                {alert.previousOdds} ➔ <span className="text-emerald-700">{alert.currentOdds}</span>
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs pt-0.5 border-t border-slate-200/60">
+                              <span className="font-bold text-amber-900">{isAr ? 'الاقتراح الذكي:' : 'Smart Pick:'}</span>
+                              <span className="font-black text-emerald-800">{alert.suggestedPick}</span>
+                            </div>
+                          </div>
+
+                          <p className="text-[10px] text-slate-600 leading-tight">
+                            {isAr ? alert.reasoningAr : alert.reasoningEn}
+                          </p>
+                        </div>
+
+                        <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSmartAlert(alert.league)}
+                            className={`relative px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
+                              isMonitored
+                                ? 'bg-amber-500 text-white border-amber-600 shadow-2xs hover:bg-amber-600'
+                                : 'bg-white text-slate-700 border-amber-300 hover:bg-amber-50 hover:text-amber-800'
+                            } animate-smart-glow ring-2 ring-amber-400/50`}
+                            title={
+                              isAr
+                                ? '🔥 رصد تحرك حاد في الاحتمالات في الوقت الفعلي! انقر لتبديل التنبيه الذكي'
+                                : '🔥 Real-time sharp odds shift detected! Click to toggle Smart Alert'
+                            }
+                          >
+                            <Sparkles className={`w-3.5 h-3.5 ${isMonitored ? 'text-amber-100' : 'text-amber-500 animate-pulse'}`} />
+                            <span>
+                              {isMonitored ? (isAr ? 'تنبيه ذكي: نشط' : 'Smart: Active') : (isAr ? 'تفعيل للدوري' : 'Enable League')}
+                            </span>
+                            <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                            </span>
+                          </button>
+
+                          {matchingFixture && (
+                            <button
+                              type="button"
+                              onClick={() => onAnalyzeMatch(matchingFixture)}
+                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-md text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                            >
+                              <Bot className="w-3 h-3" />
+                              <span>{isAr ? 'تحليل الفرصة' : 'Analyze Pick'}</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
         </div>
       )}
 
@@ -274,6 +755,60 @@ END:VCALENDAR`;
                         <span className="truncate">{fixture.league}</span>
                       </span>
                       <div className="flex items-center gap-1.5 shrink-0">
+                        {/* AI Smart Alert Toggle (Odds Shifts & Volatility) */}
+                        {(() => {
+                          const hasOddsShift = !!evaluateMarketVolatility(fixture);
+                          const isSmartActive = smartAlertLeagues.includes(fixture.league);
+
+                          return (
+                            <button
+                              onClick={() => handleToggleSmartAlert(fixture.league)}
+                              className={`relative p-1 rounded-md border transition-all cursor-pointer ${
+                                isSmartActive
+                                  ? 'bg-amber-500 border-amber-600 text-white shadow-2xs hover:bg-amber-600'
+                                  : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-amber-700 hover:bg-amber-50'
+                              } ${hasOddsShift ? 'animate-smart-glow border-amber-400 ring-2 ring-amber-400/50' : ''}`}
+                              title={
+                                hasOddsShift
+                                  ? (isAr 
+                                      ? `🔥 تحرك حاد في احتمالات ${fixture.league} تم رصده في الوقت الفعلي! انقر لتفعيل التنبيه الذكي` 
+                                      : `🔥 Real-time sharp odds shift detected for ${fixture.league}! Click to toggle Smart Alert`)
+                                  : isSmartActive
+                                    ? (isAr ? `تنبيه ذكي لتقلبات احتمالات ${fixture.league} مفعل في Firestore` : `Smart Alert active for ${fixture.league} in Firestore`)
+                                    : (isAr ? `تفعيل التنبيه الذكي لتقلبات واحتمالات ${fixture.league}` : `Enable Smart Alert for ${fixture.league}`)
+                              }
+                            >
+                              <Sparkles className={`w-3.5 h-3.5 ${isSmartActive ? 'text-amber-100' : hasOddsShift ? 'text-amber-600 animate-pulse' : 'text-slate-400'}`} />
+                              {hasOddsShift && (
+                                <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })()}
+
+                        {/* 1-Click League Alert Toggle Persisted to Firestore UserSubscriptions */}
+                        <button
+                          onClick={() => handleToggleLeagueAlert(fixture.league)}
+                          className={`p-1 rounded-md border transition-all cursor-pointer ${
+                            subscribedLeagues.includes(fixture.league)
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 shadow-2xs'
+                              : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                          }`}
+                          title={
+                            subscribedLeagues.includes(fixture.league)
+                              ? (isAr ? `تنبيهات ${fixture.league} مفعلة في Firestore (انقر لإلغاء التفعيل)` : `${fixture.league} alerts active in Firestore (click to mute)`)
+                              : (isAr ? `تفعيل تنبيهات ${fixture.league} في Firestore` : `Enable ${fixture.league} alerts in Firestore`)
+                          }
+                        >
+                          {subscribedLeagues.includes(fixture.league) ? (
+                            <BellRing className="w-3.5 h-3.5 text-emerald-600" />
+                          ) : (
+                            <BellOff className="w-3.5 h-3.5" />
+                          )}
+                        </button>
                         <span className="flex items-center gap-1 font-mono text-[11px] bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-md text-slate-600">
                           <Clock className="w-3 h-3 text-slate-400" />
                           {fixture.kickoffTime}
@@ -324,6 +859,48 @@ END:VCALENDAR`;
                         />
                       </div>
                     </div>
+
+                    {/* AI Smart Volatility & Odds Shift Banner (if detected) */}
+                    {(() => {
+                      const shiftAlert = evaluateMarketVolatility(fixture);
+                      if (!shiftAlert) return null;
+                      const isLeagueSmart = smartAlertLeagues.includes(fixture.league);
+
+                      return (
+                        <div 
+                          onClick={() => onAnalyzeMatch(fixture)}
+                          className={`p-2 rounded-xl border flex items-center justify-between gap-2 cursor-pointer transition-all ${
+                            isLeagueSmart
+                              ? 'bg-gradient-to-r from-amber-50 to-orange-50/80 border-amber-300 shadow-2xs hover:border-amber-400'
+                              : 'bg-slate-50 border-slate-200 hover:bg-slate-100/70'
+                          }`}
+                          title={isAr ? 'انقر لعرض التحليل التكتيكي للذكاء الاصطناعي' : 'Click to view AI tactical analysis'}
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Zap className={`w-3.5 h-3.5 shrink-0 ${isLeagueSmart ? 'text-amber-600 animate-pulse' : 'text-slate-400'}`} />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[10px] font-black truncate ${isLeagueSmart ? 'text-amber-950' : 'text-slate-700'}`}>
+                                  {isAr ? 'تقلب احتمالات ملحوظ:' : 'Sharp Odds Shift:'}
+                                </span>
+                                <span className="text-[9px] font-bold font-mono px-1 rounded bg-rose-100 text-rose-800">
+                                  {shiftAlert.shiftPercentage}%
+                                </span>
+                              </div>
+                              <span className="text-[9px] text-slate-500 block truncate">
+                                {shiftAlert.marketType}: {shiftAlert.previousOdds} ➔ {shiftAlert.currentOdds}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0 flex items-center gap-1">
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-200 font-mono">
+                              {shiftAlert.suggestedPick}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Odds Grid */}
                     <div className="grid grid-cols-3 gap-2">
@@ -420,13 +997,19 @@ END:VCALENDAR`;
 
       <SportsNotificationsModal 
         isOpen={notificationsModalOpen}
-        onClose={() => setNotificationsModalOpen(false)}
+        onClose={() => {
+          setNotificationsModalOpen(false);
+          setTargetCategoryIdForAlerts(null);
+        }}
         lang={lang}
-        categories={[
-          { id: 'cat-1', name: 'Football', nameAr: 'كرة القدم', icon: '⚽', enabled: true, leagues: ['Premier League', 'La Liga'] },
-          { id: 'cat-2', name: 'Basketball', nameAr: 'كرة السلة', icon: '🏀', enabled: true, leagues: ['NBA', 'EuroLeague'] },
-          { id: 'cat-3', name: 'Tennis', nameAr: 'تنس', icon: '🎾', enabled: true, leagues: ['ATP', 'WTA'] }
-        ]}
+        categories={DEFAULT_SPORTS_CATEGORIES}
+        initialCategoryId={targetCategoryIdForAlerts}
+        userId={effectiveUserId}
+        subscribedLeagues={subscribedLeagues}
+        onUpdateSubscriptions={(leagues) => setSubscribedLeagues(leagues)}
+        smartAlertLeagues={smartAlertLeagues}
+        activeOddsShiftLeagues={activeOddsShiftLeagues}
+        onUpdateSmartAlerts={(leagues) => setSmartAlertLeagues(leagues)}
       />
     </div>
   );

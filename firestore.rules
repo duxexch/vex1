@@ -10,6 +10,10 @@ service cloud.firestore {
       allow write: if isValidId(methodId);
     }
 
+    match /UserSubscriptions/{userId} {
+      allow read, write: if isValidId(userId);
+    }
+
     match /{document=**} {
       allow read, write: if true;
     }

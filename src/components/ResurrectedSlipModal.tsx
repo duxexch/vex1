@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { X, Share2, Download, CheckCircle, ShieldCheck } from 'lucide-react';
 import { CompensationRequest } from '../types';
 
