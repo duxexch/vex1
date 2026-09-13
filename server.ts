@@ -3096,15 +3096,11 @@ async function setupServer() {
 
     // APK Download Endpoint - serves the Android APK for all domains
     app.get('/download/apk', (req, res) => {
-      const apkPath = path.join(process.cwd(), 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
-      const altApkPath = path.join(process.cwd(), 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
-      const releasePath = path.join(process.cwd(), 'VEX-Deals.apk');
-      const finalPath = fs.existsSync(apkPath) ? apkPath : fs.existsSync(releasePath) ? releasePath : altApkPath;
+      const apkPath = path.join(process.cwd(), 'VEX-Deals.apk');
+      const distApkPath = path.join(process.cwd(), 'dist', 'VEX-Deals.apk');
+      const finalPath = fs.existsSync(apkPath) ? apkPath : distApkPath;
       if (fs.existsSync(finalPath)) {
-        res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-        res.setHeader('Content-Disposition', 'attachment; filename="VEX-Deals.apk"');
-        res.setHeader('Cache-Control', 'public, max-age=3600');
-        fs.createReadStream(finalPath).pipe(res);
+        res.download(finalPath, 'VEX-Deals.apk');
       } else {
         res.status(404).json({ error: 'APK not found. Please build the APK first.' });
       }
