@@ -76,7 +76,7 @@ export function useSwipeNavigation(activeTab: TabType, onTabChange: (tab: TabTyp
 
 export function useAndroidBackButton(activeTab: TabType, onTabChange: (tab: TabType) => void, onCloseModal: () => void) {
   useEffect(() => {
-    const handleBackButton = (e: Event) => {
+    const handleBackButton = (e: any) => {
       e.preventDefault();
       // If any modal is open, close it
       onCloseModal();
