@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import compression from 'compression';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -43,6 +44,9 @@ io.on('connection', (socket) => {
 const PORT = 3000;
 
 app.use(express.json({ limit: '5mb' }));
+
+// Gzip compression — faster TTFB & smaller payloads for crawlers/users (SEO/Core Web Vitals)
+app.use(compression({ threshold: 1024 }));
 
 // Enterprise-Grade Security & Payment Gateway Defense Middleware
 app.use((req, res, next) => {
@@ -3361,6 +3365,20 @@ Policy: https://vex.deals/
 Preferred-Languages: ar,en
 Expires: ${new Date(Date.now() + 365*24*60*60*1000).toISOString()}
 `);
+    });
+
+    // Android App Links verification (verified links for deals.vex.app on every domain)
+    app.get('/.well-known/assetlinks.json', (req, res) => {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.send(JSON.stringify([{
+        relation: ['delegate_permission/common.handle_all_urls'],
+        target: {
+          namespace: 'android_app',
+          package_name: 'deals.vex.app',
+          sha256_cert_fingerprints: ['E6:12:D8:D3:0F:62:83:D9:E2:39:67:58:0A:96:E4:09:87:39:72:49:EE:A2:A7:E3:3E:86:02:09:4C:60:27:8C'],
+        },
+      }], null, 2));
     });
 
     // ==================== IndexNow (Bing, Yandex, DuckDuckGo, Seznam) ====================
