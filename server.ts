@@ -3093,6 +3093,167 @@ async function setupServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
 
+    // ==================== GEO: llms.txt for AI Search Engines ====================
+    app.get('/llms.txt', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const url = `https://${domain}`;
+      const companies = storage.getCompanies();
+      const companyList = companies.map(c => `- [${c.name}](${url}/company/${c.id}): ${c.details?.substring(0, 120)}`).join('\n');
+
+      const llms = `# VEX Deals - Loyalty, Compensation & AI Sports Analytics Platform
+
+> VEX Deals is a multi-language (Arabic, English, Spanish, Russian, French, German, Turkish, Portuguese) loyalty rewards and betting compensation platform. Users track betting company wallets, claim loss compensation, unfreeze referral balances, and get AI-powered football match predictions using Google Gemini.
+
+## Core Features
+- Wallet Tracking: Monitor balances across 12+ licensed betting companies
+- Loss Compensation: Claim real percentage-based refunds on betting losses
+- Referral Unfreezing: Unlock frozen referral balances through social sharing
+- AI Sports Predictions: Gemini-powered match analysis with win probabilities and tactical insights
+- Lottery System: Provably fair 5-tier lottery with SHA-256 verification
+- Money Transfers: Move funds between accounts with instant settlement
+- Multi-Language: Full support for 8 languages with regional content
+
+## Company Pages
+${companyList}
+
+## Key Topics
+- Betting compensation and loss recovery
+- Digital wallet tracking and management
+- AI-powered sports betting analytics
+- Provably fair lottery systems
+- Referral reward unfreezing
+- Cross-platform money transfers
+
+## API Endpoints
+- ${url}/api/companies - List all betting companies
+- ${url}/api/health - Service health status
+- ${url}/api/lottery/status - Current lottery draw information
+- ${url}/sitemap.xml - Full sitemap of all pages
+
+## Contact & Support
+- Platform: VEX Deals
+- Website: ${url}
+- Support: support@vex.deals
+
+Last updated: ${new Date().toISOString().split('T')[0]}
+`;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.send(llms);
+    });
+
+    // ==================== GEO: llms-full.txt for Deep AI Crawling ====================
+    app.get('/llms-full.txt', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const url = `https://${domain}`;
+      const companies = storage.getCompanies();
+      const full = `# VEX Deals Platform - Complete Documentation for AI Systems
+
+## About VEX Deals
+VEX Deals is a comprehensive loyalty rewards and betting compensation platform that helps users:
+1. Track wallet balances across multiple licensed betting companies
+2. Claim loss compensation (refund percentages) on betting losses
+3. Unfreeze referral balances through social sharing
+4. Get AI-powered sports match predictions
+5. Participate in provably fair lottery draws
+6. Transfer funds between accounts
+
+## Platform Statistics
+- Supported Companies: ${companies.length}
+- Languages: 8 (Arabic, English, Spanish, Russian, French, German, Turkish, Portuguese)
+- Lottery Tiers: 5 (Jackpot to Tier 5)
+- AI Engine: Google Gemini 3.8 Flash
+
+## All Betting Companies
+${companies.map(c => `### ${c.name}
+- Type: ${c.type}
+- Details: ${c.details}
+- Promo Code: ${c.promo_code}
+- Page: ${url}/company/${c.id}`).join('\n\n')}
+
+## How Compensation Works
+1. User registers a betting company account through VEX Deals
+2. Platform tracks betting activity and calculates losses
+3. User submits a compensation request with proof
+4. Approved compensation percentage is added to user's wallet
+5. User can withdraw or transfer the compensated amount
+
+## How Lottery Works
+1. Draws are held hourly (50 coins), daily (100 coins), and weekly (250 coins)
+2. Users select 5 numbers from 1-30
+3. Winning numbers are drawn using provably fair SHA-256 hashing
+4. Prize tiers match 2-5 correct numbers
+5. All draws are publicly verifiable
+
+## How AI Predictions Work
+1. User selects an upcoming football match
+2. Google Gemini analyzes team statistics, form, and odds
+3. Platform returns: predicted score, win probabilities, tactical summary
+4. Risk level and recommended pick are provided
+5. Confidence score indicates prediction reliability
+
+## API Documentation
+- GET ${url}/api/companies - Returns all companies with affiliate data
+- GET ${url}/api/health - Returns service health status
+- GET ${url}/api/lottery/status - Returns current lottery draw details
+- GET ${url}/sitemap.xml - Returns full XML sitemap
+- GET ${url}/robots.txt - Returns crawl directives
+
+## Technical Details
+- Frontend: React 19 + TypeScript + Vite 6 + Tailwind CSS v4
+- Backend: Express.js + Socket.io + Firebase Firestore
+- AI: Google Gemini 3.8 Flash with structured JSON output
+- Mobile: Capacitor Android (deals.vex.app) + PWA
+- Security: Rate limiting, CSP headers, SHA-256 hashing, OTP verification
+
+Last updated: ${new Date().toISOString().split('T')[0]}
+`;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.send(full);
+    });
+
+    // ==================== RSS Feed for crawlers ====================
+    app.get('/rss.xml', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const url = `https://${domain}`;
+      const companies = storage.getCompanies();
+      const now = new Date().toUTCString();
+
+      const items = companies.map(c => `    <item>
+      <title>${c.name} - VEX Deals Compensation</title>
+      <link>${url}/company/${c.id}</link>
+      <guid>${url}/company/${c.id}</guid>
+      <description>${(c.details || '').replace(/[<>&]/g, '')}</description>
+      <pubDate>${now}</pubDate>
+    </item>`).join('\n');
+
+      const rss = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>VEX Deals - Loyalty & Compensation Platform</title>
+    <link>${url}</link>
+    <description>Track betting wallets, claim compensation, and get AI sports predictions</description>
+    <language>en</language>
+    <lastBuildDate>${now}</lastBuildDate>
+    <atom:link href="${url}/rss.xml" rel="self" type="application/rss+xml"/>
+${items}
+  </channel>
+</rss>`;
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      res.send(rss);
+    });
+
+    // ==================== Security.txt for trust ====================
+    app.get('/.well-known/security.txt', (req, res) => {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.send(`Contact: mailto:support@vex.deals
+Policy: https://vex.deals/
+Preferred-Languages: ar,en
+Expires: ${new Date(Date.now() + 365*24*60*60*1000).toISOString()}
+`);
+    });
+
     // Dynamic robots.txt per domain - MUST be before express.static
     app.get('/robots.txt', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
@@ -3221,7 +3382,10 @@ ${urls}</urlset>`;
       const gscMeta = `
     <!-- Google Search Console Verification -->
     <meta name="google-site-verification" content="vex_deals_${domain.replace(/\./g, '_')}" />
-    <meta name="msvalidate.01" content="vex_deals_${domain.replace(/\./g, '_')}" />`;
+    <meta name="msvalidate.01" content="vex_deals_${domain.replace(/\./g, '_')}" />
+    <!-- GEO: AI Engine Verification -->
+    <meta name="bot" content="index, follow, ai-answer-engine-optimized" />
+    <meta name="ai-content-declaration" content="VEX Deals loyalty compensation platform" />`;
       html = html.replace('</head>', `${gscMeta}\n  </head>`);
 
       // Add domain-specific canonical if not already present
@@ -3229,7 +3393,81 @@ ${urls}</urlset>`;
         html = html.replace(/<link rel="canonical"[^>]*\/?>/, `<link rel="canonical" href="${domainUrl}/" />`);
       }
 
+      // Inject Organization + Breadcrumb + Speakable schema
+      const orgSchema = `
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": "${domainUrl}/#organization",
+      "name": "VEX Deals",
+      "url": "${domainUrl}",
+      "logo": "${domainUrl}/icon-192.svg",
+      "description": "منصة VEX Deals للتعويضات الرياضية وتتبع المحافظ وتوقعات المباريات بالذكاء الاصطناعي",
+      "sameAs": ["${domainUrl}"],
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "contactType": "customer support",
+        "availableLanguage": ["Arabic", "English", "Spanish", "Russian", "French", "German", "Turkish", "Portuguese"]
+      },
+      "areaServed": ["EG", "SA", "AE", "MA", "DZ", "TN", "US", "GB", "RU", "ES"],
+      "knowsLanguage": ["ar", "en", "es", "ru", "fr", "de", "tr", "pt"]
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Home", "item": "${domainUrl}/"},
+        {"@type": "ListItem", "position": 2, "name": "Companies", "item": "${domainUrl}/#companies"},
+        {"@type": "ListItem", "position": 3, "name": "Wallets", "item": "${domainUrl}/#wallets"},
+        {"@type": "ListItem", "position": 4, "name": "AI Sports", "item": "${domainUrl}/#ai-sports"},
+        {"@type": "ListItem", "position": 5, "name": "Lottery", "item": "${domainUrl}/#lottery"}
+      ]
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "@id": "${domainUrl}/#webpage",
+      "url": "${domainUrl}",
+      "name": "VEX Deals - منصة مكافآت التعويضات الرياضية",
+      "description": "منصة VEX Deals لتتبع محافظ شركات المراهنات، طلبات تعويض الخسائر، وتوقعات المباريات بالذكاء الاصطناعي",
+      "inLanguage": ["ar", "en", "es", "ru", "fr", "de", "tr", "pt"],
+      "isPartOf": {"@id": "${domainUrl}/#website"},
+      "about": {"@id": "${domainUrl}/#organization"},
+      "primaryImageOfPage": "${domainUrl}/icon-512.svg",
+      "dateModified": "${new Date().toISOString()}"
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "@id": "${domainUrl}/#faq-extended",
+      "mainEntity": [
+        {"@type": "Question", "name": "What is VEX Deals?", "acceptedAnswer": {"@type": "Answer", "text": "VEX Deals is a loyalty rewards and betting compensation platform that helps users track wallet balances across 12+ betting companies, claim loss compensation percentages, unfreeze referral balances, and get AI-powered football match predictions using Google Gemini."}},
+        {"@type": "Question", "name": "How does betting loss compensation work?", "acceptedAnswer": {"@type": "Answer", "text": "Users register betting company accounts through VEX Deals. The platform tracks betting activity and calculates losses. Users submit compensation requests with proof. Approved compensation percentages are added to their wallet for withdrawal or transfer."}},
+        {"@type": "Question", "name": "Is the VEX Deals lottery provably fair?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. VEX Deals uses SHA-256 server seed hashing with client seed and nonce for provably fair lottery draws. Users select 5 numbers from 1-30. Draws happen hourly, daily, and weekly with 5 prize tiers. All draws are publicly verifiable."}},
+        {"@type": "Question", "name": "How accurate are the AI sports predictions?", "acceptedAnswer": {"@type": "Answer", "text": "VEX Deals uses Google Gemini 3.8 Flash to analyze team statistics, form, odds, and tactical data. Predictions include predicted scores, win probabilities, tactical summaries, risk levels, and confidence scores based on historical accuracy."}},
+        {"@type": "Question", "name": "What languages does VEX Deals support?", "acceptedAnswer": {"@type": "Answer", "text": "VEX Deals supports 8 languages: Arabic, English, Spanish, Russian, French, German, Turkish, and Portuguese. Content is localized for each region including the Middle East, North Africa, Europe, and CIS countries."}},
+        {"@type": "Question", "name": "Is VEX Deals safe and secure?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. VEX Deals uses banking-grade security including rate limiting, CSP headers, SHA-256 PIN hashing, OTP two-factor authentication, and protection against circular transfers and balance draining attacks."}}
+      ]
+    }
+    </script>`;
+      html = html.replace('</head>', `${orgSchema}\n  </head>`);
+
+      // Performance: preload critical resources
+      const perf = `
+    <link rel="preconnect" href="https://www.googletagmanager.com">
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com">
+    <meta http-equiv="x-dns-prefetch-control" content="on">`;
+      html = html.replace('</head>', `${perf}\n  </head>`);
+
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Robots-Tag', 'index, follow, max-snippet:-1, max-image-preview:large');
       res.send(html);
     });
   }
