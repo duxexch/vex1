@@ -3199,6 +3199,8 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
 - Multi-Language: Full support for 8 languages with regional content
 
 ## Guides
+- ${url}/guides - Index of all step-by-step guides
+- ${url}/companies - Directory of all approved betting companies
 - ${url}/guides/claim-compensation - How to claim betting compensation
 - ${url}/guides/unfreeze-balance - How to unfreeze referral balance
 - ${url}/guides/ai-predictions-guide - How to read AI match predictions
@@ -3256,6 +3258,8 @@ It helps users:
 6. Transfer funds between accounts
 
 ## Guides
+- ${url}/guides - Index of all step-by-step guides
+- ${url}/companies - Directory of all approved betting companies
 - ${url}/guides/claim-compensation - How to claim betting compensation (step by step)
 - ${url}/guides/unfreeze-balance - How to unfreeze referral balance
 - ${url}/guides/ai-predictions-guide - How to read AI match predictions
@@ -3572,6 +3576,33 @@ Sitemap: https://${domain}/sitemap.xml
 `;
       }
 
+      // Hub pages: /companies + /guides (base + language variants)
+      for (const hub of ['/companies', '/guides']) {
+        urls += `  <url>
+    <loc>https://${domain}${hub}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+`;
+        for (const l of langs) {
+          urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}${hub}${langQ(l)}"/>
+`;
+        }
+        urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}${hub}"/>
+  </url>
+`;
+        for (const l of langs) {
+          if (l === 'ar') continue;
+          urls += `  <url>
+    <loc>https://${domain}${hub}?lang=${l}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+`;
+        }
+      }
+
       const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xhtml="http://www.w3.org/1999/xhtml">
@@ -3650,7 +3681,7 @@ ${hreflangs(domainUrl, pagePath)}
     "@type": "BreadcrumbList",
     "itemListElement": [
       {"@type": "ListItem", "position": 1, "name": "${jstr(tt('nav.home', lang))}", "item": "${domainUrl}/"},
-      {"@type": "ListItem", "position": 2, "name": "${jstr(tt('nav.companies', lang))}", "item": "${domainUrl}/#companies"},
+      {"@type": "ListItem", "position": 2, "name": "${jstr(tt('nav.companies', lang))}", "item": "${domainUrl}/companies"},
       {"@type": "ListItem", "position": 3, "name": "${jstr(name)}", "item": "${domainUrl}${pagePath}"}
     ]
   }
@@ -3701,7 +3732,7 @@ ${hreflangs(domainUrl, pagePath)}
 <body>
   <nav class="nav">
     <a href="/">🏠 ${tt('nav.home', lang)}</a>
-    <a href="/#companies">🏢 ${tt('nav.companies', lang)}</a>
+    <a href="/companies${langQ(lang)}">🏢 ${tt('nav.companies', lang)}</a>
     <a href="/#wallets">💳 ${tt('nav.wallets', lang)}</a>
     <a href="/#ai-sports">⚽ ${tt('nav.predictions', lang)}</a>
     <a href="/#lottery">🎰 ${tt('nav.lottery', lang)}</a>
@@ -3759,7 +3790,7 @@ ${hreflangs(domainUrl, pagePath)}
     </div>
 
     <div style="margin-top:30px;text-align:center;">
-      <a href="/#companies" class="cta">🏢 ${tt('cta.companies', lang)}</a>
+      <a href="/companies${langQ(lang)}" class="cta">🏢 ${tt('cta.companies', lang)}</a>
       <a href="/download/apk" class="cta">📱 ${tt('cta.download', lang)}</a>
       <a href="/predictions${langQ(lang)}" class="cta">⚽ ${tt('cta.ai', lang)}</a>
     </div>
@@ -3814,7 +3845,7 @@ ${hreflangs(domainUrl, pagePath)}
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[${guide.faq.map(f => `{"@type":"Question","name":"${jstr(f.q)}","acceptedAnswer":{"@type":"Answer","text":"${jstr(f.a)}"}}`).join(',')}]}</script>
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"${jstr(tt('nav.home', lang))}","item":"${domainUrl}/"},{"@type":"ListItem","position":2,"name":"${jstr(tt('guides.steps_title', lang))}","item":"${domainUrl}${pagePath}"}]}</script>
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"${jstr(tt('nav.home', lang))}","item":"${domainUrl}/"},{"@type":"ListItem","position":2,"name":"${jstr(tt('hub.guides_h1', lang))}","item":"${domainUrl}/guides"},{"@type":"ListItem","position":3,"name":"${jstr(guide.title)}","item":"${domainUrl}${pagePath}"}]}</script>
 
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
@@ -4182,10 +4213,123 @@ ${hreflangs(domainUrl, pagePath)}
       res.send(html);
     });
 
-    // ==================== SEO: Add guide URLs to sitemap ====================
-    app.get('/guides', (req, res) => {
-      res.redirect(301, `/guides/claim-compensation${langQ(getLang(req))}`);
-    });
+    // ==================== SEO HUB PAGES: /companies + /guides (Programmatic SEO) ====================
+    const renderHub = (kind: 'companies' | 'guides', req: import('express').Request, res: import('express').Response) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const domainUrl = `https://${domain}`;
+      const lang = getLang(req);
+      const profile = getProfile(domain, lang);
+      const pagePath = kind === 'companies' ? '/companies' : '/guides';
+      const h1 = kind === 'companies' ? tt('hub.companies_h1', lang) : tt('hub.guides_h1', lang);
+      const desc = kind === 'companies'
+        ? tt('hub.companies_desc', lang, { brand: profile.brand })
+        : tt('hub.guides_desc', lang);
+      const note = kind === 'companies' ? tt('hub.companies_note', lang) : tt('guides.related_title', lang);
+      const escA = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      const escT = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      let items = '';
+      const itemUrls: string[] = [];
+      if (kind === 'companies') {
+        const companies = storage.getCompanies();
+        items = companies.map(c => {
+          const u = `${domainUrl}/company/${c.id}${langQ(lang)}`;
+          itemUrls.push(u);
+          return `<a class="match" href="/company/${c.id}${langQ(lang)}">
+            <span class="teams">${escT(c.name)}</span>
+            <span class="league">${escT((c.details || '').substring(0, 130))}</span>
+            <span class="pred">→</span>
+          </a>`;
+        }).join('');
+      } else {
+        items = Object.keys(GUIDES).map(slug => {
+          const g = GUIDES[slug][lang] || GUIDES[slug]['en'] || GUIDES[slug]['ar'];
+          const u = `${domainUrl}/guides/${slug}${langQ(lang)}`;
+          itemUrls.push(u);
+          return `<a class="match" href="/guides/${slug}${langQ(lang)}">
+            <span class="teams">${escT(g.title)}</span>
+            <span class="league">${escT(g.desc.substring(0, 130))}</span>
+            <span class="pred">→</span>
+          </a>`;
+        }).join('');
+      }
+
+      const pageTitle = `${h1} — ${profile.brand}`;
+      const ld = JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'CollectionPage',
+        name: pageTitle,
+        description: desc,
+        url: `${domainUrl}${pagePath}`,
+        inLanguage: lang,
+        isPartOf: { '@id': `${domainUrl}/#website` },
+        publisher: { '@id': `${domainUrl}/#organization` },
+        mainEntity: {
+          '@type': 'ItemList',
+          itemListElement: itemUrls.map((u, i) => ({ '@type': 'ListItem', position: i + 1, url: u })),
+        },
+      });
+
+      const html = `<!doctype html>
+<html lang="${lang}" dir="${profile.dir}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escA(pageTitle)}</title>
+  <meta name="description" content="${escA(desc)}" />
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
+  <link rel="canonical" href="${canonicalUrl(domainUrl, pagePath, lang)}" />
+${hreflangs(domainUrl, pagePath)}
+  <meta property="og:title" content="${escA(pageTitle)}" />
+  <meta property="og:description" content="${escA(desc)}" />
+  <meta property="og:url" content="${domainUrl}${pagePath}${langQ(lang)}" />
+  <meta property="og:type" content="website" />
+  <script type="application/ld+json">${ld}</script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.8}
+    .container{max-width:900px;margin:0 auto;padding:40px 20px}
+    h1{font-size:1.9rem;color:#10b981;margin-bottom:10px}
+    h2{font-size:1.3rem;color:#34d399;margin:30px 0 12px}
+    p{color:#94a3b8;margin-bottom:15px}
+    .match{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:#1e293b;padding:14px 18px;border-radius:10px;margin:8px 0;text-decoration:none;color:#e2e8f0;border:1px solid #334155}
+    .match:hover{border-color:#10b981}
+    .teams{font-weight:bold;color:#10b981;font-size:1.05rem}
+    .league{color:#64748b;font-size:0.85rem}
+    .pred{background:#0f172a;padding:5px 12px;border-radius:20px;font-size:0.9rem;color:#34d399}
+    .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:13px 26px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:8px 5px 8px 0}
+    .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
+    .langbar a{color:#64748b;text-decoration:none}
+    .langbar a.active,.langbar a:hover{color:#10b981}
+    footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+  </style>
+  ${siteSchemaTag(domainUrl, profile)}</head>
+<body>
+  <div class="container">
+    <nav class="langbar">
+      ${LANGS.map(l => `<a href="${pagePath}${langQ(l)}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
+    </nav>
+    <h1>${h1}</h1>
+    <p>${desc}</p>
+    <p>ℹ️ ${note}</p>
+    ${items}
+    <div style="margin-top:30px;text-align:center;">
+      <a href="/${langQ(lang)}" class="cta">🏠 ${tt('guides.cta_home', lang)}</a>
+      <a href="/predictions${langQ(lang)}" class="cta">⚽ ${tt('cta.ai', lang)}</a>
+      <a href="/download/apk" class="cta">📱 ${tt('cta.download', lang)}</a>
+    </div>
+  </div>
+  <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+</body>
+</html>`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Robots-Tag', 'index, follow, max-snippet:-1');
+      res.send(html);
+    };
+
+    app.get('/companies', (req, res) => renderHub('companies', req, res));
+    app.get('/guides', (req, res) => renderHub('guides', req, res));
 
     // Domain-specific index.html with dynamic SEO tags - MUST be after express.static
     app.get('*', (req, res) => {
@@ -4240,7 +4384,9 @@ ${hreflangs(domainUrl, pagePath)}
         <a href="${domainUrl}/guides/ai-predictions-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_ai', lang)}</a> |
         <a href="${domainUrl}/guides/provably-fair-lottery${langQ(lang)}" style="color:#10b981;">${tt('link.guide_lottery', lang)}</a> |
         <a href="${domainUrl}/guides/1xbet-bonus-promo-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_1xbet', lang)}</a> |
-        <a href="${domainUrl}/guides/betting-wallet-tracking-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_wallet', lang)}</a>
+        <a href="${domainUrl}/guides/betting-wallet-tracking-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_wallet', lang)}</a> |
+        <a href="${domainUrl}/companies${langQ(lang)}" style="color:#10b981;">${tt('hub.companies_h1', lang)}</a> |
+        <a href="${domainUrl}/guides${langQ(lang)}" style="color:#10b981;">${tt('hub.guides_h1', lang)}</a>
       </p>
       <nav style="margin-top:12px;font-size:0.9rem;">
         ${LANGS.map(l => `<a href="${domainUrl}/${langQ(l)}" hreflang="${l}" style="color:${l === lang ? '#10b981' : '#475569'};text-decoration:none;margin-left:8px;">${l.toUpperCase()}</a>`).join('')}
@@ -4285,7 +4431,7 @@ ${hreflangs(domainUrl, pagePath)}
       "@type": "BreadcrumbList",
       "itemListElement": [
         {"@type": "ListItem", "position": 1, "name": "${tt('nav.home', lang)}", "item": "${domainUrl}/"},
-        {"@type": "ListItem", "position": 2, "name": "${tt('nav.companies', lang)}", "item": "${domainUrl}/#companies"},
+        {"@type": "ListItem", "position": 2, "name": "${tt('nav.companies', lang)}", "item": "${domainUrl}/companies"},
         {"@type": "ListItem", "position": 3, "name": "${tt('nav.wallets', lang)}", "item": "${domainUrl}/#wallets"},
         {"@type": "ListItem", "position": 4, "name": "${tt('nav.predictions', lang)}", "item": "${domainUrl}/#ai-sports"},
         {"@type": "ListItem", "position": 5, "name": "${tt('nav.lottery', lang)}", "item": "${domainUrl}/#lottery"}
