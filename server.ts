@@ -3343,6 +3343,18 @@ Sitemap: https://${domain}/sitemap.xml
         }
       }
 
+      // How-to guide pages (Programmatic SEO)
+      const guideSlugs = ['claim-compensation', 'unfreeze-balance', 'ai-predictions-guide', 'provably-fair-lottery'];
+      for (const slug of guideSlugs) {
+        urls += `  <url>
+    <loc>https://${domain}/guides/${slug}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+`;
+      }
+
       const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xhtml="http://www.w3.org/1999/xhtml">
@@ -3366,6 +3378,315 @@ ${urls}</urlset>`;
       } else {
         res.status(404).json({ error: 'APK not found. Please build the APK first.' });
       }
+    });
+
+    // ==================== SSR COMPANY PAGES (Programmatic SEO) ====================
+    app.get('/company/:id', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const domainUrl = `https://${domain}`;
+      const companies = storage.getCompanies();
+      const company = companies.find(c => c.id === req.params.id);
+      if (!company) return res.status(404).redirect('/');
+
+      const name = company.name;
+      const details = company.details || '';
+      const promo = company.promo_code || '';
+      const lang = (req.query.lang as string) || 'ar';
+
+      const html = `<!doctype html>
+<html lang="${lang}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${name} - دليل التعويضات والبونص الكامل | VEX Deals</title>
+  <meta name="description" content="كل ما تحتاج معرفته عن ${name}: أكواد الخصم، طلبات التعويض، تحميل التطبيق، وأفضل استراتيجيات الربح. ${details.substring(0, 120)}" />
+  <meta name="keywords" content="${name} تعويض, ${name} بونص, ${name} برومو كود, ${name} APK, ${name} تحميل, ${name} review" />
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
+  <link rel="canonical" href="${domainUrl}/company/${company.id}" />
+  <link rel="alternate" hreflang="ar" href="${domainUrl}/company/${company.id}?lang=ar" />
+  <link rel="alternate" hreflang="en" href="${domainUrl}/company/${company.id}?lang=en" />
+  <link rel="alternate" hreflang="x-default" href="${domainUrl}/company/${company.id}" />
+  <meta property="og:title" content="${name} - VEX Deals" />
+  <meta property="og:description" content="دليل ${name} الكامل: تعويضات، بونص، تحميل" />
+  <meta property="og:url" content="${domainUrl}/company/${company.id}" />
+  <meta property="og:type" content="article" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "${name} - دليل التعويضات والبونص الكامل",
+    "description": "${details.replace(/"/g, '').substring(0, 200)}",
+    "url": "${domainUrl}/company/${company.id}",
+    "author": {"@type": "Organization", "name": "VEX Deals", "url": "${domainUrl}"},
+    "publisher": {"@type": "Organization", "name": "VEX Deals", "url": "${domainUrl}", "logo": {"@type": "ImageObject", "url": "${domainUrl}/icon-192.svg"}},
+    "dateModified": "${new Date().toISOString()}"
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {"@type": "ListItem", "position": 1, "name": "Home", "item": "${domainUrl}/"},
+      {"@type": "ListItem", "position": 2, "name": "Companies", "item": "${domainUrl}/#companies"},
+      {"@type": "ListItem", "position": 3, "name": "${name}", "item": "${domainUrl}/company/${company.id}"}
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {"@type": "Question", "name": "How to claim ${name} compensation?", "acceptedAnswer": {"@type": "Answer", "text": "Register through VEX Deals, verify your account, submit your betting history, and receive approved compensation directly to your wallet."}},
+      {"@type": "Question", "name": "What is the ${name} promo code?", "acceptedAnswer": {"@type": "Answer", "text": "The current promo code is ${promo}. Use it during registration to get the best welcome bonus."}},
+      {"@type": "Question", "name": "How to download ${name} APK?", "acceptedAnswer": {"@type": "Answer", "text": "Download the latest ${name} APK from VEX Deals. The APK is tested and safe for Android devices."}}
+    ]
+  }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Tajawal', sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.8; }
+    .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+    h1 { font-size: 2.2rem; color: #10b981; margin-bottom: 10px; }
+    h2 { font-size: 1.5rem; color: #34d399; margin: 30px 0 15px; border-bottom: 2px solid #1e293b; padding-bottom: 8px; }
+    h3 { font-size: 1.2rem; color: #6ee7b7; margin: 20px 0 10px; }
+    p { margin-bottom: 15px; color: #94a3b8; }
+    .badge { display: inline-block; background: #10b981; color: #0f172a; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 0.85rem; margin: 5px 5px 5px 0; }
+    .promo { background: #1e293b; border: 2px dashed #10b981; padding: 20px; border-radius: 12px; text-align: center; margin: 20px 0; }
+    .promo code { font-size: 2rem; color: #10b981; font-weight: bold; letter-spacing: 3px; }
+    .steps { background: #1e293b; padding: 20px; border-radius: 12px; margin: 15px 0; }
+    .steps li { margin: 10px 0; padding-left: 10px; }
+    .steps li::marker { color: #10b981; font-weight: bold; }
+    .faq { background: #1e293b; padding: 15px; border-radius: 10px; margin: 10px 0; }
+    .faq strong { color: #34d399; }
+    .cta { background: linear-gradient(135deg, #10b981, #059669); color: #fff; padding: 15px 30px; border-radius: 12px; text-decoration: none; display: inline-block; font-weight: bold; margin: 10px 5px 10px 0; }
+    .cta:hover { opacity: 0.9; }
+    .related { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 20px; }
+    .related a { background: #1e293b; padding: 12px; border-radius: 8px; color: #10b981; text-decoration: none; text-align: center; }
+    .related a:hover { background: #334155; }
+    .nav { background: #1e293b; padding: 10px 20px; display: flex; gap: 15px; flex-wrap: wrap; }
+    .nav a { color: #94a3b8; text-decoration: none; font-size: 0.9rem; }
+    .nav a:hover { color: #10b981; }
+    footer { text-align: center; padding: 30px; color: #475569; font-size: 0.85rem; border-top: 1px solid #1e293b; margin-top: 40px; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <a href="/">🏠 الرئيسية</a>
+    <a href="/#companies">🏢 الشركات</a>
+    <a href="/#wallets">💳 المحافظ</a>
+    <a href="/#ai-sports">⚽ التوقعات</a>
+    <a href="/#lottery">🎰 اليانصيب</a>
+    <a href="/download/apk">📱 تحميل APK</a>
+  </nav>
+  <div class="container">
+    <h1>${name}</h1>
+    <div>
+      <span class="badge">✅ تعويضات موثقة</span>
+      <span class="badge">🎯 برومو: ${promo}</span>
+      <span class="badge">📱 APK متاح</span>
+      <span class="badge">⚡ تحويل فوري</span>
+    </div>
+
+    <p style="margin-top:20px;font-size:1.1rem;color:#e2e8f0;">${details}</p>
+
+    <div class="promo">
+      <p>كود الخصم الرسمي</p>
+      <code>${promo}</code>
+      <p style="margin-top:10px;font-size:0.9rem;">استخدم هذا الكود عند التسجيل للحصول على أفضل بونص ترحيبي</p>
+    </div>
+
+    <h2>📋 كيف تحصل على تعويض ${name}؟</h2>
+    <ol class="steps">
+      <li><strong>سجّل حسابك</strong> عبر VEX Deals بالكود <code>${promo}</code></li>
+      <li><strong>وثّق رصيدك</strong> بلقطة شاشة من محفظتك في ${name}</li>
+      <li><strong>قدّم طلب التعويض</strong> من صفحة المحافظ في VEX Deals</li>
+      <li><strong>استلم نسبتك</strong> تُضاف مباشرة لرصيدك المجمد</li>
+      <li><strong>حوّل أو اسحب</strong> التعويض لحسابك البنكي أو محفظتك</li>
+    </ol>
+
+    <h2>⭐ لماذا ${name} عبر VEX Deals؟</h2>
+    <ul style="list-style:none;padding:0;">
+      <li style="padding:8px 0;">✅ <strong>تعويض حقيقي</strong> — نسب مئوية فعلية على خسائرك</li>
+      <li style="padding:8px 0;">🔒 <strong>آمن 100%</strong> — تشفير بنكي وحماية ضد الاختراق</li>
+      <li style="padding:8px 0;">⚡ <strong>تحويل فوري</strong> — استلم خلال دقائق</li>
+      <li style="padding:8px 0;">🌍 <strong>دعم عربي</strong> — فريق يتحدث لغتك</li>
+      <li style="padding:8px 0;">📱 <strong>تطبيق جوال</strong> — APK + PWA + iOS</li>
+      <li style="padding:8px 0;">🤖 <strong>AI توقعات</strong> — تحليل مباريات بالذكاء الاصطناعي</li>
+    </ul>
+
+    <h2>❓ الأسئلة الشائعة عن ${name}</h2>
+    <div class="faq"><strong>س: كيف أحصل على تعويض ${name}؟</strong><p>سجّل عبر VEX Deals، وثّق رصيدك، قدّم طلب التعويض، واستلم نسبتك مباشرة.</p></div>
+    <div class="faq"><strong>س: ما هو كود الخصم؟</strong><p>كود الخصم هو <code>${promo}</code> — استخدمه عند التسجيل.</p></div>
+    <div class="faq"><strong>س: هل ${name} آمن؟</strong><p>نعم، VEX Deals يتحقق من أمان كل شركة قبل إضافتها للمنصة.</p></div>
+    <div class="faq"><strong>س: كم يستغرق وصول التعويض؟</strong><p>عادة خلال 24 ساعة كحد أقصى، وأحياناً فوراً.</p></div>
+
+    <h2>🔗 صفحات ذات صلة</h2>
+    <div class="related">
+      ${companies.filter(c => c.id !== company.id).slice(0, 6).map(c => `<a href="/company/${c.id}">${c.name}</a>`).join('')}
+    </div>
+
+    <div style="margin-top:30px;text-align:center;">
+      <a href="/#companies" class="cta">🏢 كل الشركات</a>
+      <a href="/download/apk" class="cta">📱 تحميل التطبيق</a>
+      <a href="/#ai-sports" class="cta">⚽ توقعات AI</a>
+    </div>
+  </div>
+  <footer>
+    <p>© 2026 VEX Deals — منصة التعويضات والولاء | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></p>
+    <p>صفحة ${name} — آخر تحديث: ${new Date().toISOString().split('T')[0]}</p>
+  </footer>
+</body>
+</html>`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Robots-Tag', 'index, follow, max-snippet:-1');
+      res.send(html);
+    });
+
+    // ==================== HOW-TO GUIDES (Answer Engine Optimized) ====================
+    const guides: Record<string, { title: string; desc: string; steps: string[]; faq: {q: string; a: string}[] }> = {
+      'claim-compensation': {
+        title: 'كيف تحصل على تعويض المراهنات — دليل خطوة بخطوة 2026',
+        desc: 'دليل شامل للحصول على تعويض خسائر المراهنات عبر VEX Deals مع نسب حقيقية وتحويلات فورية.',
+        steps: [
+          'سجّل حسابك في VEX Deals مجاناً',
+          'اختر شركة المراهنات من قائمة الشركات المعتمدة',
+          'أدخل رمز الإحالة الخاص بك ووثّق رصيدك',
+          'قدّم طلب التعويض مع إثبات الخسارة',
+          'استلم نسبتك تُضاف لرصيدك المجمد',
+          'حوّل التعويض لحسابك البنكي أو محفظتك'
+        ],
+        faq: [
+          { q: 'كم نسبة التعويض؟', a: 'تتراوح النسبة بين 10% و 50% حسب نوع الخسارة وسياسية الشركة.' },
+          { q: 'هل التعويض مجاني؟', a: 'نعم، خدمة التعويض عبر VEX Deals مجانية 100%.' },
+          { q: 'كم يستغرق الوصول؟', a: 'عادة خلال 24 ساعة كحد أقصى.' }
+        ]
+      },
+      'unfreeze-balance': {
+        title: 'كيف فك تجميد الرصيد في VEX Deals — دليل كامل',
+        desc: 'خطوات فك تجميد الرصيد عبر الإيداع المباشر 1:1 أو نظام الإحالات.',
+        steps: [
+          'افتح تبويب المحافظ في VEX Deals',
+          'اختر "فك التجميد" أو "Direct Deposit Unfreeze"',
+          'أدخل المبلغ المراد فك تجميده',
+          'أرسل المبلغ بنفس القيمة للحساب المحدد',
+          'ارفع إثبات التحويل',
+          'يتم فك التجميد فوراً بنسبة 1:1'
+        ],
+        faq: [
+          { q: 'هل فيه رسوم على فك التجميد؟', a: 'لا، فك التجميد المجاني تماماً.' },
+          { q: 'هل فيه حد أدنى؟', a: 'الحد الأدنى يعتمد على نوع المحفظة.' }
+        ]
+      },
+      'ai-predictions-guide': {
+        title: 'كيف تقرأ توقعات المباريات بالذكاء الاصطناعي — VEX AI',
+        desc: 'دليل فهم توقعات Gemini AI للمباريات: احتمالات الفوز، النتيجة المتوقعة، ومؤشر الثقة.',
+        steps: [
+          'افتح تبويب "AI Sports" في VEX Deals',
+          'اختر المباراة المراد تحليلها',
+          'اقرأ النتيجة المتوقعة واحتمالات الفوز',
+          'راجع التحليل التكتيكي ونقاط القوة',
+          'راقب مؤشر الثقة (Confidence Score)',
+          'اتبع التوصية بمسؤولية'
+        ],
+        faq: [
+          { q: 'ما دقة التوقعات؟', a: 'تعتمد على نموذج Gemini AI مع مؤشر ثقة لكل توقع.' },
+          { q: 'هل التوقعات مجانية؟', a: 'نعم، جميع التوقعات مجانية لمستخدمي VEX Deals.' }
+        ]
+      },
+      'provably-fair-lottery': {
+        title: 'اليانصيب التكافلي المُثبت العدالة — كيف يعمل SHA-256',
+        desc: 'شرح نظام اليانصيب القابل للتحقق في VEX Deals باستخدام تشفير SHA-256.',
+        steps: [
+          'اختار 5 أرقام من 1 إلى 30',
+          'ادفع قيمة التذكرة عبر وسيلة الدفع المتاحة',
+          'السحب يتم بعد انتهاء المدة (ساعة/يوم/أسبوع)',
+          'الأرقام الفائزة تُحسب بـ SHA-256 hashing',
+          'يمكنك التحقق من عدالة كل سحب',
+          'اربح حتى 10,000$ في Jackpot'
+        ],
+        faq: [
+          { q: 'هل السحب عادل؟', a: 'نعم، كل سحب مُثبت بـ SHA-256 server seed + client seed + nonce.' },
+          { q: 'كم قيمة الجائزة؟', a: 'من 2.50$ حتى 10,000$+ حسب الترتيب.' }
+        ]
+      }
+    };
+
+    app.get('/guides/:slug', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const domainUrl = `https://${domain}`;
+      const guide = guides[req.params.slug];
+      if (!guide) return res.status(404).redirect('/');
+
+      const html = `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${guide.title}</title>
+  <meta name="description" content="${guide.desc}" />
+  <meta name="robots" content="index, follow, max-snippet:-1" />
+  <link rel="canonical" href="${domainUrl}/guides/${req.params.slug}" />
+  <meta property="og:title" content="${guide.title}" />
+  <meta property="og:description" content="${guide.desc}" />
+  <meta property="og:url" content="${domainUrl}/guides/${req.params.slug}" />
+  <meta property="og:type" content="article" />
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"HowTo","name":"${guide.title}","description":"${guide.desc}","totalTime":"PT10M","step":[${guide.steps.map((s,i) => `{"@type":"HowToStep","position":${i+1},"name":"${s.replace(/"/g, '')}","text":"${s.replace(/"/g, '')}"}`).join(',')}]}</script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[${guide.faq.map(f => `{"@type":"Question","name":"${f.q}","acceptedAnswer":{"@type":"Answer","text":"${f.a}"}}`).join(',')}]}</script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"${domainUrl}/"},{"@type":"ListItem","position":2,"name":"Guides","item":"${domainUrl}/guides/${req.params.slug}"}]}</script>
+
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.9}
+    .container{max-width:800px;margin:0 auto;padding:40px 20px}
+    h1{font-size:2rem;color:#10b981;margin-bottom:15px}
+    h2{font-size:1.4rem;color:#34d399;margin:30px 0 15px;border-bottom:2px solid #1e293b;padding-bottom:8px}
+    p{margin-bottom:15px;color:#94a3b8}
+    .step{background:#1e293b;padding:15px 20px;border-radius:10px;margin:10px 0;display:flex;gap:15px;align-items:flex-start}
+    .step-num{background:#10b981;color:#0f172a;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;flex-shrink:0}
+    .faq{background:#1e293b;padding:15px;border-radius:10px;margin:10px 0}
+    .faq strong{color:#34d399}
+    .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:15px 30px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:10px 5px 10px 0}
+    footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>${guide.title}</h1>
+    <p style="font-size:1.1rem;color:#e2e8f0;">${guide.desc}</p>
+
+    <h2>📋 الخطوات</h2>
+    ${guide.steps.map((s, i) => `<div class="step"><div class="step-num">${i + 1}</div><div>${s}</div></div>`).join('\n')}
+
+    <h2>❓ الأسئلة الشائعة</h2>
+    ${guide.faq.map(f => `<div class="faq"><strong>س: ${f.q}</strong><p>${f.a}</p></div>`).join('\n')}
+
+    <div style="margin-top:30px;text-align:center;">
+      <a href="/" class="cta">🏠 الصفحة الرئيسية</a>
+      <a href="/download/apk" class="cta">📱 تحميل التطبيق</a>
+    </div>
+  </div>
+  <footer>© 2026 VEX Deals — <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+</body>
+</html>`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Robots-Tag', 'index, follow, max-snippet:-1');
+      res.send(html);
+    });
+
+    // ==================== SEO: Add guide URLs to sitemap ====================
+    app.get('/guides', (req, res) => {
+      res.redirect('/guides/claim-compensation');
     });
 
     // Domain-specific index.html with dynamic SEO tags - MUST be after express.static
