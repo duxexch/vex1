@@ -3231,6 +3231,7 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
 - ${url}/guides/how-to-choose-betting-site - 7 checks for a trusted betting site
 - ${url}/guides/live-betting-guide - How in-play betting works (odds shifts, cash out)
 - ${url}/guides/responsible-gambling-guide - Money and time limits, self-exclusion
+- ${url}/guides/betting-glossary - 20 betting terms explained (odds, handicap, cash out)
 
 ## Sports Predictions
 - ${url}/best-betting-sites - Best betting sites ranking (bonuses, promo codes, apps)
@@ -3308,6 +3309,7 @@ It helps users:
 - ${url}/guides/how-to-choose-betting-site - How to choose a trusted betting site (license, withdrawals, support)
 - ${url}/guides/live-betting-guide - Live betting explained: reacting to events, odds movement, cash out, discipline
 - ${url}/guides/responsible-gambling-guide - Responsible gambling: deposit/loss limits, session timers, self-exclusion
+- ${url}/guides/betting-glossary - Betting glossary: odds, favorite, handicap, Asian handicap, Over/Under, BTTS, accumulator, cash out, stake, bankroll, value bet, rollover, free bet and more
 
 ## Sports Predictions
 - ${url}/predictions - Full list of AI match predictions grouped by date
@@ -3627,7 +3629,7 @@ Sitemap: https://${domain}/sitemap.xml
       }
 
       // How-to guide pages (Programmatic SEO) — base + 8 language variants
-      const guideSlugs = ['claim-compensation', 'unfreeze-balance', 'ai-predictions-guide', 'provably-fair-lottery', '1xbet-bonus-promo-guide', 'betting-wallet-tracking-guide', 'betting-odds-explained', 'bankroll-management-guide', 'parlay-accumulator-guide', 'how-to-choose-betting-site', 'live-betting-guide', 'responsible-gambling-guide'];
+      const guideSlugs = ['claim-compensation', 'unfreeze-balance', 'ai-predictions-guide', 'provably-fair-lottery', '1xbet-bonus-promo-guide', 'betting-wallet-tracking-guide', 'betting-odds-explained', 'bankroll-management-guide', 'parlay-accumulator-guide', 'how-to-choose-betting-site', 'live-betting-guide', 'responsible-gambling-guide', 'betting-glossary'];
       for (const slug of guideSlugs) {
         urls += `  <url>
     <loc>https://${domain}/guides/${slug}</loc>
