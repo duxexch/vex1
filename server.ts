@@ -3224,6 +3224,8 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
 - ${url}/guides/betting-wallet-tracking-guide - Track balances across betting wallets
 - ${url}/guides/betting-odds-explained - Read decimal, fractional and American odds
 - ${url}/guides/bankroll-management-guide - Bankroll management and stake sizing
+- ${url}/guides/parlay-accumulator-guide - How parlay and accumulator payouts work
+- ${url}/guides/how-to-choose-betting-site - 7 checks for a trusted betting site
 
 ## Company Pages
 ${companyList}
@@ -3285,6 +3287,8 @@ It helps users:
 - ${url}/guides/betting-wallet-tracking-guide - Track balances across betting wallets
 - ${url}/guides/betting-odds-explained - How to read betting odds (decimal, fractional, American)
 - ${url}/guides/bankroll-management-guide - Bankroll management rules for long-term profit
+- ${url}/guides/parlay-accumulator-guide - Parlay and accumulator betting explained (legs, odds, cash out)
+- ${url}/guides/how-to-choose-betting-site - How to choose a trusted betting site (license, withdrawals, support)
 
 ## Platform Statistics
 - Supported Companies: ${companies.length}
@@ -3578,7 +3582,7 @@ Sitemap: https://${domain}/sitemap.xml
       }
 
       // How-to guide pages (Programmatic SEO) — base + 8 language variants
-      const guideSlugs = ['claim-compensation', 'unfreeze-balance', 'ai-predictions-guide', 'provably-fair-lottery', '1xbet-bonus-promo-guide', 'betting-wallet-tracking-guide', 'betting-odds-explained', 'bankroll-management-guide'];
+      const guideSlugs = ['claim-compensation', 'unfreeze-balance', 'ai-predictions-guide', 'provably-fair-lottery', '1xbet-bonus-promo-guide', 'betting-wallet-tracking-guide', 'betting-odds-explained', 'bankroll-management-guide', 'parlay-accumulator-guide', 'how-to-choose-betting-site'];
       for (const slug of guideSlugs) {
         urls += `  <url>
     <loc>https://${domain}/guides/${slug}</loc>
@@ -3677,7 +3681,9 @@ ${urls}</urlset>`;
     });
 
     // Serve static files (after dynamic routes) - index: false so catch-all handles index.html
-    app.use(express.static(distPath, { index: false }));
+    // Hashed build assets get immutable caching; everything else revalidates
+    app.use('/assets', express.static(path.join(distPath, 'assets'), { index: false, maxAge: '365d', immutable: true }));
+    app.use(express.static(distPath, { index: false, maxAge: '1h', etag: true, lastModified: true }));
 
     // APK Download Endpoint - serves the Android APK for all domains
     app.get('/download/apk', (req, res) => {
@@ -4104,7 +4110,7 @@ ${hreflangs(domainUrl, '/predictions')}
   <meta property="og:type" content="website" />
 ${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"CollectionPage","name":"${esc(listTitle)}","description":"${esc(listDesc)}","url":"${domainUrl}/predictions","inLanguage":"${lang}","publisher":{"@id":"${domainUrl}/#organization"}}</script>
+  {"@context":"https://schema.org","@type":"CollectionPage","name":"${esc(listTitle)}","description":"${esc(listDesc)}","url":"${domainUrl}/predictions","inLanguage":"${lang}","isPartOf":{"@id":"${domainUrl}/#website"},"publisher":{"@id":"${domainUrl}/#organization"},"mainEntity":{"@type":"ItemList","numberOfItems":${fixtures.length},"itemListElement":${JSON.stringify(fixtures.slice(0, 20).map((f, i) => ({ '@type': 'ListItem', position: i + 1, url: `${domainUrl}/predictions/${f.slug}` })))}}}</script>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.8}
