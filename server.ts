@@ -3198,6 +3198,7 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
       const companies = storage.getCompanies();
       const companyList = companies.map(c => `- [${c.name}](${url}/company/${c.id}): ${c.details?.substring(0, 120)}`).join('\n');
       const cmpList = getComparisonPairs().map(p => `- [${p.a.name} vs ${p.b.name}](${url}/compare/${p.slug})`).join('\n');
+      const leagueList = [...new Set(getFixtures().map(f => f.league))].map(n => `- ${url}/predictions/league/${slugify(n)} - ${n} predictions and predicted scores`).join('\n');
 
       const llms = `# ${profile.brand} - ${profile.tagline}
 
@@ -3233,6 +3234,7 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
 - ${url}/predictions - All AI match predictions, grouped by date
 - ${url}/predictions/today - Today's AI predictions (win probabilities and predicted scores)
 - ${url}/predictions/tomorrow - Tomorrow's AI predictions (ahead of kickoff)
+${leagueList}
 
 ## Company Pages
 ${companyList}
@@ -3306,6 +3308,7 @@ It helps users:
 - ${url}/predictions/today - Today's AI predictions with win probabilities, predicted scores and tactical analysis
 - ${url}/predictions/tomorrow - Tomorrow's AI predictions before kickoff
 - Each match page under /predictions/<slug> contains win/draw/loss probabilities, a predicted score and a generated tactical report
+- League pages live at /predictions/league/<league-slug> (for example /predictions/league/premier-league) and group all upcoming matches of that competition
 
 ## Comparisons
 - ${url}/compare - Hub with side-by-side comparisons of all supported bookmakers
@@ -3688,6 +3691,35 @@ Sitemap: https://${domain}/sitemap.xml
     <loc>https://${domain}/predictions/${day}?lang=${l}</loc>
     <lastmod>${now}</lastmod>
     <changefreq>hourly</changefreq>
+    <priority>0.8</priority>
+  </url>
+`;
+        }
+      }
+
+      // League prediction pages (7 leagues x 8 languages)
+      const leagueNames = [...new Set(getFixtures().map(f => f.league))];
+      for (const ln of leagueNames) {
+        const page = `/predictions/league/${slugify(ln)}`;
+        urls += `  <url>
+    <loc>https://${domain}${page}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+`;
+        for (const l of langs) {
+          urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}${page}${langQ(l)}"/>
+`;
+        }
+        urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}${page}"/>
+  </url>
+`;
+        for (const l of langs) {
+          if (l === 'ar') continue;
+          urls += `  <url>
+    <loc>https://${domain}${page}?lang=${l}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
 `;
@@ -4170,7 +4202,7 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
 
     // Predictions list page
     // Shared renderer for /predictions and daily /predictions/{today|tomorrow} pages
-    const renderPredictionsList = (req: import('express').Request, res: import('express').Response, dayKey?: string) => {
+    const renderPredictionsList = (req: import('express').Request, res: import('express').Response, dayKey?: string, leagueSlug?: string) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const domainUrl = `https://${domain}`;
       const lang = getLang(req);
@@ -4179,10 +4211,17 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
       const dayDate = dayKey === 'today' ? todayStr
         : dayKey === 'tomorrow' ? new Date(Date.now() + 86400000).toISOString().split('T')[0]
         : undefined;
-      const basePath = dayKey ? `/predictions/${dayKey}` : '/predictions';
       const allFixtures = getFixtures();
-      const fixtures = dayDate ? allFixtures.filter(f => f.date === dayDate) : allFixtures;
-      if (dayKey && fixtures.length === 0) {
+      const leagues = [...new Set(allFixtures.map(f => f.league))];
+      const league = leagueSlug ? leagues.find(n => slugify(n) === leagueSlug) : undefined;
+      if (leagueSlug && !league) {
+        return send404(res, profile, lang === 'ar' ? 'الدوري غير موجود.' : 'League not found.');
+      }
+      const basePath = leagueSlug ? `/predictions/league/${leagueSlug}` : dayKey ? `/predictions/${dayKey}` : '/predictions';
+      let fixtures = allFixtures;
+      if (dayDate) fixtures = fixtures.filter(f => f.date === dayDate);
+      if (league) fixtures = fixtures.filter(f => f.league === league);
+      if ((dayKey || leagueSlug) && fixtures.length === 0) {
         return send404(res, profile, lang === 'ar' ? 'لا توجد مباريات في هذا اليوم.' : 'No matches on this date.');
       }
       const byDate: Record<string, typeof fixtures> = {};
@@ -4202,17 +4241,25 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
       const dayTitle = dayKey === 'today' ? tt('pred.today_h1', lang)
         : dayKey === 'tomorrow' ? tt('pred.tomorrow_h1', lang)
         : dayKey ? `${tt('pred.day_h1', lang)} ${dayDate}` : '';
-      const listTitle = dayKey ? `${dayTitle} — ${dayDate} — ${profile.brand}` : `${tt('pred.list_h1', lang)} — ${profile.brand}`;
-      const listDesc = dayKey ? tt('pred.day_desc', lang, { date: dayDate!, brand: profile.brand }) : tt('pred.list_desc', lang, { brand: profile.brand });
-      const h1 = dayKey ? `📅 ${dayTitle}` : `⚽ ${tt('pred.list_h1', lang)}`;
+      const leagueTitle = league ? tt('pred.league_h1', lang, { league }) : '';
+      const listTitle = league ? `${leagueTitle} — ${profile.brand}`
+        : dayKey ? `${dayTitle} — ${dayDate} — ${profile.brand}` : `${tt('pred.list_h1', lang)} — ${profile.brand}`;
+      const listDesc = league ? tt('pred.league_desc', lang, { league: league!, brand: profile.brand })
+        : dayKey ? tt('pred.day_desc', lang, { date: dayDate!, brand: profile.brand }) : tt('pred.list_desc', lang, { brand: profile.brand });
+      const h1 = league ? `🏆 ${leagueTitle}` : dayKey ? `📅 ${dayTitle}` : `⚽ ${tt('pred.list_h1', lang)}`;
       const canonical = canonicalUrl(domainUrl, basePath, lang);
       const ogUrl = `${domainUrl}${basePath}${langQ(lang)}`;
-      const breadcrumbLd = dayKey ? `,"breadcrumb":{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"${esc(profile.brand)}","item":"${domainUrl}/"},{"@type":"ListItem","position":2,"name":"${esc(tt('pred.list_h1', lang))}","item":"${domainUrl}/predictions"},{"@type":"ListItem","position":3,"name":"${esc(dayTitle)}","item":"${domainUrl}${basePath}"}]}` : '';
+      const crumbName = league || dayTitle || tt('pred.list_h1', lang);
+      const breadcrumbLd = (dayKey || leagueSlug) ? `,"breadcrumb":{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"${esc(profile.brand)}","item":"${domainUrl}/"},{"@type":"ListItem","position":2,"name":"${esc(tt('pred.list_h1', lang))}","item":"${domainUrl}/predictions"},{"@type":"ListItem","position":3,"name":"${esc(crumbName)}","item":"${domainUrl}${basePath}"}]}` : '';
       const dayLinks = `
         <div class="daynav">
           <a href="/predictions/today${langQ(lang)}" class="${dayKey === 'today' ? 'active' : ''}">📅 ${tt('pred.today_h1', lang)}</a>
           <a href="/predictions/tomorrow${langQ(lang)}" class="${dayKey === 'tomorrow' ? 'active' : ''}">📅 ${tt('pred.tomorrow_h1', lang)}</a>
-          <a href="/predictions${langQ(lang)}" class="${!dayKey ? 'active' : ''}">⚽ ${tt('pred.list_h1', lang)}</a>
+          <a href="/predictions${langQ(lang)}" class="${!dayKey && !leagueSlug ? 'active' : ''}">⚽ ${tt('pred.list_h1', lang)}</a>
+        </div>`;
+      const leagueLinks = `
+        <div class="daynav">
+          ${leagues.map(n => `<a href="/predictions/league/${slugify(n)}${langQ(lang)}" class="${n === league ? 'active' : ''}">${esc(n)}</a>`).join('\n          ')}
         </div>`;
 
       const html = `<!doctype html>
@@ -4261,8 +4308,9 @@ ${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
     </nav>
     <h1>${h1}</h1>
     <p>${profile.intro}</p>
-    <p>${tt('pred.list_desc', lang, { brand: profile.brand })}</p>
+    <p>${listDesc}</p>
     ${dayLinks}
+    ${leagueLinks}
     <p>ℹ️ ${tt('pred.list_note', lang)} — ${tt('pred.updated_only', lang)} ${dayDate || todayStr}</p>
     ${rows}
     <div style="margin-top:30px;text-align:center;">
@@ -4283,6 +4331,8 @@ ${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
     // Daily pages — MUST be registered before /predictions/:slug
     app.get('/predictions/today', (req, res) => renderPredictionsList(req, res, 'today'));
     app.get('/predictions/tomorrow', (req, res) => renderPredictionsList(req, res, 'tomorrow'));
+    // League pages — MUST be before /predictions/:slug
+    app.get('/predictions/league/:lslug', (req, res) => renderPredictionsList(req, res, undefined, req.params.lslug));
 
     // Single prediction page
     app.get('/predictions/:slug', (req, res) => {
