@@ -3192,8 +3192,8 @@ ${urls}</urlset>`;
       res.send(sitemap);
     });
 
-    // Serve static files (after dynamic routes)
-    app.use(express.static(distPath));
+    // Serve static files (after dynamic routes) - index: false so catch-all handles index.html
+    app.use(express.static(distPath, { index: false }));
 
     // APK Download Endpoint - serves the Android APK for all domains
     app.get('/download/apk', (req, res) => {
