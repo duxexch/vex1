@@ -3231,6 +3231,7 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
 - ${url}/guides/how-to-choose-betting-site - 7 checks for a trusted betting site
 
 ## Sports Predictions
+- ${url}/best-betting-sites - Best betting sites ranking (bonuses, promo codes, apps)
 - ${url}/predictions - All AI match predictions, grouped by date
 - ${url}/predictions/today - Today's AI predictions (win probabilities and predicted scores)
 - ${url}/predictions/tomorrow - Tomorrow's AI predictions (ahead of kickoff)
@@ -3313,6 +3314,7 @@ It helps users:
 - Team pages live at /predictions/team/<team-slug> (for example /predictions/team/arsenal) and list every upcoming match involving that team
 
 ## Comparisons
+- ${url}/best-betting-sites - Ranked list of every supported bookmaker with bonuses, promo codes and a neutral FAQ
 - ${url}/compare - Hub with side-by-side comparisons of all supported bookmakers
 - Pair pages live at /compare/<bookmaker>-vs-<bookmaker> (for example /compare/1xbet-vs-melbet) and cover welcome bonus, promo code, mobile app and a neutral verdict
 
@@ -3792,6 +3794,31 @@ Sitemap: https://${domain}/sitemap.xml
   </url>
 `;
         }
+      }
+
+      // "Best betting sites" money page
+      urls += `  <url>
+    <loc>https://${domain}/best-betting-sites</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+`;
+      for (const l of langs) {
+        urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}/best-betting-sites${langQ(l)}"/>
+`;
+      }
+      urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}/best-betting-sites"/>
+  </url>
+`;
+      for (const l of langs) {
+        if (l === 'ar') continue;
+        urls += `  <url>
+    <loc>https://${domain}/best-betting-sites?lang=${l}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+`;
       }
 
       // Comparison pages (programmatic SEO): hub + all unique pairs
@@ -4308,6 +4335,15 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
         <div class="daynav">
           ${LEAGUE_TEAMS[league].map(k => `<a href="/predictions/team/${slugify(TEAMS[k].name)}${langQ(lang)}" class="${k === teamKey ? 'active' : ''}">${esc(TEAMS[k].name)}</a>`).join('\n          ')}
         </div>` : '';
+      const rankRows = (league && LEAGUE_TEAMS[league])
+        ? LEAGUE_TEAMS[league].map(k => ({ key: k, t: TEAMS[k] })).sort((x, y) => y.t.rating - x.t.rating)
+        : [];
+      const rankTable = rankRows.length ? `
+    <h2>📊 ${tt('pred.rank_title', lang, { league })}</h2>
+    <table class="rank">
+      <tr><th>#</th><th>${lang === 'ar' ? 'الفريق' : 'Team'}</th><th>${lang === 'ar' ? 'القوة' : 'Rating'}</th></tr>
+      ${rankRows.map((r, i) => `<tr><td>${i + 1}</td><td><a href="/predictions/team/${slugify(r.t.name)}${langQ(lang)}">${esc(r.t.name)}</a></td><td>${r.t.rating}</td></tr>`).join('\n      ')}
+    </table>` : '';
 
       const html = `<!doctype html>
 <html lang="${lang}" dir="${profile.dir}">
@@ -4345,6 +4381,12 @@ ${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
     .daynav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
     .daynav a{background:#1e293b;padding:7px 14px;border-radius:20px;text-decoration:none;color:#94a3b8;font-size:0.85rem;border:1px solid #334155}
     .daynav a.active,.daynav a:hover{border-color:#10b981;color:#10b981}
+    table.rank{width:100%;border-collapse:collapse;margin:10px 0 20px;background:#1e293b;border-radius:10px;overflow:hidden}
+    table.rank th,table.rank td{padding:9px 14px;text-align:left;border-bottom:1px solid #334155}
+    table.rank th{background:#0f172a;color:#10b981}
+    table.rank a{color:#34d399;text-decoration:none}
+    table.rank a:hover{color:#10b981}
+    table.rank tr:last-child td{border-bottom:none}
     footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
   ${siteSchemaTag(domainUrl, profile)}</head>
@@ -4359,6 +4401,7 @@ ${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
     ${dayLinks}
     ${leagueLinks}
     ${teamLinks}
+    ${rankTable}
     <p>ℹ️ ${tt('pred.list_note', lang)} — ${tt('pred.updated_only', lang)} ${dayDate || todayStr}</p>
     ${rows}
     <div style="margin-top:30px;text-align:center;">
@@ -4811,6 +4854,108 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
       res.send(html);
     });
 
+    // ==================== "BEST" MONEY PAGE (highest-volume query) ====================
+    app.get('/best-betting-sites', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const domainUrl = `https://${domain}`;
+      const lang = getLang(req);
+      const profile = getProfile(domain, lang);
+      const companies = storage.getCompanies().filter(c => c.is_active !== false);
+      const basePath = '/best-betting-sites';
+      const count = String(companies.length);
+      const T_ = (k: string, vars: Record<string, string> = {}) => tt(k, lang, { brand: profile.brand, count, ...vars });
+      const jstr = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ');
+      const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      const title = T_('best.h1');
+      const desc = T_('best.meta_desc');
+      const today = new Date().toISOString().split('T')[0];
+      const faq = [
+        { q: T_('best.faq1q'), a: T_('best.faq1a') },
+        { q: T_('best.faq2q'), a: T_('best.faq2a') },
+        { q: T_('best.faq3q'), a: T_('best.faq3a') },
+      ];
+      const cards = companies.map((c, i) => `
+      <div class="rank">
+        <div class="pos">#${i + 1}</div>
+        <div class="body">
+          <a class="name" href="/company/${c.id}${langQ(lang)}">${esc(c.name)}</a>
+          ${c.badge ? `<span class="badge">${esc(c.badge)}</span>` : ''}
+          ${c.bonus_text ? `<span class="bonus">${esc(c.bonus_text)}</span>` : ''}
+          ${c.promo_code ? `<div class="promo"><code>${esc(c.promo_code)}</code></div>` : ''}
+          <a class="cta" href="/company/${c.id}${langQ(lang)}">${tt('cmp.cta_visit', lang, { name: c.name })}</a>
+        </div>
+      </div>`).join('\n');
+
+      const html = `<!doctype html>
+<html lang="${lang}" dir="${profile.dir}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${esc(title)} | ${profile.brand}</title>
+  <meta name="description" content="${escAttr(desc)}" />
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
+  <link rel="canonical" href="${canonicalUrl(domainUrl, basePath, lang)}" />
+${hreflangs(domainUrl, basePath)}
+  <meta property="og:title" content="${escAttr(title)}" />
+  <meta property="og:description" content="${escAttr(desc)}" />
+  <meta property="og:url" content="${domainUrl}${basePath}${langQ(lang)}" />
+  <meta property="og:type" content="article" />
+${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"ItemList","name":"${jstr(title)}","description":"${jstr(desc)}","url":"${domainUrl}${basePath}","numberOfItems":${companies.length},"itemListElement":${JSON.stringify(companies.map((c, i) => ({ '@type': 'ListItem', position: i + 1, name: c.name, url: `${domainUrl}/company/${c.id}` })))}}</script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"FAQPage","mainEntity":${JSON.stringify(faq.map(f => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })))}}</script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"${jstr(tt('nav.home', lang))}","item":"${domainUrl}/"},{"@type":"ListItem","position":2,"name":"${jstr(title)}","item":"${domainUrl}${basePath}"}]}</script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.8}
+    .container{max-width:900px;margin:0 auto;padding:40px 20px}
+    h1{font-size:1.9rem;color:#10b981;margin-bottom:10px}
+    h2{font-size:1.4rem;color:#34d399;margin:30px 0 12px;border-bottom:2px solid #1e293b;padding-bottom:8px}
+    p{color:#94a3b8;margin-bottom:15px}
+    .rank{display:flex;gap:15px;background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px 18px;margin:10px 0;align-items:flex-start}
+    .pos{font-size:1.5rem;font-weight:800;color:#10b981;min-width:48px;text-align:center;background:#0f172a;border-radius:10px;padding:8px 4px}
+    .body{flex:1}
+    .name{font-size:1.2rem;font-weight:700;color:#e2e8f0;text-decoration:none}
+    .name:hover{color:#10b981}
+    .badge{display:inline-block;background:#10b981;color:#0f172a;padding:2px 10px;border-radius:20px;font-size:0.75rem;font-weight:bold;margin-left:8px;vertical-align:middle}
+    .bonus{display:block;color:#34d399;margin-top:4px;font-size:0.95rem}
+    .promo{margin-top:8px}
+    .promo code{background:#0f172a;color:#10b981;padding:4px 12px;border-radius:6px;font-weight:bold;letter-spacing:2px}
+    .cta{display:inline-block;margin-top:10px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:9px 20px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:0.9rem}
+    .faq{background:#1e293b;padding:15px 18px;border-radius:10px;margin:10px 0}
+    .faq strong{color:#34d399;display:block;margin-bottom:6px}
+    .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
+    .langbar a{color:#64748b;text-decoration:none}
+    .langbar a.active,.langbar a:hover{color:#10b981}
+    footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+  </style>
+  ${siteSchemaTag(domainUrl, profile)}</head>
+<body>
+  <div class="container">
+    <nav class="langbar">
+      ${LANGS.map(l => `<a href="${basePath}${langQ(l)}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
+    </nav>
+    <h1>🏆 ${title}</h1>
+    <p>${T_('best.intro')}</p>
+    <p style="font-size:0.85rem;color:#64748b;">${T_('best.updated')} ${today}</p>
+
+    <h2>🥇 ${T_('best.rank_title')}</h2>
+    ${cards}
+
+    <h2>❓ FAQ</h2>
+    ${faq.map(f => `<div class="faq"><strong>${tt('faq.q_prefix', lang)} ${esc(f.q)}</strong>${esc(f.a)}</div>`).join('\n    ')}
+  </div>
+  <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+</body>
+</html>`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Robots-Tag', 'index, follow, max-snippet:-1');
+      res.send(html);
+    });
+
     app.get('/companies', (req, res) => renderHub('companies', req, res));
     app.get('/guides', (req, res) => renderHub('guides', req, res));
 
@@ -4879,6 +5024,7 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
         <a href="${domainUrl}/guides/betting-odds-explained${langQ(lang)}" style="color:#10b981;">${tt('link.guide_odds', lang)}</a> |
         <a href="${domainUrl}/guides/bankroll-management-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_bankroll', lang)}</a> |
         <a href="${domainUrl}/compare${langQ(lang)}" style="color:#10b981;">${tt('link.compare', lang)}</a> |
+        <a href="${domainUrl}/best-betting-sites${langQ(lang)}" style="color:#10b981;">${tt('link.best', lang)}</a> |
         <a href="${domainUrl}/companies${langQ(lang)}" style="color:#10b981;">${tt('hub.companies_h1', lang)}</a> |
         <a href="${domainUrl}/guides${langQ(lang)}" style="color:#10b981;">${tt('hub.guides_h1', lang)}</a>
       </p>
