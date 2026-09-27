@@ -3227,6 +3227,11 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
 - ${url}/guides/parlay-accumulator-guide - How parlay and accumulator payouts work
 - ${url}/guides/how-to-choose-betting-site - 7 checks for a trusted betting site
 
+## Sports Predictions
+- ${url}/predictions - All AI match predictions, grouped by date
+- ${url}/predictions/today - Today's AI predictions (win probabilities and predicted scores)
+- ${url}/predictions/tomorrow - Tomorrow's AI predictions (ahead of kickoff)
+
 ## Company Pages
 ${companyList}
 
@@ -3289,6 +3294,12 @@ It helps users:
 - ${url}/guides/bankroll-management-guide - Bankroll management rules for long-term profit
 - ${url}/guides/parlay-accumulator-guide - Parlay and accumulator betting explained (legs, odds, cash out)
 - ${url}/guides/how-to-choose-betting-site - How to choose a trusted betting site (license, withdrawals, support)
+
+## Sports Predictions
+- ${url}/predictions - Full list of AI match predictions grouped by date
+- ${url}/predictions/today - Today's AI predictions with win probabilities, predicted scores and tactical analysis
+- ${url}/predictions/tomorrow - Tomorrow's AI predictions before kickoff
+- Each match page under /predictions/<slug> contains win/draw/loss probabilities, a predicted score and a generated tactical report
 
 ## Platform Statistics
 - Supported Companies: ${companies.length}
@@ -3633,6 +3644,33 @@ Sitemap: https://${domain}/sitemap.xml
   </url>
 `;
       }
+      // Daily prediction pages (today / tomorrow) — fresh crawlable content
+      for (const day of ['today', 'tomorrow']) {
+        urls += `  <url>
+    <loc>https://${domain}/predictions/${day}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>0.9</priority>
+`;
+        for (const l of langs) {
+          urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}/predictions/${day}${langQ(l)}"/>
+`;
+        }
+        urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}/predictions/${day}"/>
+  </url>
+`;
+        for (const l of langs) {
+          if (l === 'ar') continue;
+          urls += `  <url>
+    <loc>https://${domain}/predictions/${day}?lang=${l}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>0.8</priority>
+  </url>
+`;
+        }
+      }
+
       for (const f of getFixtures()) {
         urls += `  <url>
     <loc>https://${domain}/predictions/${f.slug}</loc>
@@ -4071,12 +4109,22 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
     // Predictions list page
-    app.get('/predictions', (req, res) => {
+    // Shared renderer for /predictions and daily /predictions/{today|tomorrow} pages
+    const renderPredictionsList = (req: import('express').Request, res: import('express').Response, dayKey?: string) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const domainUrl = `https://${domain}`;
       const lang = getLang(req);
       const profile = getProfile(domain, lang);
-      const fixtures = getFixtures();
+      const todayStr = new Date().toISOString().split('T')[0];
+      const dayDate = dayKey === 'today' ? todayStr
+        : dayKey === 'tomorrow' ? new Date(Date.now() + 86400000).toISOString().split('T')[0]
+        : undefined;
+      const basePath = dayKey ? `/predictions/${dayKey}` : '/predictions';
+      const allFixtures = getFixtures();
+      const fixtures = dayDate ? allFixtures.filter(f => f.date === dayDate) : allFixtures;
+      if (dayKey && fixtures.length === 0) {
+        return send404(res, profile, lang === 'ar' ? 'لا توجد مباريات في هذا اليوم.' : 'No matches on this date.');
+      }
       const byDate: Record<string, typeof fixtures> = {};
       for (const f of fixtures) (byDate[f.date] ||= []).push(f);
 
@@ -4091,8 +4139,21 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
           </a>`;
         }).join('')}`).join('');
 
-      const listTitle = `${tt('pred.list_h1', lang)} — ${profile.brand}`;
-      const listDesc = tt('pred.list_desc', lang, { brand: profile.brand });
+      const dayTitle = dayKey === 'today' ? tt('pred.today_h1', lang)
+        : dayKey === 'tomorrow' ? tt('pred.tomorrow_h1', lang)
+        : dayKey ? `${tt('pred.day_h1', lang)} ${dayDate}` : '';
+      const listTitle = dayKey ? `${dayTitle} — ${dayDate} — ${profile.brand}` : `${tt('pred.list_h1', lang)} — ${profile.brand}`;
+      const listDesc = dayKey ? tt('pred.day_desc', lang, { date: dayDate!, brand: profile.brand }) : tt('pred.list_desc', lang, { brand: profile.brand });
+      const h1 = dayKey ? `📅 ${dayTitle}` : `⚽ ${tt('pred.list_h1', lang)}`;
+      const canonical = canonicalUrl(domainUrl, basePath, lang);
+      const ogUrl = `${domainUrl}${basePath}${langQ(lang)}`;
+      const breadcrumbLd = dayKey ? `,"breadcrumb":{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"${esc(profile.brand)}","item":"${domainUrl}/"},{"@type":"ListItem","position":2,"name":"${esc(tt('pred.list_h1', lang))}","item":"${domainUrl}/predictions"},{"@type":"ListItem","position":3,"name":"${esc(dayTitle)}","item":"${domainUrl}${basePath}"}]}` : '';
+      const dayLinks = `
+        <div class="daynav">
+          <a href="/predictions/today${langQ(lang)}" class="${dayKey === 'today' ? 'active' : ''}">📅 ${tt('pred.today_h1', lang)}</a>
+          <a href="/predictions/tomorrow${langQ(lang)}" class="${dayKey === 'tomorrow' ? 'active' : ''}">📅 ${tt('pred.tomorrow_h1', lang)}</a>
+          <a href="/predictions${langQ(lang)}" class="${!dayKey ? 'active' : ''}">⚽ ${tt('pred.list_h1', lang)}</a>
+        </div>`;
 
       const html = `<!doctype html>
 <html lang="${lang}" dir="${profile.dir}">
@@ -4102,15 +4163,15 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
   <title>${esc(listTitle)}</title>
   <meta name="description" content="${esc(listDesc)}" />
   <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
-  <link rel="canonical" href="${canonicalUrl(domainUrl, '/predictions', lang)}" />
-${hreflangs(domainUrl, '/predictions')}
+  <link rel="canonical" href="${canonical}" />
+${hreflangs(domainUrl, basePath)}
   <meta property="og:title" content="${esc(listTitle)}" />
   <meta property="og:description" content="${esc(listDesc)}" />
-  <meta property="og:url" content="${domainUrl}/predictions${langQ(lang)}" />
+  <meta property="og:url" content="${ogUrl}" />
   <meta property="og:type" content="website" />
 ${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"CollectionPage","name":"${esc(listTitle)}","description":"${esc(listDesc)}","url":"${domainUrl}/predictions","inLanguage":"${lang}","isPartOf":{"@id":"${domainUrl}/#website"},"publisher":{"@id":"${domainUrl}/#organization"},"mainEntity":{"@type":"ItemList","numberOfItems":${fixtures.length},"itemListElement":${JSON.stringify(fixtures.slice(0, 20).map((f, i) => ({ '@type': 'ListItem', position: i + 1, url: `${domainUrl}/predictions/${f.slug}` })))}}}</script>
+  {"@context":"https://schema.org","@type":"CollectionPage","name":"${esc(listTitle)}","description":"${esc(listDesc)}","url":"${domainUrl}${basePath}","inLanguage":"${lang}","isPartOf":{"@id":"${domainUrl}/#website"},"publisher":{"@id":"${domainUrl}/#organization"},"mainEntity":{"@type":"ItemList","numberOfItems":${fixtures.length},"itemListElement":${JSON.stringify(fixtures.slice(0, 20).map((f, i) => ({ '@type': 'ListItem', position: i + 1, url: `${domainUrl}/predictions/${f.slug}` })))}}${breadcrumbLd}}</script>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.8}
@@ -4127,18 +4188,22 @@ ${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
     .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
     .langbar a{color:#64748b;text-decoration:none}
     .langbar a.active,.langbar a:hover{color:#10b981}
+    .daynav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+    .daynav a{background:#1e293b;padding:7px 14px;border-radius:20px;text-decoration:none;color:#94a3b8;font-size:0.85rem;border:1px solid #334155}
+    .daynav a.active,.daynav a:hover{border-color:#10b981;color:#10b981}
     footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
   ${siteSchemaTag(domainUrl, profile)}</head>
 <body>
   <div class="container">
     <nav class="langbar">
-      ${LANGS.map(l => `<a href="/predictions${langQ(l)}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
+      ${LANGS.map(l => `<a href="/predictions${basePath.slice('/predictions'.length)}${langQ(l)}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
     </nav>
-    <h1>⚽ ${tt('pred.list_h1', lang)}</h1>
+    <h1>${h1}</h1>
     <p>${profile.intro}</p>
     <p>${tt('pred.list_desc', lang, { brand: profile.brand })}</p>
-    <p>ℹ️ ${tt('pred.list_note', lang)} — ${tt('pred.updated_only', lang)} ${new Date().toISOString().split('T')[0]}</p>
+    ${dayLinks}
+    <p>ℹ️ ${tt('pred.list_note', lang)} — ${tt('pred.updated_only', lang)} ${dayDate || todayStr}</p>
     ${rows}
     <div style="margin-top:30px;text-align:center;">
       <a href="/guides/ai-predictions-guide${langQ(lang)}" class="cta">📖 ${tt('pred.cta_guide', lang)}</a>
@@ -4152,7 +4217,12 @@ ${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('X-Robots-Tag', 'index, follow, max-snippet:-1');
       res.send(html);
-    });
+    };
+
+    app.get('/predictions', (req, res) => renderPredictionsList(req, res));
+    // Daily pages — MUST be registered before /predictions/:slug
+    app.get('/predictions/today', (req, res) => renderPredictionsList(req, res, 'today'));
+    app.get('/predictions/tomorrow', (req, res) => renderPredictionsList(req, res, 'tomorrow'));
 
     // Single prediction page
     app.get('/predictions/:slug', (req, res) => {
@@ -4412,6 +4482,14 @@ ${socialMeta(domainUrl, escA(pageTitle), escA(desc))}
       const domainUrl = `https://${domain}`;
       const lang = getLang(req);
       const profile = getProfile(domain, lang);
+      // Real 404 for missing static files (no soft-404 HTML 200 for hashed assets)
+      const lastSeg = req.path.split('/').pop() || '';
+      if (lastSeg.includes('.')) {
+        res.status(404);
+        res.setHeader('X-Robots-Tag', 'noindex');
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        return res.type('text/plain').send('404 Not Found');
+      }
       const filePath = path.join(distPath, 'index.html');
       let html = fs.readFileSync(filePath, 'utf8');
 
