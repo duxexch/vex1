@@ -41,22 +41,40 @@ const ActivityTab = lazy(() => import('./components/ActivityTab').then(m => ({ d
 const AiSportsHubTab = lazy(() => import('./components/AiSportsHubTab').then(m => ({ default: m.AiSportsHubTab })));
 const UnluckyWallTab = lazy(() => import('./components/UnluckyWallTab').then(m => ({ default: m.UnluckyWallTab })));
 const LotteryTab = lazy(() => import('./components/LotteryTab').then(m => ({ default: m.LotteryTab })));
-import { RegisterModal } from './components/RegisterModal';
-import { CompensationRequestModal } from './components/CompensationRequestModal';
-import { CompanyDetailsModal } from './components/CompanyDetailsModal';
-import { PhoneVerificationModal } from './components/PhoneVerificationModal';
-import { SecurityAndSettingsModal } from './components/SecurityAndSettingsModal';
-import { SecurityAnalysisModal } from './components/SecurityAnalysisModal';
-import { NotificationCenterModal } from './components/NotificationCenterModal';
+const RegisterModal = lazy(() => import('./components/RegisterModal').then(m => ({ default: m.RegisterModal })));
+const CompensationRequestModal = lazy(() =>
+  import('./components/CompensationRequestModal').then(m => ({ default: m.CompensationRequestModal })),
+);
+const CompanyDetailsModal = lazy(() =>
+  import('./components/CompanyDetailsModal').then(m => ({ default: m.CompanyDetailsModal })),
+);
+const PhoneVerificationModal = lazy(() =>
+  import('./components/PhoneVerificationModal').then(m => ({ default: m.PhoneVerificationModal })),
+);
+const SecurityAndSettingsModal = lazy(() =>
+  import('./components/SecurityAndSettingsModal').then(m => ({ default: m.SecurityAndSettingsModal })),
+);
+const SecurityAnalysisModal = lazy(() =>
+  import('./components/SecurityAnalysisModal').then(m => ({ default: m.SecurityAnalysisModal })),
+);
+const NotificationCenterModal = lazy(() =>
+  import('./components/NotificationCenterModal').then(m => ({ default: m.NotificationCenterModal })),
+);
 const AdminDashboardModal = lazy(() =>
   import('./components/AdminDashboardModal').then(m => ({ default: m.AdminDashboardModal })),
 );
-import { AiMatchAnalysisModal } from './components/AiMatchAnalysisModal';
-import { ResponsibleGamingModal } from './components/ResponsibleGamingModal';
-import { LegalTermsModal } from './components/LegalTermsModal';
-import { DirectDepositUnfreezeModal } from './components/DirectDepositUnfreezeModal';
+const AiMatchAnalysisModal = lazy(() =>
+  import('./components/AiMatchAnalysisModal').then(m => ({ default: m.AiMatchAnalysisModal })),
+);
+const ResponsibleGamingModal = lazy(() =>
+  import('./components/ResponsibleGamingModal').then(m => ({ default: m.ResponsibleGamingModal })),
+);
+const LegalTermsModal = lazy(() => import('./components/LegalTermsModal').then(m => ({ default: m.LegalTermsModal })));
+const DirectDepositUnfreezeModal = lazy(() =>
+  import('./components/DirectDepositUnfreezeModal').then(m => ({ default: m.DirectDepositUnfreezeModal })),
+);
 import { Toast } from './components/Toast';
-import { IosInstallModal } from './components/IosInstallModal';
+const IosInstallModal = lazy(() => import('./components/IosInstallModal').then(m => ({ default: m.IosInstallModal })));
 import { GoldenHourBanner } from './components/GoldenHourBanner';
 
 export default function App() {
@@ -836,6 +854,8 @@ export default function App() {
       />
 
       {/* 2-Step Account Registration Modal */}
+      {!!registerModalCompany && (
+      <Suspense fallback={null}>
       <RegisterModal
         company={registerModalCompany}
         isOpen={!!registerModalCompany}
@@ -847,8 +867,12 @@ export default function App() {
         lang={lang}
         onCopyToast={showToast}
       />
+      </Suspense>
+      )}
 
       {/* Company Details & Perks Modal */}
+      {!!detailsModalCompany && (
+      <Suspense fallback={null}>
       <CompanyDetailsModal
         company={detailsModalCompany}
         isOpen={!!detailsModalCompany}
@@ -860,8 +884,12 @@ export default function App() {
         lang={lang}
         onCopyToast={showToast}
       />
+      </Suspense>
+      )}
 
       {/* Compensation Request Modal */}
+      {compModalOpen && (
+      <Suspense fallback={null}>
       <CompensationRequestModal
         accounts={accounts}
         initialCompanyId={compModalCompanyId}
@@ -873,8 +901,12 @@ export default function App() {
         }}
         lang={lang}
       />
+      </Suspense>
+      )}
 
       {/* Real Phone Number Linking & OTP Modal */}
+      {phoneModalOpen && (
+      <Suspense fallback={null}>
       <PhoneVerificationModal
         isOpen={phoneModalOpen}
         onClose={() => setPhoneModalOpen(false)}
@@ -882,8 +914,12 @@ export default function App() {
         onSuccess={loadData}
         lang={lang}
       />
+      </Suspense>
+      )}
 
       {/* Security, PIN & Apple Guideline 5.1.1 Account Purge Modal */}
+      {settingsOpen && (
+      <Suspense fallback={null}>
       <SecurityAndSettingsModal
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -899,15 +935,23 @@ export default function App() {
         displayCurrency={displayCurrency}
         onDisplayCurrencyChange={setDisplayCurrency}
       />
+      </Suspense>
+      )}
 
       {/* Security Analysis & Vulnerability Audit Modal */}
+      {securityAnalysisOpen && (
+      <Suspense fallback={null}>
       <SecurityAnalysisModal
         isOpen={securityAnalysisOpen}
         onClose={() => setSecurityAnalysisOpen(false)}
         lang={lang}
       />
+      </Suspense>
+      )}
 
       {/* Notification Center & AI Push Notifications */}
+      {notifCenterOpen && (
+      <Suspense fallback={null}>
       <NotificationCenterModal
         isOpen={notifCenterOpen}
         onClose={() => setNotifCenterOpen(false)}
@@ -922,6 +966,8 @@ export default function App() {
         }}
         lang={lang}
       />
+      </Suspense>
+      )}
 
       {/* Admin Dashboard Hub (Custom Branding, Approvals, News, Store Compliance) */}
       {adminDashboardOpen && (
@@ -963,28 +1009,42 @@ export default function App() {
       )}
 
       {/* AI Match Analysis Modal (Gemini 3.8 Flash Tactical Prediction) */}
+      {!!selectedFixtureForAi && (
+      <Suspense fallback={null}>
       <AiMatchAnalysisModal
         fixture={selectedFixtureForAi}
         isOpen={!!selectedFixtureForAi}
         onClose={() => setSelectedFixtureForAi(null)}
         lang={lang}
       />
+      </Suspense>
+      )}
 
       {/* Responsible Gaming & Age Gate (+18) Modal */}
+      {responsibleGamingOpen && (
+      <Suspense fallback={null}>
       <ResponsibleGamingModal
         isOpen={responsibleGamingOpen}
         onClose={() => setResponsibleGamingOpen(false)}
         lang={lang}
       />
+      </Suspense>
+      )}
 
       {/* Legal Terms & Privacy Policy (Apple Guideline 5.1.1 & Google Play) */}
+      {legalTermsOpen && (
+      <Suspense fallback={null}>
       <LegalTermsModal
         isOpen={legalTermsOpen}
         onClose={() => setLegalTermsOpen(false)}
         lang={lang}
       />
+      </Suspense>
+      )}
 
       {/* Direct Deposit Unfreeze Modal (1:1 matching deposit unfreeze request) */}
+      {depositUnfreezeModalOpen && (
+      <Suspense fallback={null}>
       <DirectDepositUnfreezeModal
         isOpen={depositUnfreezeModalOpen}
         onClose={() => setDepositUnfreezeModalOpen(false)}
@@ -995,13 +1055,19 @@ export default function App() {
         onSuccess={loadData}
         showToast={showToast}
       />
+      </Suspense>
+      )}
 
       {/* iOS Safari Install Guide Modal */}
+      {iosInstallModalOpen && (
+      <Suspense fallback={null}>
       <IosInstallModal
         isOpen={iosInstallModalOpen}
         onClose={() => setIosInstallModalOpen(false)}
         lang={lang}
       />
+      </Suspense>
+      )}
 
       {/* Global Copy Success Toast Notification */}
       <Toast message={toastMessage} lang={lang} />
