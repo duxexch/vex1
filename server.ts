@@ -5029,10 +5029,12 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
         <a href="${domainUrl}/guides${langQ(lang)}" style="color:#10b981;">${tt('hub.guides_h1', lang)}</a>
       </p>
       <nav style="margin-top:12px;font-size:0.9rem;">
-        ${LANGS.map(l => `<a href="${domainUrl}/${langQ(l)}" hreflang="${l}" style="color:${l === lang ? '#10b981' : '#475569'};text-decoration:none;margin-left:8px;">${l.toUpperCase()}</a>`).join('')}
+        ${LANGS.map(l => `<a href="${domainUrl}/${langQ(l)}" hreflang="${l}" style="color:${l === lang ? '#10b981' : '#475569'};text-decoration:none;display:inline-block;padding:6px 8px;margin:0 4px;min-width:24px;min-height:24px;text-align:center;">${l.toUpperCase()}</a>`).join('')}
       </nav>
     </section>`;
-      html = html.replace('</body>', `${seoBlock}\n  </body>`);
+      // Inject inside #root so React's initial render replaces it in place
+      // (avoids pushing the section down = CLS 1.0 layout shift)
+      html = html.replace('<div id="root"></div>', `<div id="root">${seoBlock}</div>`);
 
       // Inject Google Search Console verification meta tags
       const gscMeta = `

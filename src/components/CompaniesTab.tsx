@@ -66,6 +66,13 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS['ar'];
   const isAr = lang === 'ar';
+  const darken = (hex: string, amt = 0.45) => {
+    const n = parseInt(hex.replace('#', ''), 16);
+    const r = Math.round(((n >> 16) & 255) * (1 - amt));
+    const g = Math.round(((n >> 8) & 255) * (1 - amt));
+    const b = Math.round((n & 255) * (1 - amt));
+    return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+  };
 
   if (isLoading || (companies.length === 0 && isLoading)) {
     return <CompaniesTabSkeleton />;
@@ -556,6 +563,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                                   <div className="flex items-center gap-1.5">
                                     <button
                                       onClick={(e) => { e.stopPropagation(); toggleFavorite(company.id); }}
+                                      aria-label={isAr ? 'إضافة للمفضلة' : 'Add to favorites'}
                                       className="text-slate-300 hover:text-amber-400 transition-colors cursor-pointer"
                                     >
                                       <Star
@@ -569,7 +577,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                                         style={{
                                           backgroundColor: `${company.color}15`,
                                           borderColor: `${company.color}35`,
-                                          color: company.color,
+                                          color: darken(company.color),
                                         }}
                                       >
                                         {company.badge}
@@ -592,7 +600,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                                 }}
                                 title={t.copyPromo}
                               >
-                                <span className="font-mono font-black text-xs" style={{ color: company.color }}>
+                                <span className="font-mono font-black text-xs" style={{ color: darken(company.color) }}>
                                   {company.promo_code}
                                 </span>
                                 {copiedId === company.id ? (
@@ -673,7 +681,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                                     onClick={() => onRequestComp(company.id)}
                                     className="h-8 px-2.5 rounded-lg text-xs font-bold border flex items-center gap-1 transition-colors cursor-pointer"
                                     style={{
-                                      color: company.color,
+                                      color: darken(company.color),
                                       borderColor: `${company.color}40`,
                                       backgroundColor: `${company.color}10`,
                                     }}
@@ -730,6 +738,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                           <div className="flex items-center gap-2.5 min-w-0 flex-1">
                             <button
                               onClick={(e) => { e.stopPropagation(); toggleFavorite(company.id); }}
+                              aria-label={isAr ? 'إضافة للمفضلة' : 'Add to favorites'}
                               className="text-slate-300 hover:text-amber-400 transition-colors cursor-pointer shrink-0 -ml-1 p-1"
                             >
                               <Star
@@ -759,7 +768,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                               style={{
                                 backgroundColor: `${company.color}12`,
                                 borderColor: `${company.color}35`,
-                                color: company.color,
+                                color: darken(company.color),
                               }}
                             >
                               {company.badge}
@@ -783,7 +792,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                             </span>
                             <span
                               className="font-mono font-black text-xs tracking-wider block"
-                              style={{ color: company.color }}
+                              style={{ color: darken(company.color) }}
                             >
                               {company.promo_code}
                             </span>
