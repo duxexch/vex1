@@ -10,6 +10,9 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { storage } from './server/storage';
 import { ServerCompensationRequest } from './server/seedData';
 import { agentEngine, calculateNotificationTiming } from './server/agentEngine';
+import { LANGS, isLang, tt, type Lang } from './server/i18nUi';
+import { getProfileText, type ProfileText } from './server/i18nProfiles';
+import { getGuide } from './server/i18nGuides';
 
 const currentFilename = '';
 const currentDirname = process.cwd();
@@ -3094,58 +3097,40 @@ async function setupServer() {
     const distPath = path.join(process.cwd(), 'dist');
 
     // ==================== DOMAIN PROFILES (avoid duplicate content across 5 domains) ====================
-    const DOMAIN_PROFILES: Record<string, {
-      brand: string; tagline: string; focus: string; description: string; intro: string; h1: string;
-    }> = {
-      'vex.deals': {
-        brand: 'VEX Deals',
-        tagline: 'منصة التعويضات والولاء الرسمية',
-        focus: 'betting compensation, wallet tracking, loyalty rewards',
-        description: 'VEX Deals هي المنصة الرسمية لتعويض خسائر المراهنات وتتبع المحافظ وتوقعات المباريات بالذكاء الاصطناعي.',
-        intro: 'VEX Deals هي المنصة الرائدة في مجال تعويض خسائر المراهنات وتتبع أرصدة المحافظ عبر أكثر من 12 شركة معتمدة، مع توقعات مباريات مدعومة بالذكاء الاصطناعي ويانصيب تكافلي عادل.',
-        h1: 'VEX Deals — منصة التعويضات والولاء الرسمية',
-      },
-      'betjam.sbs': {
-        brand: 'BetJam',
-        tagline: 'مركز استرداد خسائر المراهنات',
-        focus: 'betting loss recovery, cashback, refund requests',
-        description: 'BetJam متخصص في استرداد خسائر المراهنات واسترجاع النسب النقدية من شركات المقامرة المعتمدة.',
-        intro: 'BetJam يساعدك على استعادة جزء من خسائرك عبر طلبات استرداد نقدي مباشرة، مع متابعة لحظية لأرصدة حساباتك في شركات المراهنات وتحويلات فورية لمحفظتك.',
-        h1: 'BetJam — استرداد خسائر المراهنات والنقد المسترد',
-      },
-      '1xbetservices.com': {
-        brand: '1xBet Services',
-        tagline: 'دليل خدمات ودعم 1xBet الشامل',
-        focus: '1xbet support, 1xbet bonus, 1xbet promo code, 1xbet apk',
-        description: 'دليل شامل لخدمات 1xBet: أكواد الخصم، الدعم الفني، تحميل التطبيق، وأكواد الإحالة.',
-        intro: '1xBet Services هو دليلك الشامل لكل ما يتعلق بـ 1xBet: أحدث أكواد الخصم والبونص الترحيبي، حلول الدعم الفني، روابط تحميل التطبيق APK، وشرح نظام الإحالات والأرباح.',
-        h1: '1xBet Services — الدليل الشامل لخدمات 1xBet',
-      },
-      'vixo.uno': {
-        brand: 'Vixo',
-        tagline: 'توقعات المباريات بالذكاء الاصطناعي',
-        focus: 'AI football predictions, match analysis, win probability',
-        description: 'Vixo يقدم توقعات مباريات دقيقة بالذكاء الاصطناعي مع تحليلات تكتيكية واحتمالات فوز.',
-        intro: 'Vixo منصة التحليل الرياضي بالذكاء الاصطناعي: توقعات دقيقة للمباريات باستخدام نموذج Gemini، مع احتمالات فوز ونتائج متوقعة وملخصات تكتيكية ومؤشر ثقة لكل مباراة.',
-        h1: 'Vixo — توقعات المباريات بالذكاء الاصطناعي',
-      },
-      'betongame.cloud': {
-        brand: 'BetoGame',
-        tagline: 'اليانصيب التكافلي والتحليلات الرياضية',
-        focus: 'provably fair lottery, jackpot, sports analytics',
-        description: 'BetoGame يجمع بين اليانصيب التكافلي المُثبت العدالة والتحليلات الرياضية المتقدمة.',
-        intro: 'BetoGame وجهتك لليانصيب التكافلي المُثبت العدالة بتشفير SHA-256، مع جوائز Jackpot تصل إلى 10,000$، وتحليلات رياضية متقدمة وتوقعات مباريات يومية.',
-        h1: 'BetoGame — اليانصيب التكافلي والتحليلات الرياضية',
-      },
+    // brand + focus are domain identity constants; tagline/description/intro/h1 come from i18nProfiles (8 languages)
+    const DOMAIN_META: Record<string, { brand: string; focus: string }> = {
+      'vex.deals': { brand: 'VEX Deals', focus: 'betting compensation, wallet tracking, loyalty rewards' },
+      'betjam.sbs': { brand: 'BetJam', focus: 'betting loss recovery, cashback, refund requests' },
+      '1xbetservices.com': { brand: '1xBet Services', focus: '1xbet support, 1xbet bonus, 1xbet promo code, 1xbet apk' },
+      'vixo.uno': { brand: 'Vixo', focus: 'AI football predictions, match analysis, win probability' },
+      'betongame.cloud': { brand: 'BetoGame', focus: 'provably fair lottery, jackpot, sports analytics' },
     };
-    const DEFAULT_PROFILE = DOMAIN_PROFILES['vex.deals'];
-    const getProfile = (domain: string) => DOMAIN_PROFILES[domain] || DEFAULT_PROFILE;
+    const DEFAULT_META = DOMAIN_META['vex.deals'];
+
+    type Profile = ProfileText & { brand: string; focus: string; lang: Lang; dir: 'rtl' | 'ltr' };
+    const getProfile = (domain: string, langStr?: string): Profile => {
+      const meta = DOMAIN_META[domain] || DEFAULT_META;
+      const lang: Lang = isLang(langStr) ? langStr : 'ar';
+      return {
+        brand: meta.brand, focus: meta.focus, lang,
+        dir: lang === 'ar' ? 'rtl' : 'ltr',
+        ...getProfileText(domain, lang),
+      };
+    };
+    const getLang = (req: { query: Record<string, unknown> }): Lang => isLang(req.query.lang) ? req.query.lang : 'ar';
+
+    // hreflang alternate tags for a page (all 8 languages + x-default)
+    const hreflangs = (domainUrl: string, path: string): string => {
+      const sep = path.includes('?') ? '&' : '?';
+      return LANGS.map(l => `  <link rel="alternate" hreflang="${l}" href="${domainUrl}${path}${sep}lang=${l}" />`).join('\n')
+        + `\n  <link rel="alternate" hreflang="x-default" href="${domainUrl}${path}" />`;
+    };
 
     // ==================== GEO: llms.txt for AI Search Engines ====================
     app.get('/llms.txt', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const url = `https://${domain}`;
-      const profile = getProfile(domain);
+      const profile = getProfile(domain, 'en');
       const companies = storage.getCompanies();
       const companyList = companies.map(c => `- [${c.name}](${url}/company/${c.id}): ${c.details?.substring(0, 120)}`).join('\n');
 
@@ -3205,7 +3190,7 @@ Last updated: ${new Date().toISOString().split('T')[0]}
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const url = `https://${domain}`;
       const companies = storage.getCompanies();
-      const profile = getProfile(domain);
+      const profile = getProfile(domain, 'en');
       const full = `# ${profile.brand} Platform - Complete Documentation for AI Systems
 
 ## About ${profile.brand}
@@ -3411,7 +3396,7 @@ Sitemap: https://${domain}/sitemap.xml
         }
       }
 
-      // How-to guide pages (Programmatic SEO)
+      // How-to guide pages (Programmatic SEO) — base + 8 language variants
       const guideSlugs = ['claim-compensation', 'unfreeze-balance', 'ai-predictions-guide', 'provably-fair-lottery'];
       for (const slug of guideSlugs) {
         urls += `  <url>
@@ -3419,8 +3404,23 @@ Sitemap: https://${domain}/sitemap.xml
     <lastmod>${now}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
+`;
+        for (const l of langs) {
+          urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}/guides/${slug}?lang=${l}"/>
+`;
+        }
+        urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}/guides/${slug}"/>
   </url>
 `;
+        for (const l of langs) {
+          urls += `  <url>
+    <loc>https://${domain}/guides/${slug}?lang=${l}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+`;
+        }
       }
 
       // Prediction pages (daily fresh content)
@@ -3429,8 +3429,23 @@ Sitemap: https://${domain}/sitemap.xml
     <lastmod>${now}</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+`;
+      for (const l of langs) {
+        urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}/predictions?lang=${l}"/>
+`;
+      }
+      urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}/predictions"/>
   </url>
 `;
+      for (const l of langs) {
+        urls += `  <url>
+    <loc>https://${domain}/predictions?lang=${l}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+`;
+      }
       for (const f of getFixtures()) {
         urls += `  <url>
     <loc>https://${domain}/predictions/${f.slug}</loc>
@@ -3470,7 +3485,8 @@ ${urls}</urlset>`;
     app.get('/company/:id', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const domainUrl = `https://${domain}`;
-      const profile = getProfile(domain);
+      const lang = getLang(req);
+      const profile = getProfile(domain, lang);
       const companies = storage.getCompanies();
       const company = companies.find(c => c.id === req.params.id);
       if (!company) return res.status(404).redirect('/');
@@ -3478,35 +3494,37 @@ ${urls}</urlset>`;
       const name = company.name;
       const details = company.details || '';
       const promo = company.promo_code || '';
-      const lang = (req.query.lang as string) || 'ar';
+      const pagePath = `/company/${company.id}`;
+      const T_ = (k: string, vars: Record<string, string> = {}) => tt(k, lang, { name, brand: profile.brand, promo, ...vars });
+      const jstr = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ');
 
       const html = `<!doctype html>
-<html lang="${lang}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">
+<html lang="${lang}" dir="${profile.dir}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${name} - دليل التعويضات والبونص الكامل | ${profile.brand}</title>
-  <meta name="description" content="كل ما تحتاج معرفته عن ${name} عبر ${profile.brand}: أكواد الخصم، طلبات التعويض، تحميل التطبيق، وأفضل استراتيجيات الربح. ${details.substring(0, 120)}" />
-  <meta name="keywords" content="${name} تعويض, ${name} بونص, ${name} برومو كود, ${name} APK, ${name} تحميل, ${name} review, ${profile.focus}" />
+  <title>${name} - ${T_('company.subtitle')} | ${profile.brand}</title>
+  <meta name="description" content="${T_('company.meta_desc')} ${details.substring(0, 120)}" />
+  <meta name="keywords" content="${name} ${profile.focus}" />
   <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
-  <link rel="canonical" href="${domainUrl}/company/${company.id}" />
-  <link rel="alternate" hreflang="ar" href="${domainUrl}/company/${company.id}?lang=ar" />
-  <link rel="alternate" hreflang="en" href="${domainUrl}/company/${company.id}?lang=en" />
-  <link rel="alternate" hreflang="x-default" href="${domainUrl}/company/${company.id}" />
+  <link rel="canonical" href="${domainUrl}${pagePath}?lang=${lang}" />
+${hreflangs(domainUrl, pagePath)}
   <meta property="og:title" content="${name} - ${profile.brand}" />
-  <meta property="og:description" content="دليل ${name} الكامل على ${profile.brand}: تعويضات، بونص، تحميل" />
-  <meta property="og:url" content="${domainUrl}/company/${company.id}" />
+  <meta property="og:description" content="${T_('company.og_desc')}" />
+  <meta property="og:url" content="${domainUrl}${pagePath}?lang=${lang}" />
   <meta property="og:type" content="article" />
+  <meta property="og:locale" content="${lang === 'ar' ? 'ar_AR' : lang + '_' + lang.toUpperCase()}" />
 
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "Article",
-    "headline": "${name} - دليل التعويضات والبونص الكامل",
-    "description": "${details.replace(/"/g, '').substring(0, 200)}",
-    "url": "${domainUrl}/company/${company.id}",
-    "author": {"@type": "Organization", "name": "VEX Deals", "url": "${domainUrl}"},
-    "publisher": {"@type": "Organization", "name": "VEX Deals", "url": "${domainUrl}", "logo": {"@type": "ImageObject", "url": "${domainUrl}/icon-192.svg"}},
+    "headline": "${jstr(`${name} - ${T_('company.subtitle')}`)}",
+    "description": "${jstr(T_('company.meta_desc'))}",
+    "url": "${domainUrl}${pagePath}",
+    "inLanguage": "${lang}",
+    "author": {"@type": "Organization", "name": "${jstr(profile.brand)}", "url": "${domainUrl}"},
+    "publisher": {"@type": "Organization", "name": "${jstr(profile.brand)}", "url": "${domainUrl}", "logo": {"@type": "ImageObject", "url": "${domainUrl}/icon-192.svg"}},
     "dateModified": "${new Date().toISOString()}"
   }
   </script>
@@ -3515,9 +3533,9 @@ ${urls}</urlset>`;
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     "itemListElement": [
-      {"@type": "ListItem", "position": 1, "name": "Home", "item": "${domainUrl}/"},
-      {"@type": "ListItem", "position": 2, "name": "Companies", "item": "${domainUrl}/#companies"},
-      {"@type": "ListItem", "position": 3, "name": "${name}", "item": "${domainUrl}/company/${company.id}"}
+      {"@type": "ListItem", "position": 1, "name": "${jstr(tt('nav.home', lang))}", "item": "${domainUrl}/"},
+      {"@type": "ListItem", "position": 2, "name": "${jstr(tt('nav.companies', lang))}", "item": "${domainUrl}/#companies"},
+      {"@type": "ListItem", "position": 3, "name": "${jstr(name)}", "item": "${domainUrl}${pagePath}"}
     ]
   }
   </script>
@@ -3526,9 +3544,10 @@ ${urls}</urlset>`;
     "@context": "https://schema.org",
     "@type": "FAQPage",
     "mainEntity": [
-      {"@type": "Question", "name": "How to claim ${name} compensation?", "acceptedAnswer": {"@type": "Answer", "text": "Register through VEX Deals, verify your account, submit your betting history, and receive approved compensation directly to your wallet."}},
-      {"@type": "Question", "name": "What is the ${name} promo code?", "acceptedAnswer": {"@type": "Answer", "text": "The current promo code is ${promo}. Use it during registration to get the best welcome bonus."}},
-      {"@type": "Question", "name": "How to download ${name} APK?", "acceptedAnswer": {"@type": "Answer", "text": "Download the latest ${name} APK from VEX Deals. The APK is tested and safe for Android devices."}}
+      {"@type": "Question", "name": "${jstr(T_('company.faq1q'))}", "acceptedAnswer": {"@type": "Answer", "text": "${jstr(T_('company.faq1a'))}"}},
+      {"@type": "Question", "name": "${jstr(T_('company.faq2q'))}", "acceptedAnswer": {"@type": "Answer", "text": "${jstr(T_('company.faq2a'))}"}},
+      {"@type": "Question", "name": "${jstr(T_('company.faq3q'))}", "acceptedAnswer": {"@type": "Answer", "text": "${jstr(T_('company.faq3a'))}"}},
+      {"@type": "Question", "name": "${jstr(T_('company.faq4q'))}", "acceptedAnswer": {"@type": "Answer", "text": "${jstr(T_('company.faq4a'))}"}}
     ]
   }
   </script>
@@ -3536,11 +3555,10 @@ ${urls}</urlset>`;
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Tajawal', sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.8; }
+    body { font-family: 'Tajawal', 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.8; }
     .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
     h1 { font-size: 2.2rem; color: #10b981; margin-bottom: 10px; }
     h2 { font-size: 1.5rem; color: #34d399; margin: 30px 0 15px; border-bottom: 2px solid #1e293b; padding-bottom: 8px; }
-    h3 { font-size: 1.2rem; color: #6ee7b7; margin: 20px 0 10px; }
     p { margin-bottom: 15px; color: #94a3b8; }
     .badge { display: inline-block; background: #10b981; color: #0f172a; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 0.85rem; margin: 5px 5px 5px 0; }
     .promo { background: #1e293b; border: 2px dashed #10b981; padding: 20px; border-radius: 12px; text-align: center; margin: 20px 0; }
@@ -3558,75 +3576,81 @@ ${urls}</urlset>`;
     .nav { background: #1e293b; padding: 10px 20px; display: flex; gap: 15px; flex-wrap: wrap; }
     .nav a { color: #94a3b8; text-decoration: none; font-size: 0.9rem; }
     .nav a:hover { color: #10b981; }
+    .langbar { background: #0b1220; padding: 8px 20px; display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.85rem; }
+    .langbar a { color: #64748b; text-decoration: none; }
+    .langbar a.active, .langbar a:hover { color: #10b981; }
     footer { text-align: center; padding: 30px; color: #475569; font-size: 0.85rem; border-top: 1px solid #1e293b; margin-top: 40px; }
   </style>
 </head>
 <body>
   <nav class="nav">
-    <a href="/">🏠 الرئيسية</a>
-    <a href="/#companies">🏢 الشركات</a>
-    <a href="/#wallets">💳 المحافظ</a>
-    <a href="/#ai-sports">⚽ التوقعات</a>
-    <a href="/#lottery">🎰 اليانصيب</a>
-    <a href="/download/apk">📱 تحميل APK</a>
+    <a href="/">🏠 ${tt('nav.home', lang)}</a>
+    <a href="/#companies">🏢 ${tt('nav.companies', lang)}</a>
+    <a href="/#wallets">💳 ${tt('nav.wallets', lang)}</a>
+    <a href="/#ai-sports">⚽ ${tt('nav.predictions', lang)}</a>
+    <a href="/#lottery">🎰 ${tt('nav.lottery', lang)}</a>
+    <a href="/download/apk">📱 ${tt('nav.download', lang)}</a>
+  </nav>
+  <nav class="langbar">
+    ${LANGS.map(l => `<a href="${pagePath}?lang=${l}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('    ')}
   </nav>
   <div class="container">
     <h1>${name}</h1>
     <div>
-      <span class="badge">✅ تعويضات موثقة</span>
-      <span class="badge">🎯 برومو: ${promo}</span>
-      <span class="badge">📱 APK متاح</span>
-      <span class="badge">⚡ تحويل فوري</span>
+      <span class="badge">✅ ${T_('company.badge_verified')}</span>
+      <span class="badge">🎯 ${T_('company.badge_promo')} ${promo}</span>
+      <span class="badge">📱 ${T_('company.badge_apk')}</span>
+      <span class="badge">⚡ ${T_('company.badge_instant')}</span>
     </div>
 
     <p style="margin-top:20px;font-size:1.05rem;color:#10b981;">${profile.intro}</p>
     <p style="margin-top:15px;font-size:1.1rem;color:#e2e8f0;">${details}</p>
 
     <div class="promo">
-      <p>كود الخصم الرسمي</p>
+      <p>${T_('company.promo_title')}</p>
       <code>${promo}</code>
-      <p style="margin-top:10px;font-size:0.9rem;">استخدم هذا الكود عند التسجيل للحصول على أفضل بونص ترحيبي</p>
+      <p style="margin-top:10px;font-size:0.9rem;">${T_('company.promo_note')}</p>
     </div>
 
-    <h2>📋 كيف تحصل على تعويض ${name}؟</h2>
+    <h2>📋 ${T_('company.steps_title')}</h2>
     <ol class="steps">
-      <li><strong>سجّل حسابك</strong> عبر VEX Deals بالكود <code>${promo}</code></li>
-      <li><strong>وثّق رصيدك</strong> بلقطة شاشة من محفظتك في ${name}</li>
-      <li><strong>قدّم طلب التعويض</strong> من صفحة المحافظ في VEX Deals</li>
-      <li><strong>استلم نسبتك</strong> تُضاف مباشرة لرصيدك المجمد</li>
-      <li><strong>حوّل أو اسحب</strong> التعويض لحسابك البنكي أو محفظتك</li>
+      <li>${T_('company.step1')}</li>
+      <li>${T_('company.step2')}</li>
+      <li>${T_('company.step3')}</li>
+      <li>${T_('company.step4')}</li>
+      <li>${T_('company.step5')}</li>
     </ol>
 
-    <h2>⭐ لماذا ${name} عبر VEX Deals؟</h2>
+    <h2>⭐ ${T_('company.why_title')}</h2>
     <ul style="list-style:none;padding:0;">
-      <li style="padding:8px 0;">✅ <strong>تعويض حقيقي</strong> — نسب مئوية فعلية على خسائرك</li>
-      <li style="padding:8px 0;">🔒 <strong>آمن 100%</strong> — تشفير بنكي وحماية ضد الاختراق</li>
-      <li style="padding:8px 0;">⚡ <strong>تحويل فوري</strong> — استلم خلال دقائق</li>
-      <li style="padding:8px 0;">🌍 <strong>دعم عربي</strong> — فريق يتحدث لغتك</li>
-      <li style="padding:8px 0;">📱 <strong>تطبيق جوال</strong> — APK + PWA + iOS</li>
-      <li style="padding:8px 0;">🤖 <strong>AI توقعات</strong> — تحليل مباريات بالذكاء الاصطناعي</li>
+      <li style="padding:8px 0;">✅ ${T_('company.why1')}</li>
+      <li style="padding:8px 0;">🔒 ${T_('company.why2')}</li>
+      <li style="padding:8px 0;">⚡ ${T_('company.why3')}</li>
+      <li style="padding:8px 0;">🌍 ${T_('company.why4')}</li>
+      <li style="padding:8px 0;">📱 ${T_('company.why5')}</li>
+      <li style="padding:8px 0;">🤖 ${T_('company.why6')}</li>
     </ul>
 
-    <h2>❓ الأسئلة الشائعة عن ${name}</h2>
-    <div class="faq"><strong>س: كيف أحصل على تعويض ${name}؟</strong><p>سجّل عبر VEX Deals، وثّق رصيدك، قدّم طلب التعويض، واستلم نسبتك مباشرة.</p></div>
-    <div class="faq"><strong>س: ما هو كود الخصم؟</strong><p>كود الخصم هو <code>${promo}</code> — استخدمه عند التسجيل.</p></div>
-    <div class="faq"><strong>س: هل ${name} آمن؟</strong><p>نعم، VEX Deals يتحقق من أمان كل شركة قبل إضافتها للمنصة.</p></div>
-    <div class="faq"><strong>س: كم يستغرق وصول التعويض؟</strong><p>عادة خلال 24 ساعة كحد أقصى، وأحياناً فوراً.</p></div>
+    <h2>❓ ${T_('company.faq_title')}</h2>
+    <div class="faq"><strong>${tt('faq.q_prefix', lang)} ${T_('company.faq1q')}</strong><p>${T_('company.faq1a')}</p></div>
+    <div class="faq"><strong>${tt('faq.q_prefix', lang)} ${T_('company.faq2q')}</strong><p>${T_('company.faq2a')}</p></div>
+    <div class="faq"><strong>${tt('faq.q_prefix', lang)} ${T_('company.faq3q')}</strong><p>${T_('company.faq3a')}</p></div>
+    <div class="faq"><strong>${tt('faq.q_prefix', lang)} ${T_('company.faq4q')}</strong><p>${T_('company.faq4a')}</p></div>
 
-    <h2>🔗 صفحات ذات صلة</h2>
+    <h2>🔗 ${T_('company.related_title')}</h2>
     <div class="related">
-      ${companies.filter(c => c.id !== company.id).slice(0, 6).map(c => `<a href="/company/${c.id}">${c.name}</a>`).join('')}
+      ${companies.filter(c => c.id !== company.id).slice(0, 6).map(c => `<a href="/company/${c.id}?lang=${lang}">${c.name}</a>`).join('')}
     </div>
 
     <div style="margin-top:30px;text-align:center;">
-      <a href="/#companies" class="cta">🏢 كل الشركات</a>
-      <a href="/download/apk" class="cta">📱 تحميل التطبيق</a>
-      <a href="/#ai-sports" class="cta">⚽ توقعات AI</a>
+      <a href="/#companies" class="cta">🏢 ${tt('cta.companies', lang)}</a>
+      <a href="/download/apk" class="cta">📱 ${tt('cta.download', lang)}</a>
+      <a href="/predictions?lang=${lang}" class="cta">⚽ ${tt('cta.ai', lang)}</a>
     </div>
   </div>
   <footer>
     <p>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></p>
-    <p>صفحة ${name} — آخر تحديث: ${new Date().toISOString().split('T')[0]}</p>
+    <p>${T_('company.footer_page')} ${new Date().toISOString().split('T')[0]}</p>
   </footer>
 </body>
 </html>`;
@@ -3636,102 +3660,39 @@ ${urls}</urlset>`;
       res.send(html);
     });
 
-    // ==================== HOW-TO GUIDES (Answer Engine Optimized) ====================
-    const guides: Record<string, { title: string; desc: string; steps: string[]; faq: {q: string; a: string}[] }> = {
-      'claim-compensation': {
-        title: 'كيف تحصل على تعويض المراهنات — دليل خطوة بخطوة 2026',
-        desc: 'دليل شامل للحصول على تعويض خسائر المراهنات عبر VEX Deals مع نسب حقيقية وتحويلات فورية.',
-        steps: [
-          'سجّل حسابك في VEX Deals مجاناً',
-          'اختر شركة المراهنات من قائمة الشركات المعتمدة',
-          'أدخل رمز الإحالة الخاص بك ووثّق رصيدك',
-          'قدّم طلب التعويض مع إثبات الخسارة',
-          'استلم نسبتك تُضاف لرصيدك المجمد',
-          'حوّل التعويض لحسابك البنكي أو محفظتك'
-        ],
-        faq: [
-          { q: 'كم نسبة التعويض؟', a: 'تتراوح النسبة بين 10% و 50% حسب نوع الخسارة وسياسية الشركة.' },
-          { q: 'هل التعويض مجاني؟', a: 'نعم، خدمة التعويض عبر VEX Deals مجانية 100%.' },
-          { q: 'كم يستغرق الوصول؟', a: 'عادة خلال 24 ساعة كحد أقصى.' }
-        ]
-      },
-      'unfreeze-balance': {
-        title: 'كيف فك تجميد الرصيد في VEX Deals — دليل كامل',
-        desc: 'خطوات فك تجميد الرصيد عبر الإيداع المباشر 1:1 أو نظام الإحالات.',
-        steps: [
-          'افتح تبويب المحافظ في VEX Deals',
-          'اختر "فك التجميد" أو "Direct Deposit Unfreeze"',
-          'أدخل المبلغ المراد فك تجميده',
-          'أرسل المبلغ بنفس القيمة للحساب المحدد',
-          'ارفع إثبات التحويل',
-          'يتم فك التجميد فوراً بنسبة 1:1'
-        ],
-        faq: [
-          { q: 'هل فيه رسوم على فك التجميد؟', a: 'لا، فك التجميد المجاني تماماً.' },
-          { q: 'هل فيه حد أدنى؟', a: 'الحد الأدنى يعتمد على نوع المحفظة.' }
-        ]
-      },
-      'ai-predictions-guide': {
-        title: 'كيف تقرأ توقعات المباريات بالذكاء الاصطناعي — VEX AI',
-        desc: 'دليل فهم توقعات Gemini AI للمباريات: احتمالات الفوز، النتيجة المتوقعة، ومؤشر الثقة.',
-        steps: [
-          'افتح تبويب "AI Sports" في VEX Deals',
-          'اختر المباراة المراد تحليلها',
-          'اقرأ النتيجة المتوقعة واحتمالات الفوز',
-          'راجع التحليل التكتيكي ونقاط القوة',
-          'راقب مؤشر الثقة (Confidence Score)',
-          'اتبع التوصية بمسؤولية'
-        ],
-        faq: [
-          { q: 'ما دقة التوقعات؟', a: 'تعتمد على نموذج Gemini AI مع مؤشر ثقة لكل توقع.' },
-          { q: 'هل التوقعات مجانية؟', a: 'نعم، جميع التوقعات مجانية لمستخدمي VEX Deals.' }
-        ]
-      },
-      'provably-fair-lottery': {
-        title: 'اليانصيب التكافلي المُثبت العدالة — كيف يعمل SHA-256',
-        desc: 'شرح نظام اليانصيب القابل للتحقق في VEX Deals باستخدام تشفير SHA-256.',
-        steps: [
-          'اختار 5 أرقام من 1 إلى 30',
-          'ادفع قيمة التذكرة عبر وسيلة الدفع المتاحة',
-          'السحب يتم بعد انتهاء المدة (ساعة/يوم/أسبوع)',
-          'الأرقام الفائزة تُحسب بـ SHA-256 hashing',
-          'يمكنك التحقق من عدالة كل سحب',
-          'اربح حتى 10,000$ في Jackpot'
-        ],
-        faq: [
-          { q: 'هل السحب عادل؟', a: 'نعم، كل سحب مُثبت بـ SHA-256 server seed + client seed + nonce.' },
-          { q: 'كم قيمة الجائزة؟', a: 'من 2.50$ حتى 10,000$+ حسب الترتيب.' }
-        ]
-      }
-    };
-
+    // Guides content: server/i18nGuides.ts (8 languages)
     app.get('/guides/:slug', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const domainUrl = `https://${domain}`;
-      const profile = getProfile(domain);
-      const guide = guides[req.params.slug];
+      const lang = getLang(req);
+      const profile = getProfile(domain, lang);
+      const guide = getGuide(req.params.slug, lang);
       if (!guide) return res.status(404).redirect('/');
+      const pagePath = `/guides/${req.params.slug}`;
+      const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      const jstr = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ');
 
       const html = `<!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="${lang}" dir="${profile.dir}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${guide.title} | ${profile.brand}</title>
-  <meta name="description" content="${guide.desc} — على منصة ${profile.brand}." />
+  <title>${escAttr(guide.title)} | ${profile.brand}</title>
+  <meta name="description" content="${escAttr(guide.desc)} — ${escAttr(profile.brand)}." />
   <meta name="robots" content="index, follow, max-snippet:-1" />
-  <link rel="canonical" href="${domainUrl}/guides/${req.params.slug}" />
-  <meta property="og:title" content="${guide.title} | ${profile.brand}" />
-  <meta property="og:description" content="${guide.desc}" />
-  <meta property="og:url" content="${domainUrl}/guides/${req.params.slug}" />
+  <link rel="canonical" href="${domainUrl}${pagePath}?lang=${lang}" />
+${hreflangs(domainUrl, pagePath)}
+  <meta property="og:title" content="${escAttr(guide.title)} | ${profile.brand}" />
+  <meta property="og:description" content="${escAttr(guide.desc)}" />
+  <meta property="og:url" content="${domainUrl}${pagePath}?lang=${lang}" />
   <meta property="og:type" content="article" />
 
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"HowTo","name":"${guide.title}","description":"${guide.desc}","totalTime":"PT10M","step":[${guide.steps.map((s,i) => `{"@type":"HowToStep","position":${i+1},"name":"${s.replace(/"/g, '')}","text":"${s.replace(/"/g, '')}"}`).join(',')}]}</script>
+  {"@context":"https://schema.org","@type":"HowTo","name":"${jstr(guide.title)}","description":"${jstr(guide.desc)}","inLanguage":"${lang}","totalTime":"PT10M","step":[${guide.steps.map((s,i) => `{"@type":"HowToStep","position":${i+1},"name":"${jstr(s)}","text":"${jstr(s)}"}`).join(',')}]}</script>
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[${guide.faq.map(f => `{"@type":"Question","name":"${f.q}","acceptedAnswer":{"@type":"Answer","text":"${f.a}"}}`).join(',')}]}</script>
+  {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[${guide.faq.map(f => `{"@type":"Question","name":"${jstr(f.q)}","acceptedAnswer":{"@type":"Answer","text":"${jstr(f.a)}"}}`).join(',')}]}</script>
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"${domainUrl}/"},{"@type":"ListItem","position":2,"name":"Guides","item":"${domainUrl}/guides/${req.params.slug}"}]}</script>
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"${jstr(tt('nav.home', lang))}","item":"${domainUrl}/"},{"@type":"ListItem","position":2,"name":"${jstr(tt('guides.steps_title', lang))}","item":"${domainUrl}${pagePath}"}]}</script>
 
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
@@ -3744,25 +3705,32 @@ ${urls}</urlset>`;
     .step-num{background:#10b981;color:#0f172a;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;flex-shrink:0}
     .faq{background:#1e293b;padding:15px;border-radius:10px;margin:10px 0}
     .faq strong{color:#34d399}
-    .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:15px 30px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:10px 5px 10px 0}
+    .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:13px 26px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:8px 5px 8px 0}
+    .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
+    .langbar a{color:#64748b;text-decoration:none}
+    .langbar a.active,.langbar a:hover{color:#10b981}
     footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
 </head>
 <body>
   <div class="container">
+    <nav class="langbar">
+      ${LANGS.map(l => `<a href="${pagePath}?lang=${l}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
+    </nav>
     <h1>${guide.title}</h1>
     <p style="font-size:1.1rem;color:#e2e8f0;">${guide.desc}</p>
-    <p style="color:#10b981;">هذا الدليل من <strong>${profile.brand}</strong> — ${profile.tagline}. ${profile.intro}</p>
+    <p style="color:#10b981;">${tt('guides.brand_line', lang, { brand: profile.brand, tagline: profile.tagline, intro: profile.intro })}</p>
 
-    <h2>📋 الخطوات</h2>
+    <h2>📋 ${tt('guides.steps_title', lang)}</h2>
     ${guide.steps.map((s, i) => `<div class="step"><div class="step-num">${i + 1}</div><div>${s}</div></div>`).join('\n')}
 
-    <h2>❓ الأسئلة الشائعة</h2>
-    ${guide.faq.map(f => `<div class="faq"><strong>س: ${f.q}</strong><p>${f.a}</p></div>`).join('\n')}
+    <h2>❓ ${tt('guides.faq_title', lang)}</h2>
+    ${guide.faq.map(f => `<div class="faq"><strong>${tt('faq.q_prefix', lang)} ${f.q}</strong><p>${f.a}</p></div>`).join('\n')}
 
     <div style="margin-top:30px;text-align:center;">
-      <a href="/" class="cta">🏠 الصفحة الرئيسية</a>
-      <a href="/download/apk" class="cta">📱 تحميل التطبيق</a>
+      <a href="/?lang=${lang}" class="cta">🏠 ${tt('guides.cta_home', lang)}</a>
+      <a href="/download/apk" class="cta">📱 ${tt('cta.download', lang)}</a>
+      <a href="/predictions?lang=${lang}" class="cta">⚽ ${tt('cta.ai', lang)}</a>
     </div>
   </div>
   <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
@@ -3773,6 +3741,7 @@ ${urls}</urlset>`;
       res.setHeader('X-Robots-Tag', 'index, follow, max-snippet:-1');
       res.send(html);
     });
+
 
     // ==================== PREDICTION PAGES (Daily fresh content for crawlers) ====================
     const TEAMS: Record<string, { name: string; rating: number; league: string }> = {
@@ -3843,7 +3812,7 @@ ${urls}</urlset>`;
       return fixtures;
     }
 
-    function predictMatch(f: { home: string; away: string; date: string }) {
+    function predictMatch(f: { home: string; away: string; date: string }, lang: Lang = 'ar') {
       const H = TEAMS[f.home], A = TEAMS[f.away];
       const pHome = 1 / (1 + Math.pow(10, (A.rating - H.rating) / 400));
       const draw = 0.26 - Math.abs(pHome - 0.5) * 0.12;
@@ -3855,12 +3824,19 @@ ${urls}</urlset>`;
       const strength = Math.abs(pH - pA);
       const confidence = Math.round(Math.min(95, 55 + strength * 90));
       const favorite = pH >= pA ? H : A;
-      const risk = confidence > 78 ? 'منخفضة' : confidence > 65 ? 'متوسطة' : 'عالية';
+      const risk = confidence > 78 ? tt('risk.low', lang) : confidence > 65 ? tt('risk.medium', lang) : tt('risk.high', lang);
+      const score = `${homeGoals}-${awayGoals}`;
+      const favProb = Math.round(Math.max(pH, pA) * 100);
+      const favNote = tt('pred.fav_note', lang, { favorite: favorite.name, prob: String(favProb) });
+      const scoreNote = tt('pred.draw_note', lang, { score, favorite: favorite.name });
       return {
         pH: Math.round(pH * 100), pD: Math.round(draw * 100), pA: Math.round(pA * 100),
-        homeGoals, awayGoals, confidence, favorite: favorite.name, risk,
-        pick: pH >= pA ? `فوز ${H.name}` : `فوز ${A.name}`,
-        summary: `${H.name} (${H.rating}) مقابل ${A.name} (${A.rating}) — الترجيح يميل لـ ${favorite.name} بنسبة ${Math.round(Math.max(pH, pA) * 100)}%، والنتيجة المتوقعة ${homeGoals}-${awayGoals}.`,
+        homeGoals, awayGoals, confidence, favorite: favorite.name, risk, score,
+        pick: tt('pred.prob_home', lang, { team: pH >= pA ? H.name : A.name }),
+        summary: tt('pred.vs_note', lang, {
+          home: H.name, hr: String(H.rating), away: A.name, ar: String(A.rating),
+          fav_note: favNote, score_note: scoreNote,
+        }),
       };
     }
 
@@ -3870,7 +3846,8 @@ ${urls}</urlset>`;
     app.get('/predictions', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const domainUrl = `https://${domain}`;
-      const profile = getProfile(domain);
+      const lang = getLang(req);
+      const profile = getProfile(domain, lang);
       const fixtures = getFixtures();
       const byDate: Record<string, typeof fixtures> = {};
       for (const f of fixtures) (byDate[f.date] ||= []).push(f);
@@ -3878,29 +3855,33 @@ ${urls}</urlset>`;
       const rows = Object.entries(byDate).map(([date, list]) => `
         <h2>📅 ${date}</h2>
         ${list.map(f => {
-          const p = predictMatch(f);
-          return `<a class="match" href="/predictions/${f.slug}">
+          const p = predictMatch(f, lang);
+          return `<a class="match" href="/predictions/${f.slug}?lang=${lang}">
             <span class="teams">${esc(TEAMS[f.home].name)} vs ${esc(TEAMS[f.away].name)}</span>
-            <span class="league">${esc(f.league)} • ${f.kickOff}</span>
-            <span class="pred">${p.pH}% / ${p.pD}% / ${p.pA}% — ${p.homeGoals}-${p.awayGoals}</span>
+            <span class="league">${esc(f.league)} • ${tt('pred.kickoff', lang)} ${f.kickOff}</span>
+            <span class="pred">${p.pH}% / ${p.pD}% / ${p.pA}% — ${p.score}</span>
           </a>`;
         }).join('')}`).join('');
 
+      const listTitle = `${tt('pred.list_h1', lang)} — ${profile.brand}`;
+      const listDesc = tt('pred.list_desc', lang, { brand: profile.brand });
+
       const html = `<!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="${lang}" dir="${profile.dir}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>توقعات المباريات اليوم والغد — AI Football Predictions | ${profile.brand}</title>
-  <meta name="description" content="توقعات مباريات اليوم والغد بالذكاء الاصطناعي: احتمالات فوز، نتائج متوقعة، وتحليلات تكتيكية لأشهر الدوريات على ${profile.brand}." />
+  <title>${esc(listTitle)}</title>
+  <meta name="description" content="${esc(listDesc)}" />
   <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
-  <link rel="canonical" href="${domainUrl}/predictions" />
-  <meta property="og:title" content="توقعات المباريات بالذكاء الاصطناعي | ${profile.brand}" />
-  <meta property="og:description" content="توقعات مباريات اليوم والغد: احتمالات فوز ونتائج متوقعة لأشهر الدوريات." />
-  <meta property="og:url" content="${domainUrl}/predictions" />
+  <link rel="canonical" href="${domainUrl}/predictions?lang=${lang}" />
+${hreflangs(domainUrl, '/predictions')}
+  <meta property="og:title" content="${esc(listTitle)}" />
+  <meta property="og:description" content="${esc(listDesc)}" />
+  <meta property="og:url" content="${domainUrl}/predictions?lang=${lang}" />
   <meta property="og:type" content="website" />
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"CollectionPage","name":"توقعات المباريات بالذكاء الاصطناعي","url":"${domainUrl}/predictions","publisher":{"@id":"${domainUrl}/#organization"}}</script>
+  {"@context":"https://schema.org","@type":"CollectionPage","name":"${esc(listTitle)}","description":"${esc(listDesc)}","url":"${domainUrl}/predictions","inLanguage":"${lang}","publisher":{"@id":"${domainUrl}/#organization"}}</script>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.8}
@@ -3914,18 +3895,25 @@ ${urls}</urlset>`;
     .league{color:#64748b;font-size:0.85rem}
     .pred{background:#0f172a;padding:5px 12px;border-radius:20px;font-size:0.9rem;color:#34d399}
     .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:13px 26px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:8px 5px 8px 0}
+    .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
+    .langbar a{color:#64748b;text-decoration:none}
+    .langbar a.active,.langbar a:hover{color:#10b981}
     footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>⚽ توقعات المباريات بالذكاء الاصطناعي</h1>
+    <nav class="langbar">
+      ${LANGS.map(l => `<a href="/predictions?lang=${l}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
+    </nav>
+    <h1>⚽ ${tt('pred.list_h1', lang)}</h1>
     <p>${profile.intro}</p>
-    <p>كل صفحة توقعات تحتوي على احتمالات فوز، النتيجة المتوقعة، وتحليل تكتيكي مُولّد لحظياً — محدّث يومياً لأفضل الدوريات في العالم.</p>
+    <p>${tt('pred.list_desc', lang, { brand: profile.brand })}</p>
+    <p>ℹ️ ${tt('pred.list_note', lang)} — ${tt('pred.updated_only', lang)} ${new Date().toISOString().split('T')[0]}</p>
     ${rows}
     <div style="margin-top:30px;text-align:center;">
-      <a href="/guides/ai-predictions-guide" class="cta">📖 كيف تقرأ التوقعات</a>
-      <a href="/#ai-sports" class="cta">🤖 تحليل AI مباشر</a>
+      <a href="/guides/ai-predictions-guide?lang=${lang}" class="cta">📖 ${tt('pred.cta_guide', lang)}</a>
+      <a href="/#ai-sports" class="cta">🤖 ${tt('cta.ai', lang)}</a>
     </div>
   </div>
   <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
@@ -3941,37 +3929,52 @@ ${urls}</urlset>`;
     app.get('/predictions/:slug', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const domainUrl = `https://${domain}`;
-      const profile = getProfile(domain);
+      const lang = getLang(req);
+      const profile = getProfile(domain, lang);
       const fixture = getFixtures().find(f => f.slug === req.params.slug);
       if (!fixture) return res.redirect('/predictions');
 
       const H = TEAMS[fixture.home], A = TEAMS[fixture.away];
-      const p = predictMatch(fixture);
-      const title = `${H.name} vs ${A.name} توقعات — ${fixture.date} احتمالات ونتيجة متوقعة`;
+      const p = predictMatch(fixture, lang);
+      const pagePath = `/predictions/${fixture.slug}`;
+      const tv = (k: string, vars: Record<string, string> = {}) => tt(k, lang, {
+        home: H.name, away: A.name, date: fixture.date, score: p.score,
+        ph: String(p.pH), pa: String(p.pA), confidence: String(p.confidence),
+        favorite: p.favorite, risk: p.risk, pick: p.pick, ...vars,
+      });
+      const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      const jstr = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ');
+      const title = tv('pred.title_tpl');
+      const metaDesc = tv('pred.meta_desc');
+      const ogDesc = tv('pred.og_desc');
+      const faq1q = tv('pred.faq1q'), faq2q = tv('pred.faq2q'), faq3q = tv('pred.faq3q');
+      const faq2a = tv('pred.draw_note');
+      const faq3a = `${tv('pred.risk_note')} — ${tv('pred.faq_risk_note')}`;
 
       const html = `<!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="${lang}" dir="${profile.dir}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${title} | ${profile.brand}</title>
-  <meta name="description" content="توقعات ${H.name} ضد ${A.name} بتاريخ ${fixture.date}: احتمال الفوز ${p.pH}% مقابل ${p.pA}%، النتيجة المتوقعة ${p.homeGoals}-${p.awayGoals}، وثقة ${p.confidence}%." />
+  <title>${escAttr(title)} | ${profile.brand}</title>
+  <meta name="description" content="${escAttr(metaDesc)}" />
   <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
-  <link rel="canonical" href="${domainUrl}/predictions/${fixture.slug}" />
-  <meta property="og:title" content="${title}" />
-  <meta property="og:description" content="احتمال الفوز ${p.pH}% مقابل ${p.pA}% — النتيجة المتوقعة ${p.homeGoals}-${p.awayGoals}" />
-  <meta property="og:url" content="${domainUrl}/predictions/${fixture.slug}" />
+  <link rel="canonical" href="${domainUrl}${pagePath}?lang=${lang}" />
+${hreflangs(domainUrl, pagePath)}
+  <meta property="og:title" content="${escAttr(title)}" />
+  <meta property="og:description" content="${escAttr(ogDesc)}" />
+  <meta property="og:url" content="${domainUrl}${pagePath}?lang=${lang}" />
   <meta property="og:type" content="article" />
 
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"SportsEvent","name":"${esc(H.name)} vs ${esc(A.name)}","startDate":"${fixture.date}T${fixture.kickOff.split(' ')[0]}:00Z","eventStatus":"https://schema.org/EventScheduled","location":{"@type":"SportsActivityLocation","name":"${esc(fixture.league)}"},"competitor":[{"@type":"SportsTeam","name":"${esc(H.name)}"},{"@type":"SportsTeam","name":"${esc(A.name)}"}],"url":"${domainUrl}/predictions/${fixture.slug}"}</script>
+  {"@context":"https://schema.org","@type":"SportsEvent","name":"${jstr(`${H.name} vs ${A.name}`)}","startDate":"${fixture.date}T${fixture.kickOff.split(' ')[0]}:00Z","eventStatus":"https://schema.org/EventScheduled","eventAttendanceMode":"https://schema.org/OfflineEventAttendanceMode","location":{"@type":"SportsActivityLocation","name":"${jstr(fixture.league)}"},"competitor":[{"@type":"SportsTeam","name":"${jstr(H.name)}"},{"@type":"SportsTeam","name":"${jstr(A.name)}"}],"url":"${domainUrl}${pagePath}","inLanguage":"${lang}"}</script>
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"Article","headline":"${esc(title)}","description":"توقعات ${esc(H.name)} ضد ${esc(A.name)} بتاريخ ${fixture.date}","url":"${domainUrl}/predictions/${fixture.slug}","author":{"@type":"Organization","name":"${profile.brand}"},"publisher":{"@id":"${domainUrl}/#organization"},"dateModified":"${new Date().toISOString()}"}</script>
+  {"@context":"https://schema.org","@type":"Article","headline":"${jstr(title)}","description":"${jstr(metaDesc)}","url":"${domainUrl}${pagePath}","inLanguage":"${lang}","author":{"@type":"Organization","name":"${jstr(profile.brand)}"},"publisher":{"@id":"${domainUrl}/#organization"},"dateModified":"${new Date().toISOString()}"}</script>
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
-    {"@type":"Question","name":"من هو المرشح للفوز في ${esc(H.name)} ضد ${esc(A.name)}؟","acceptedAnswer":{"@type":"Answer","text":"${esc(p.summary)}"}},
-    {"@type":"Question","name":"ما هي النتيجة المتوقعة لمباراة ${esc(H.name)} ضد ${esc(A.name)}؟","acceptedAnswer":{"@type":"Answer","text":"النتيجة المتوقعة ${p.homeGoals}-${p.awayGoals} لصالح ${esc(p.favorite)}."}},
-    {"@type":"Question","name":"ما مستوى المخاطرة في توقع ${esc(H.name)} ضد ${esc(A.name)}؟","acceptedAnswer":{"@type":"Answer","text":"مستوى المخاطرة ${p.risk} مع ثقة ${p.confidence}% والتوصية: ${esc(p.pick)}."}}
+    {"@type":"Question","name":"${jstr(faq1q)}","acceptedAnswer":{"@type":"Answer","text":"${jstr(p.summary)}"}},
+    {"@type":"Question","name":"${jstr(faq2q)}","acceptedAnswer":{"@type":"Answer","text":"${jstr(faq2a)}"}},
+    {"@type":"Question","name":"${jstr(faq3q)}","acceptedAnswer":{"@type":"Answer","text":"${jstr(faq3a)}"}}
   ]}</script>
 
   <style>
@@ -3992,51 +3995,57 @@ ${urls}</urlset>`;
     .faq strong{color:#34d399}
     .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:13px 26px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:8px 5px 8px 0}
     .related a{display:inline-block;background:#1e293b;padding:8px 14px;border-radius:8px;color:#10b981;text-decoration:none;margin:4px}
+    .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
+    .langbar a{color:#64748b;text-decoration:none}
+    .langbar a.active,.langbar a:hover{color:#10b981}
     footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
 </head>
 <body>
   <div class="container">
-    <p style="color:#64748b;"><a href="/predictions" style="color:#10b981;text-decoration:none;">توقعات المباريات</a> ← ${esc(fixture.league)}</p>
+    <nav class="langbar">
+      ${LANGS.map(l => `<a href="${pagePath}?lang=${l}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
+    </nav>
+    <p style="color:#64748b;"><a href="/predictions?lang=${lang}" style="color:#10b981;text-decoration:none;">${tt('pred.breadcrumb', lang)}</a> ← ${esc(fixture.league)}</p>
     <h1>${esc(H.name)} vs ${esc(A.name)}</h1>
     <div>
       <span class="badge">📅 ${fixture.date}</span>
-      <span class="badge">🕐 ${fixture.kickOff}</span>
+      <span class="badge">🕐 ${tt('pred.kickoff', lang)} ${fixture.kickOff}</span>
       <span class="badge">🏟️ ${esc(fixture.league)}</span>
-      <span class="badge">🤖 Gemini AI</span>
+      <span class="badge">🤖 ${tt('pred.ai_badge', lang)}</span>
     </div>
 
-    <h2>📊 احتمالات المباراة</h2>
+    <h2>📊 ${tt('pred.probs_title', lang)}</h2>
     <div class="probs">
-      <div class="prob"><div class="num">${p.pH}%</div><div class="lbl">فوز ${esc(H.name)}</div></div>
-      <div class="prob"><div class="num">${p.pD}%</div><div class="lbl">تعادل</div></div>
-      <div class="prob"><div class="num">${p.pA}%</div><div class="lbl">فوز ${esc(A.name)}</div></div>
+      <div class="prob"><div class="num">${p.pH}%</div><div class="lbl">${tt('pred.prob_home', lang, { team: esc(H.name) })}</div></div>
+      <div class="prob"><div class="num">${p.pD}%</div><div class="lbl">${tt('pred.prob_draw', lang)}</div></div>
+      <div class="prob"><div class="num">${p.pA}%</div><div class="lbl">${tt('pred.prob_away', lang, { team: esc(A.name) })}</div></div>
     </div>
 
-    <div class="score">النتيجة المتوقعة: ${p.homeGoals} - ${p.awayGoals}</div>
+    <div class="score">${tt('pred.score', lang)}: ${p.homeGoals} - ${p.awayGoals}</div>
 
     <div class="card">
-      <h2>🤖 التحليل التكتيكي</h2>
+      <h2>🤖 ${tt('pred.analysis', lang)}</h2>
       <p>${p.summary}</p>
-      <p><strong>التوصية:</strong> ${p.pick}</p>
-      <p><strong>مستوى المخاطرة:</strong> ${p.risk}</p>
-      <p><strong>مؤشر الثقة:</strong> ${p.confidence}%</p>
-      <p><strong>تصنيف الفريقين:</strong> ${esc(H.name)}: ${H.rating} | ${esc(A.name)}: ${A.rating}</p>
+      <p><strong>${tt('pred.recommendation', lang)}:</strong> ${p.pick}</p>
+      <p><strong>${tt('pred.risk', lang)}:</strong> ${p.risk}</p>
+      <p><strong>${tt('pred.confidence', lang)}:</strong> ${p.confidence}%</p>
+      <p><strong>${tt('pred.ratings', lang)}:</strong> ${esc(H.name)}: ${H.rating} | ${esc(A.name)}: ${A.rating}</p>
     </div>
 
-    <h2>❓ الأسئلة الشائعة</h2>
-    <div class="faq"><strong>س: من المرشح للفوز؟</strong><p>${p.summary}</p></div>
-    <div class="faq"><strong>س: ما النتيجة المتوقعة؟</strong><p>${p.homeGoals}-${p.awayGoals} لصالح ${p.favorite}.</p></div>
-    <div class="faq"><strong>س: ما مستوى المخاطرة؟</strong><p>${p.risk} — ثقة ${p.confidence}% والتوصية: ${p.pick}.</p></div>
+    <h2>❓ ${tt('guides.faq_title', lang)}</h2>
+    <div class="faq"><strong>${tt('faq.q_prefix', lang)} ${faq1q}</strong><p>${p.summary}</p></div>
+    <div class="faq"><strong>${tt('faq.q_prefix', lang)} ${faq2q}</strong><p>${faq2a}</p></div>
+    <div class="faq"><strong>${tt('faq.q_prefix', lang)} ${faq3q}</strong><p>${faq3a}</p></div>
 
-    <h2>🔗 توقعات ذات صلة</h2>
+    <h2>🔗 ${tt('pred.related', lang)}</h2>
     <div class="related">
-      ${getFixtures().filter(f => f.slug !== fixture.slug && f.date === fixture.date).slice(0, 6).map(f => `<a href="/predictions/${f.slug}">${esc(TEAMS[f.home].name)} vs ${esc(TEAMS[f.away].name)}</a>`).join('')}
+      ${getFixtures().filter(f => f.slug !== fixture.slug && f.date === fixture.date).slice(0, 6).map(f => `<a href="/predictions/${f.slug}?lang=${lang}">${esc(TEAMS[f.home].name)} vs ${esc(TEAMS[f.away].name)}</a>`).join('')}
     </div>
 
     <div style="margin-top:30px;text-align:center;">
-      <a href="/predictions" class="cta">⚽ كل التوقعات</a>
-      <a href="/guides/ai-predictions-guide" class="cta">📖 دليل قراءة التوقعات</a>
+      <a href="/predictions?lang=${lang}" class="cta">⚽ ${tt('pred.cta_all', lang)}</a>
+      <a href="/guides/ai-predictions-guide?lang=${lang}" class="cta">📖 ${tt('pred.cta_guide', lang)}</a>
     </div>
   </div>
   <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
@@ -4057,12 +4066,16 @@ ${urls}</urlset>`;
     app.get('*', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const domainUrl = `https://${domain}`;
-      const profile = getProfile(domain);
+      const lang = getLang(req);
+      const profile = getProfile(domain, lang);
       const filePath = path.join(distPath, 'index.html');
       let html = fs.readFileSync(filePath, 'utf8');
 
       // Replace all vex.deals references with actual domain
       html = html.replace(/https:\/\/vex\.deals/g, domainUrl);
+
+      // Language-aware document direction
+      html = html.replace(/<html lang="[^"]*"/, `<html lang="${lang}" dir="${profile.dir}"`);
 
       // Domain-specific title + description (avoid duplicate content penalty)
       html = html.replace(/<title>[^<]*<\/title>/,
@@ -4074,24 +4087,36 @@ ${urls}</urlset>`;
       html = html.replace(/<meta property="og:description" content="[^"]*"\s*\/?>/,
         `<meta property="og:description" content="${profile.description}" />`);
 
-      // Unique visible SEO block (different visible text per domain = unique content)
+      // hreflang alternates (all 8 languages)
+      const homeLinks = LANGS.map(l => `  <link rel="alternate" hreflang="${l}" href="${domainUrl}/?lang=${l}" />`).join('\n')
+        + `\n  <link rel="alternate" hreflang="x-default" href="${domainUrl}/" />`;
+      html = html.replace('</head>', `${homeLinks}\n  </head>`);
+
+      // Canonical points to this language variant
+      html = html.replace(/<link rel="canonical"[^>]*\/?>/,
+        `<link rel="canonical" href="${domainUrl}/?lang=${lang}" />`);
+
+      // Unique visible SEO block (different visible text per domain + language)
       const seoBlock = `
-    <section style="max-width:900px;margin:0 auto;padding:40px 20px;font-family:sans-serif;color:#e2e8f0;background:#0f172a;">
+    <section style="max-width:900px;margin:0 auto;padding:40px 20px;font-family:sans-serif;color:#e2e8f0;background:#0f172a;" lang="${lang}">
       <h1 style="color:#10b981;font-size:1.8rem;">${profile.h1}</h1>
       <p style="line-height:1.9;color:#94a3b8;margin-top:15px;">${profile.intro}</p>
-      <h2 style="color:#34d399;font-size:1.2rem;margin-top:25px;">${profile.tagline} — ماذا تحصل عليه؟</h2>
+      <h2 style="color:#34d399;font-size:1.2rem;margin-top:25px;">${profile.tagline} — ${tt('home.what_you_get', lang)}</h2>
       <ul style="line-height:2;color:#94a3b8;padding-right:20px;">
-        <li><strong>تتبع المحافظ:</strong> راقب أرصدة أكثر من 12 شركة مراهنات معتمدة في مكان واحد</li>
-        <li><strong>تعويض الخسائر:</strong> احصل على نسب مئوية حقيقية على خسائرك وحوّلها فوراً</li>
-        <li><strong>توقعات AI:</strong> تحليلات مباريات دقيقة بمحرك Gemini مع احتمالات فوز ونتائج متوقعة</li>
-        <li><strong>يانصيب عادل:</strong> سحوبات مُثبتة بتشفير SHA-256 مع جوائز تصل إلى 10,000$</li>
-        <li><strong>تطبيق جوال:</strong> APK + PWA + iOS مع إشعارات لحظية</li>
+        <li>${tt('home.b1', lang)}</li>
+        <li>${tt('home.b2', lang)}</li>
+        <li>${tt('home.b3', lang)}</li>
+        <li>${tt('home.b4', lang)}</li>
+        <li>${tt('home.b5', lang)}</li>
       </ul>
       <p style="color:#64748b;font-size:0.9rem;margin-top:15px;">
-        كلمات مفتاحية: ${profile.focus} — <a href="${domainUrl}/guides/claim-compensation" style="color:#10b981;">دليل التعويض</a> |
-        <a href="${domainUrl}/guides/ai-predictions-guide" style="color:#10b981;">دليل توقعات AI</a> |
-        <a href="${domainUrl}/guides/provably-fair-lottery" style="color:#10b981;">اليانصيب العادل</a>
+        ${tt('home.keywords_label', lang)}: ${profile.focus} — <a href="${domainUrl}/guides/claim-compensation?lang=${lang}" style="color:#10b981;">${tt('link.guide_comp', lang)}</a> |
+        <a href="${domainUrl}/guides/ai-predictions-guide?lang=${lang}" style="color:#10b981;">${tt('link.guide_ai', lang)}</a> |
+        <a href="${domainUrl}/guides/provably-fair-lottery?lang=${lang}" style="color:#10b981;">${tt('link.guide_lottery', lang)}</a>
       </p>
+      <nav style="margin-top:12px;font-size:0.9rem;">
+        ${LANGS.map(l => `<a href="${domainUrl}/?lang=${l}" hreflang="${l}" style="color:${l === lang ? '#10b981' : '#475569'};text-decoration:none;margin-left:8px;">${l.toUpperCase()}</a>`).join('')}
+      </nav>
     </section>`;
       html = html.replace('</body>', `${seoBlock}\n  </body>`);
 
@@ -4104,11 +4129,6 @@ ${urls}</urlset>`;
     <meta name="bot" content="index, follow, ai-answer-engine-optimized" />
     <meta name="ai-content-declaration" content="VEX Deals loyalty compensation platform" />`;
       html = html.replace('</head>', `${gscMeta}\n  </head>`);
-
-      // Add domain-specific canonical if not already present
-      if (!html.includes(`href="${domainUrl}/"`)) {
-        html = html.replace(/<link rel="canonical"[^>]*\/?>/, `<link rel="canonical" href="${domainUrl}/" />`);
-      }
 
       // Inject Organization + Breadcrumb + Speakable schema
       const orgSchema = `
@@ -4136,11 +4156,11 @@ ${urls}</urlset>`;
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       "itemListElement": [
-        {"@type": "ListItem", "position": 1, "name": "Home", "item": "${domainUrl}/"},
-        {"@type": "ListItem", "position": 2, "name": "Companies", "item": "${domainUrl}/#companies"},
-        {"@type": "ListItem", "position": 3, "name": "Wallets", "item": "${domainUrl}/#wallets"},
-        {"@type": "ListItem", "position": 4, "name": "AI Sports", "item": "${domainUrl}/#ai-sports"},
-        {"@type": "ListItem", "position": 5, "name": "Lottery", "item": "${domainUrl}/#lottery"}
+        {"@type": "ListItem", "position": 1, "name": "${tt('nav.home', lang)}", "item": "${domainUrl}/"},
+        {"@type": "ListItem", "position": 2, "name": "${tt('nav.companies', lang)}", "item": "${domainUrl}/#companies"},
+        {"@type": "ListItem", "position": 3, "name": "${tt('nav.wallets', lang)}", "item": "${domainUrl}/#wallets"},
+        {"@type": "ListItem", "position": 4, "name": "${tt('nav.predictions', lang)}", "item": "${domainUrl}/#ai-sports"},
+        {"@type": "ListItem", "position": 5, "name": "${tt('nav.lottery', lang)}", "item": "${domainUrl}/#lottery"}
       ]
     }
     </script>
