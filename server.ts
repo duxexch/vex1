@@ -9,6 +9,7 @@ import { Server } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { storage } from './server/storage';
+import type { Company } from './src/types';
 import { ServerCompensationRequest } from './server/seedData';
 import { agentEngine, calculateNotificationTiming } from './server/agentEngine';
 import { LANGS, isLang, tt, type Lang } from './server/i18nUi';
@@ -3196,6 +3197,7 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
       const profile = getProfile(domain, 'en');
       const companies = storage.getCompanies();
       const companyList = companies.map(c => `- [${c.name}](${url}/company/${c.id}): ${c.details?.substring(0, 120)}`).join('\n');
+      const cmpList = getComparisonPairs().map(p => `- [${p.a.name} vs ${p.b.name}](${url}/compare/${p.slug})`).join('\n');
 
       const llms = `# ${profile.brand} - ${profile.tagline}
 
@@ -3234,6 +3236,10 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
 
 ## Company Pages
 ${companyList}
+
+## Comparisons
+- ${url}/compare - Index of all bookmaker comparison pages
+${cmpList}
 
 ## Key Topics
 - Betting compensation and loss recovery
@@ -3300,6 +3306,10 @@ It helps users:
 - ${url}/predictions/today - Today's AI predictions with win probabilities, predicted scores and tactical analysis
 - ${url}/predictions/tomorrow - Tomorrow's AI predictions before kickoff
 - Each match page under /predictions/<slug> contains win/draw/loss probabilities, a predicted score and a generated tactical report
+
+## Comparisons
+- ${url}/compare - Hub with side-by-side comparisons of all supported bookmakers
+- Pair pages live at /compare/<bookmaker>-vs-<bookmaker> (for example /compare/1xbet-vs-melbet) and cover welcome bonus, promo code, mobile app and a neutral verdict
 
 ## Platform Statistics
 - Supported Companies: ${companies.length}
@@ -3534,6 +3544,19 @@ Sitemap: https://${domain}/sitemap.xml
       res.send(robots);
     });
 
+    // Programmatic comparison pages: all unique pairs of companies (A vs B)
+    const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    function getComparisonPairs(): { slug: string; a: Company; b: Company }[] {
+      const comps = storage.getCompanies();
+      const out: { slug: string; a: Company; b: Company }[] = [];
+      for (let i = 0; i < comps.length; i++)
+        for (let j = i + 1; j < comps.length; j++) {
+          const a = comps[i], b = comps[j];
+          out.push({ slug: `${slugify(a.name)}-vs-${slugify(b.name)}`, a, b });
+        }
+      return out;
+    }
+
     // Dynamic sitemap.xml per domain - MUST be before express.static
     app.get('/sitemap.xml', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
@@ -3700,6 +3723,34 @@ Sitemap: https://${domain}/sitemap.xml
           if (l === 'ar') continue;
           urls += `  <url>
     <loc>https://${domain}${hub}?lang=${l}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+`;
+        }
+      }
+
+      // Comparison pages (programmatic SEO): hub + all unique pairs
+      const cmpPages = ['/compare', ...getComparisonPairs().map(p => `/compare/${p.slug}`)];
+      for (const page of cmpPages) {
+        urls += `  <url>
+    <loc>https://${domain}${page}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+`;
+        for (const l of langs) {
+          urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}${page}${langQ(l)}"/>
+`;
+        }
+        urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}${page}"/>
+  </url>
+`;
+        for (const l of langs) {
+          if (l === 'ar') continue;
+          urls += `  <url>
+    <loc>https://${domain}${page}?lang=${l}</loc>
     <lastmod>${now}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -3897,6 +3948,15 @@ ${socialMeta(domainUrl, escAttr(`${name} - ${profile.brand}`), escAttr(T_('compa
     <div class="related">
       ${companies.filter(c => c.id !== company.id).slice(0, 6).map(c => `<a href="/company/${c.id}${langQ(lang)}">${c.name}</a>`).join('')}
     </div>
+
+    ${(() => {
+      const myPairs = getComparisonPairs().filter(p => p.a.id === company.id || p.b.id === company.id).slice(0, 6);
+      return myPairs.length ? `
+    <h2>⚖️ ${tt('link.compare', lang)}</h2>
+    <div class="related">
+      ${myPairs.map(p => `<a href="/compare/${p.slug}${langQ(lang)}">${p.a.name} vs ${p.b.name}</a>`).join('')}
+    </div>` : '';
+    })()}
 
     <div style="margin-top:30px;text-align:center;">
       <a href="/companies${langQ(lang)}" class="cta">🏢 ${tt('cta.companies', lang)}</a>
@@ -4473,6 +4533,184 @@ ${socialMeta(domainUrl, escA(pageTitle), escA(desc))}
       res.send(html);
     };
 
+    // ==================== SSR COMPARISON PAGES (Programmatic SEO) ====================
+    app.get('/compare', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const domainUrl = `https://${domain}`;
+      const lang = getLang(req);
+      const profile = getProfile(domain, lang);
+      const pairs = getComparisonPairs();
+      const basePath = '/compare';
+      const title = `${tt('cmp.hub_h1', lang)} — ${profile.brand}`;
+      const desc = tt('cmp.hub_desc', lang, { brand: profile.brand });
+      const jstr = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ');
+      const cards = pairs.map(p => `<a class="card" href="/compare/${p.slug}${langQ(lang)}">${esc(p.a.name)} <b>VS</b> ${esc(p.b.name)}</a>`).join('\n        ');
+
+      const html = `<!doctype html>
+<html lang="${lang}" dir="${profile.dir}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${esc(title)}</title>
+  <meta name="description" content="${esc(desc)}" />
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
+  <link rel="canonical" href="${canonicalUrl(domainUrl, basePath, lang)}" />
+${hreflangs(domainUrl, basePath)}
+  <meta property="og:title" content="${esc(title)}" />
+  <meta property="og:description" content="${esc(desc)}" />
+  <meta property="og:url" content="${domainUrl}${basePath}${langQ(lang)}" />
+  <meta property="og:type" content="website" />
+${socialMeta(domainUrl, esc(title), esc(desc))}
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"CollectionPage","name":"${jstr(title)}","description":"${jstr(desc)}","url":"${domainUrl}${basePath}","inLanguage":"${lang}","isPartOf":{"@id":"${domainUrl}/#website"},"publisher":{"@id":"${domainUrl}/#organization"},"mainEntity":{"@type":"ItemList","numberOfItems":${pairs.length},"itemListElement":${JSON.stringify(pairs.map((p, i) => ({ '@type': 'ListItem', position: i + 1, url: `${domainUrl}/compare/${p.slug}` })))}}}</script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.8}
+    .container{max-width:900px;margin:0 auto;padding:40px 20px}
+    h1{font-size:1.9rem;color:#10b981;margin-bottom:10px}
+    p{color:#94a3b8;margin-bottom:15px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-top:20px}
+    .card{background:#1e293b;padding:15px 18px;border-radius:10px;text-decoration:none;color:#e2e8f0;border:1px solid #334155;font-weight:600;text-align:center}
+    .card b{color:#10b981;margin:0 6px}
+    .card:hover{border-color:#10b981}
+    .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
+    .langbar a{color:#64748b;text-decoration:none}
+    .langbar a.active,.langbar a:hover{color:#10b981}
+    footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+  </style>
+  ${siteSchemaTag(domainUrl, profile)}</head>
+<body>
+  <div class="container">
+    <nav class="langbar">
+      ${LANGS.map(l => `<a href="${basePath}${langQ(l)}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
+    </nav>
+    <h1>⚖️ ${tt('cmp.hub_h1', lang)}</h1>
+    <p>${tt('cmp.hub_desc', lang, { brand: profile.brand })}</p>
+    <div class="grid">
+        ${cards}
+    </div>
+  </div>
+  <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+</body>
+</html>`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Robots-Tag', 'index, follow, max-snippet:-1');
+      res.send(html);
+    });
+
+    app.get('/compare/:slug', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const domainUrl = `https://${domain}`;
+      const lang = getLang(req);
+      const profile = getProfile(domain, lang);
+      const pair = getComparisonPairs().find(p => p.slug === req.params.slug);
+      if (!pair) return send404(res, profile, lang === 'ar' ? 'المقارنة غير موجودة.' : 'Comparison not found.');
+      const { a, b } = pair;
+      const basePath = `/compare/${pair.slug}`;
+      const T_ = (k: string, vars: Record<string, string> = {}) => tt(k, lang, { a: a.name, b: b.name, brand: profile.brand, ...vars });
+      const jstr = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ');
+      const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      const title = T_('cmp.h1');
+      const desc = T_('cmp.meta_desc');
+      const about = (c: Company) => (c.details || c.description || '').substring(0, 220);
+      const morePairs = getComparisonPairs()
+        .filter(p => p.slug !== pair.slug && [p.a.id, p.b.id].some(id => id === a.id || id === b.id))
+        .slice(0, 6);
+
+      const faq = [
+        { q: T_('cmp.faq1q'), a: T_('cmp.faq1a') },
+        { q: T_('cmp.faq2q'), a: T_('cmp.faq2a') },
+        { q: T_('cmp.faq3q'), a: T_('cmp.faq3a') },
+      ];
+
+      const html = `<!doctype html>
+<html lang="${lang}" dir="${profile.dir}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${esc(title)} | ${profile.brand}</title>
+  <meta name="description" content="${escAttr(desc)}" />
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
+  <link rel="canonical" href="${canonicalUrl(domainUrl, basePath, lang)}" />
+${hreflangs(domainUrl, basePath)}
+  <meta property="og:title" content="${escAttr(title)}" />
+  <meta property="og:description" content="${escAttr(desc)}" />
+  <meta property="og:url" content="${domainUrl}${basePath}${langQ(lang)}" />
+  <meta property="og:type" content="article" />
+${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"FAQPage","mainEntity":${JSON.stringify(faq.map(f => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })))}}</script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"${jstr(tt('nav.home', lang))}","item":"${domainUrl}/"},{"@type":"ListItem","position":2,"name":"${jstr(tt('cmp.hub_h1', lang))}","item":"${domainUrl}/compare"},{"@type":"ListItem","position":3,"name":"${jstr(`${a.name} vs ${b.name}`)}","item":"${domainUrl}${basePath}"}]}</script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.8}
+    .container{max-width:900px;margin:0 auto;padding:40px 20px}
+    h1{font-size:1.9rem;color:#10b981;margin-bottom:10px}
+    h2{font-size:1.4rem;color:#34d399;margin:30px 0 12px;border-bottom:2px solid #1e293b;padding-bottom:8px}
+    p{color:#94a3b8;margin-bottom:15px}
+    table.vs{width:100%;border-collapse:collapse;margin:15px 0;background:#1e293b;border-radius:10px;overflow:hidden}
+    table.vs th,table.vs td{padding:12px 14px;text-align:left;border-bottom:1px solid #334155;vertical-align:top}
+    table.vs th{background:#0f172a;color:#10b981;font-size:1rem}
+    table.vs td:first-child{color:#64748b;white-space:nowrap}
+    table.vs tr:last-child td{border-bottom:none}
+    code{background:#0f172a;color:#34d399;padding:3px 10px;border-radius:6px;font-weight:bold;letter-spacing:1px}
+    .faq{background:#1e293b;padding:15px 18px;border-radius:10px;margin:10px 0}
+    .faq strong{color:#34d399;display:block;margin-bottom:6px}
+    .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:13px 26px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:8px 8px 8px 0}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-top:15px}
+    .card{background:#1e293b;padding:13px 16px;border-radius:10px;text-decoration:none;color:#e2e8f0;border:1px solid #334155;font-weight:600;text-align:center;font-size:0.9rem}
+    .card b{color:#10b981;margin:0 5px}
+    .card:hover{border-color:#10b981}
+    .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
+    .langbar a{color:#64748b;text-decoration:none}
+    .langbar a.active,.langbar a:hover{color:#10b981}
+    footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+  </style>
+  ${siteSchemaTag(domainUrl, profile)}</head>
+<body>
+  <div class="container">
+    <nav class="langbar">
+      ${LANGS.map(l => `<a href="${basePath}${langQ(l)}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
+    </nav>
+    <h1>⚖️ ${title}</h1>
+    <p>${T_('cmp.intro')}</p>
+
+    <h2>📊 ${T_('cmp.table_title')}</h2>
+    <table class="vs">
+      <tr><th></th><th>${esc(a.name)}</th><th>${esc(b.name)}</th></tr>
+      <tr><td>${T_('cmp.row_bonus')}</td><td>${esc(a.bonus_text || '—')}</td><td>${esc(b.bonus_text || '—')}</td></tr>
+      <tr><td>${T_('cmp.row_promo')}</td><td>${a.promo_code ? `<code>${esc(a.promo_code)}</code>` : '—'}</td><td>${b.promo_code ? `<code>${esc(b.promo_code)}</code>` : '—'}</td></tr>
+      <tr><td>${T_('cmp.row_about')}</td><td>${esc(about(a))}</td><td>${esc(about(b))}</td></tr>
+      <tr><td>${T_('cmp.row_app')}</td><td>✅ <a href="/company/${a.id}${langQ(lang)}" style="color:#10b981;">${esc(a.name)}</a></td><td>✅ <a href="/company/${b.id}${langQ(lang)}" style="color:#10b981;">${esc(b.name)}</a></td></tr>
+    </table>
+
+    <h2>⚖️ ${T_('cmp.verdict_title')}</h2>
+    <p>${T_('cmp.verdict')}</p>
+
+    <div style="margin-top:20px;">
+      <a href="/company/${a.id}${langQ(lang)}" class="cta">👉 ${tt('cmp.cta_visit', lang, { name: a.name })}</a>
+      <a href="/company/${b.id}${langQ(lang)}" class="cta">👉 ${tt('cmp.cta_visit', lang, { name: b.name })}</a>
+    </div>
+
+    <h2>❓ FAQ</h2>
+    ${faq.map(f => `<div class="faq"><strong>${tt('faq.q_prefix', lang)} ${esc(f.q)}</strong>${esc(f.a)}</div>`).join('\n    ')}
+
+    ${morePairs.length ? `<h2>🔗 ${T_('cmp.more_title')}</h2>
+    <div class="grid">
+      ${morePairs.map(p => `<a class="card" href="/compare/${p.slug}${langQ(lang)}">${esc(p.a.name)} <b>VS</b> ${esc(p.b.name)}</a>`).join('\n      ')}
+    </div>` : ''}
+  </div>
+  <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+</body>
+</html>`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Robots-Tag', 'index, follow, max-snippet:-1');
+      res.send(html);
+    });
+
     app.get('/companies', (req, res) => renderHub('companies', req, res));
     app.get('/guides', (req, res) => renderHub('guides', req, res));
 
@@ -4540,6 +4778,7 @@ ${socialMeta(domainUrl, escA(pageTitle), escA(desc))}
         <a href="${domainUrl}/guides/betting-wallet-tracking-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_wallet', lang)}</a> |
         <a href="${domainUrl}/guides/betting-odds-explained${langQ(lang)}" style="color:#10b981;">${tt('link.guide_odds', lang)}</a> |
         <a href="${domainUrl}/guides/bankroll-management-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_bankroll', lang)}</a> |
+        <a href="${domainUrl}/compare${langQ(lang)}" style="color:#10b981;">${tt('link.compare', lang)}</a> |
         <a href="${domainUrl}/companies${langQ(lang)}" style="color:#10b981;">${tt('hub.companies_h1', lang)}</a> |
         <a href="${domainUrl}/guides${langQ(lang)}" style="color:#10b981;">${tt('hub.guides_h1', lang)}</a>
       </p>
