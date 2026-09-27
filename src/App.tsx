@@ -762,7 +762,7 @@ export default function App() {
           </motion.div>
 
           {/* Footer Legal & Store Compliance Links */}
-          <div className="pt-5 pb-2 text-center text-xs text-slate-400 space-y-1.5 border-t border-slate-200 mt-6">
+          <div className="pt-5 pb-2 text-center text-xs text-slate-600 space-y-1.5 border-t border-slate-200 mt-6">
             <div className="flex items-center justify-center gap-3">
               <button
                 onClick={() => setResponsibleGamingOpen(true)}
@@ -785,7 +785,7 @@ export default function App() {
                 {lang === 'ar' ? 'الأمان' : 'Security'}
               </button>
             </div>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-xs text-slate-500">
               {appBranding?.appName || 'VEX Deals'} © {new Date().getFullYear()}
             </p>
           </div>

@@ -73,3 +73,10 @@ input, textarea {
 .animate-smart-glow {
   animation: smartPulseGlow 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* Accessibility: enforce minimum legible font size (Lighthouse font-size audit) */
+[class*="text-[9px]"],
+[class*="text-[10px]"],
+[class*="text-[11px]"] {
+  font-size: 12px;
+}
