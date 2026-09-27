@@ -3092,21 +3092,8 @@ async function setupServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
 
-    // APK Download Endpoint - serves the Android APK for all domains
-    app.get('/download/apk', (req, res) => {
-      const apkPath = path.join(process.cwd(), 'VEX-Deals.apk');
-      const distApkPath = path.join(process.cwd(), 'dist', 'VEX-Deals.apk');
-      const finalPath = fs.existsSync(apkPath) ? apkPath : distApkPath;
-      if (fs.existsSync(finalPath)) {
-        res.download(finalPath, 'VEX-Deals.apk');
-      } else {
-        res.status(404).json({ error: 'APK not found. Please build the APK first.' });
-      }
-    });
-
-    // Dynamic robots.txt per domain
+    // Dynamic robots.txt per domain - MUST be before express.static
     app.get('/robots.txt', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const robots = `# VEX Deals - Robots.txt for Search Engines and AI Crawlers
@@ -3139,7 +3126,7 @@ Sitemap: https://${domain}/sitemap.xml
       res.send(robots);
     });
 
-    // Dynamic sitemap.xml per domain
+    // Dynamic sitemap.xml per domain - MUST be before express.static
     app.get('/sitemap.xml', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const now = new Date().toISOString().split('T')[0];
@@ -3174,7 +3161,7 @@ Sitemap: https://${domain}/sitemap.xml
 `;
       }
 
-      // Company detail pages (server-side rendered)
+      // Company detail pages
       for (const c of companies) {
         const slug = c.id;
         urls += `  <url>
@@ -3205,7 +3192,22 @@ ${urls}</urlset>`;
       res.send(sitemap);
     });
 
-    // Domain-specific index.html with dynamic SEO tags
+    // Serve static files (after dynamic routes)
+    app.use(express.static(distPath));
+
+    // APK Download Endpoint - serves the Android APK for all domains
+    app.get('/download/apk', (req, res) => {
+      const apkPath = path.join(process.cwd(), 'VEX-Deals.apk');
+      const distApkPath = path.join(process.cwd(), 'dist', 'VEX-Deals.apk');
+      const finalPath = fs.existsSync(apkPath) ? apkPath : distApkPath;
+      if (fs.existsSync(finalPath)) {
+        res.download(finalPath, 'VEX-Deals.apk');
+      } else {
+        res.status(404).json({ error: 'APK not found. Please build the APK first.' });
+      }
+    });
+
+    // Domain-specific index.html with dynamic SEO tags - MUST be after express.static
     app.get('*', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const domainUrl = `https://${domain}`;
