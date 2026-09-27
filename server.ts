@@ -3358,12 +3358,24 @@ Expires: ${new Date(Date.now() + 365*24*60*60*1000).toISOString()}
         return res.status(400).json({ error: `urls must start with https://${domain}/` });
       }
       try {
-        const r = await fetch('https://api.indexnow.org/indexnow', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json; charset=utf-8' },
-          body: JSON.stringify({ host: domain, key: INDEXNOW_KEY, keyLocation: `https://${domain}/${INDEXNOW_KEY}.txt`, urlList: clean }),
-        });
-        res.json({ submitted: clean.length, status: r.status });
+        // IndexNow rejects oversized single posts — submit in batches of 50
+        const results: number[] = [];
+        for (let i = 0; i < clean.length; i += 50) {
+          const r = await fetch('https://api.indexnow.org/indexnow', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({
+              host: domain,
+              key: INDEXNOW_KEY,
+              keyLocation: `https://${domain}/${INDEXNOW_KEY}.txt`,
+              urlList: clean.slice(i, i + 50),
+            }),
+          });
+          results.push(r.status);
+          if (i + 50 < clean.length) await new Promise(s => setTimeout(s, 1200));
+        }
+        const ok = results.filter(s => s >= 200 && s < 300).length;
+        res.json({ submitted: clean.length, batches: results.length, ok, status: results });
       } catch (err) {
         console.error('[IndexNow] submit failed:', err);
         res.status(502).json({ error: 'indexnow failed' });
