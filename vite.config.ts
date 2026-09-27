@@ -27,11 +27,12 @@ export default defineConfig(() => {
           manualChunks(id: string) {
             if (!id.includes('node_modules')) return undefined;
             if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return 'vendor-react';
-            if (/[\\/]node_modules[\\/](framer-motion|motion)[\\/]/.test(id)) return 'vendor-motion';
-            if (/[\\/]node_modules[\\/](firebase)[\\/]/.test(id)) return 'vendor-firebase';
-            if (/[\\/]node_modules[\\/](socket\.io|engine\.io|xmlhttprequest)[\\/]/.test(id)) return 'vendor-socket';
+            if (/[\\/]node_modules[\\/](framer-motion|motion)/.test(id)) return 'vendor-motion';
+            if (/[\\/]node_modules[\\/](@firebase|firebase)[\\/]/.test(id)) return 'vendor-firebase';
+            if (/[\\/]node_modules[\\/](socket\.io|engine\.io|xmlhttprequest)/.test(id)) return 'vendor-socket';
             if (/[\\/]node_modules[\\/]lucide-react[\\/]/.test(id)) return 'vendor-icons';
             if (/[\\/]node_modules[\\/](recharts|d3-)[\\/]/.test(id)) return 'vendor-charts';
+            if (/[\\/]node_modules[\\/](canvas-confetti|qrcode)[\\/]/.test(id)) return 'vendor-lazy';
             return 'vendor';
           },
         },

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { motion } from 'motion/react';
-import { io } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 import {
   Building2,
   Wallet as WalletIcon,
@@ -29,7 +29,6 @@ import {
 } from './types';
 import { useTranslation } from './i18n';
 import { vexApi } from './services/api';
-import { requestFCMToken, onForegroundMessage } from './services/firebaseClient';
 import { recursiveLocalizeCompanies } from './utils/companyTranslator';
 import { detectUserRegionalCurrency } from './utils/currency';
 import { Header } from './components/Header';
@@ -208,22 +207,45 @@ export default function App() {
     }
   }, []);
 
-  // Initialize FCM Push Notifications for Compensation Requests
+  // Initialize FCM Push Notifications (deferred off the critical path: idle callback)
   useEffect(() => {
-    requestFCMToken().then((token) => {
-      if (token) {
-        console.log('FCM Token registered:', token);
-      }
-    });
-
-    const unsubscribe = onForegroundMessage((payload) => {
-      console.log('Foreground push notification received:', payload);
-      const title = payload.notification?.title || (lang === 'ar' ? 'تحديث طلب التعويض' : 'Compensation Status Update');
-      const body = payload.notification?.body || '';
-      showToast(`${title}: ${body}`);
-    });
+    let disposed = false;
+    let unsubscribe: (() => void) | null = null;
+    let idleId: number | undefined;
+    let timerId: number | undefined;
+    const start = () => {
+      if (disposed) return;
+      import('./services/firebaseClient')
+        .then(({ requestFCMToken, onForegroundMessage }) => {
+          if (disposed) return;
+          requestFCMToken().then((token) => {
+            if (token) {
+              console.log('FCM Token registered:', token);
+            }
+          });
+          unsubscribe = onForegroundMessage((payload) => {
+            console.log('Foreground push notification received:', payload);
+            const title = payload.notification?.title || (lang === 'ar' ? 'تحديث طلب التعويض' : 'Compensation Status Update');
+            const body = payload.notification?.body || '';
+            showToast(`${title}: ${body}`);
+          });
+        })
+        .catch(() => {});
+    };
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === 'function') {
+      idleId = w.requestIdleCallback(start, { timeout: 5000 });
+    } else {
+      timerId = window.setTimeout(start, 4000);
+    }
 
     return () => {
+      disposed = true;
+      if (idleId !== undefined) w.cancelIdleCallback?.(idleId);
+      if (timerId !== undefined) window.clearTimeout(timerId);
       if (typeof unsubscribe === 'function') unsubscribe();
     };
   }, [lang]);
@@ -303,43 +325,56 @@ export default function App() {
   }, [activeTab]);
 
   // Real-time Socket.io Notification & Betting Sync for VPS / Docker with Nginx & Heartbeat
+  // Deferred 3s after mount so it never competes with first paint (Lighthouse TBT).
   useEffect(() => {
-    const socket = io({
-      transports: ['polling', 'websocket'],
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 2000,
-      reconnectionDelayMax: 10000,
-      timeout: 15000,
-    });
+    let socket: Socket | null = null;
+    let heartbeatInterval: ReturnType<typeof setInterval> | undefined;
+    let disposed = false;
+    const timer = window.setTimeout(() => {
+      import('socket.io-client')
+        .then(({ io }) => {
+          if (disposed) return;
+          socket = io({
+            transports: ['polling', 'websocket'],
+            reconnection: true,
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 2000,
+            reconnectionDelayMax: 10000,
+            timeout: 15000,
+          });
 
-    socket.on('connect', () => {
-      console.log('⚡ Connected to VEX Real-Time Socket Hub (ID:', socket.id, ')');
-    });
+          socket.on('connect', () => {
+            console.log('⚡ Connected to VEX Real-Time Socket Hub (ID:', socket?.id, ')');
+          });
 
-    socket.on('disconnect', (reason) => {
-      console.warn('⚠️ Disconnected from Socket Hub:', reason);
-    });
+          socket.on('disconnect', (reason) => {
+            console.warn('⚠️ Disconnected from Socket Hub:', reason);
+          });
 
-    socket.on('connect_error', () => {
-      // Graceful handling of transient proxy timeouts
-    });
+          socket.on('connect_error', () => {
+            // Graceful handling of transient proxy timeouts
+          });
 
-    socket.on('notification', (newNotif: AppNotification) => {
-      setNotifications((prev) => [newNotif, ...prev]);
-      showToast(lang === 'ar' ? 'إشعار جديد في الوقت الحقيقي!' : 'New real-time alert!');
-    });
+          socket.on('notification', (newNotif: AppNotification) => {
+            setNotifications((prev) => [newNotif, ...prev]);
+            showToast(lang === 'ar' ? 'إشعار جديد في الوقت الحقيقي!' : 'New real-time alert!');
+          });
 
-    // Heartbeat ping interval to keep Nginx reverse proxy connection alive (every 25 seconds)
-    const heartbeatInterval = setInterval(() => {
-      if (socket.connected) {
-        socket.emit('heartbeat', { timestamp: Date.now() });
-      }
-    }, 25000);
+          // Heartbeat ping interval to keep Nginx reverse proxy connection alive (every 25 seconds)
+          heartbeatInterval = setInterval(() => {
+            if (socket?.connected) {
+              socket.emit('heartbeat', { timestamp: Date.now() });
+            }
+          }, 25000);
+        })
+        .catch(() => {});
+    }, 3000);
 
     return () => {
-      clearInterval(heartbeatInterval);
-      socket.disconnect();
+      disposed = true;
+      window.clearTimeout(timer);
+      if (heartbeatInterval) clearInterval(heartbeatInterval);
+      socket?.disconnect();
     };
   }, [lang]);
 

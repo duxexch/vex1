@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Zap, Timer } from 'lucide-react';
-import { io, Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 
 export const GoldenHourBanner: React.FC<{ lang: 'en' | 'ar' }> = ({ lang }) => {
   const [goldenHour, setGoldenHour] = useState<any>(null);
@@ -21,14 +21,23 @@ export const GoldenHourBanner: React.FC<{ lang: 'en' | 'ar' }> = ({ lang }) => {
       })
       .catch(console.error);
 
-    // Listen for socket event
-    const socket = io();
-    socket.on('golden_hour_started', (state: any) => {
-      setGoldenHour(state);
-    });
+    // Listen for socket event (deferred so the socket.io chunk stays off the critical path)
+    let disposed = false;
+    let socket: Socket | null = null;
+    const timer = window.setTimeout(() => {
+      import('socket.io-client').then(({ io: connect }) => {
+        if (disposed) return;
+        socket = connect();
+        socket.on('golden_hour_started', (state: any) => {
+          setGoldenHour(state);
+        });
+      }).catch(() => {});
+    }, 4000);
 
     return () => {
-      socket.disconnect();
+      disposed = true;
+      window.clearTimeout(timer);
+      socket?.disconnect();
     };
   }, []);
 
