@@ -3978,9 +3978,9 @@ ${socialMeta(domainUrl, escAttr(`${name} - ${profile.brand}`), escAttr(T_('compa
     .nav a { color: #94a3b8; text-decoration: none; font-size: 0.9rem; }
     .nav a:hover { color: #10b981; }
     .langbar { background: #0b1220; padding: 8px 20px; display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.85rem; }
-    .langbar a { color: #64748b; text-decoration: none; }
+    .langbar a { color: #94a3b8; text-decoration: none; }
     .langbar a.active, .langbar a:hover { color: #10b981; }
-    footer { text-align: center; padding: 30px; color: #475569; font-size: 0.85rem; border-top: 1px solid #1e293b; margin-top: 40px; }
+    footer { text-align: center; padding: 30px; color: #94a3b8; font-size: 0.85rem; border-top: 1px solid #1e293b; margin-top: 40px; }
   </style>
   ${siteSchemaTag(domainUrl, profile)}</head>
 <body>
@@ -4124,9 +4124,9 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
     .faq strong{color:#34d399}
     .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:13px 26px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:8px 5px 8px 0}
     .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
-    .langbar a{color:#64748b;text-decoration:none}
+    .langbar a{color:#94a3b8;text-decoration:none}
     .langbar a.active,.langbar a:hover{color:#10b981}
-    footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+    footer{text-align:center;padding:30px;color:#94a3b8;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
   ${siteSchemaTag(domainUrl, profile)}</head>
 <body>
@@ -4376,11 +4376,11 @@ ${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
     .match{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:#1e293b;padding:14px 18px;border-radius:10px;margin:8px 0;text-decoration:none;color:#e2e8f0;border:1px solid #334155}
     .match:hover{border-color:#10b981}
     .teams{font-weight:bold;color:#10b981;font-size:1.05rem}
-    .league{color:#64748b;font-size:0.85rem}
+    .league{color:#94a3b8;font-size:0.85rem}
     .pred{background:#0f172a;padding:5px 12px;border-radius:20px;font-size:0.9rem;color:#34d399}
     .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:13px 26px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:8px 5px 8px 0}
     .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
-    .langbar a{color:#64748b;text-decoration:none}
+    .langbar a{color:#94a3b8;text-decoration:none}
     .langbar a.active,.langbar a:hover{color:#10b981}
     .daynav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
     .daynav a{background:#1e293b;padding:7px 14px;border-radius:20px;text-decoration:none;color:#94a3b8;font-size:0.85rem;border:1px solid #334155}
@@ -4391,7 +4391,7 @@ ${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
     table.rank a{color:#34d399;text-decoration:none}
     table.rank a:hover{color:#10b981}
     table.rank tr:last-child td{border-bottom:none}
-    footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+    footer{text-align:center;padding:30px;color:#94a3b8;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
   ${siteSchemaTag(domainUrl, profile)}</head>
 <body>
@@ -4503,9 +4503,9 @@ ${socialMeta(domainUrl, escAttr(`${title} | ${profile.brand}`), escAttr(ogDesc))
     .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:13px 26px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:8px 5px 8px 0}
     .related a{display:inline-block;background:#1e293b;padding:8px 14px;border-radius:8px;color:#10b981;text-decoration:none;margin:4px}
     .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
-    .langbar a{color:#64748b;text-decoration:none}
+    .langbar a{color:#94a3b8;text-decoration:none}
     .langbar a.active,.langbar a:hover{color:#10b981}
-    footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+    footer{text-align:center;padding:30px;color:#94a3b8;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
   ${siteSchemaTag(domainUrl, profile)}</head>
 <body>
@@ -4513,7 +4513,7 @@ ${socialMeta(domainUrl, escAttr(`${title} | ${profile.brand}`), escAttr(ogDesc))
     <nav class="langbar">
       ${LANGS.map(l => `<a href="${pagePath}${langQ(l)}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
     </nav>
-    <p style="color:#64748b;"><a href="/predictions${langQ(lang)}" style="color:#10b981;text-decoration:none;">${tt('pred.breadcrumb', lang)}</a> ← <a href="/predictions/league/${slugify(fixture.league)}${langQ(lang)}" style="color:#64748b;text-decoration:none;">${esc(fixture.league)}</a></p>
+    <p style="color:#94a3b8;"><a href="/predictions${langQ(lang)}" style="color:#10b981;text-decoration:none;">${tt('pred.breadcrumb', lang)}</a> ← <a href="/predictions/league/${slugify(fixture.league)}${langQ(lang)}" style="color:#94a3b8;text-decoration:none;">${esc(fixture.league)}</a></p>
     <h1><a href="/predictions/team/${slugify(H.name)}${langQ(lang)}" style="color:#10b981;text-decoration:none;">${esc(H.name)}</a> vs <a href="/predictions/team/${slugify(A.name)}${langQ(lang)}" style="color:#10b981;text-decoration:none;">${esc(A.name)}</a></h1>
     <div>
       <span class="badge">📅 ${fixture.date}</span>
@@ -4647,13 +4647,13 @@ ${socialMeta(domainUrl, escA(pageTitle), escA(desc))}
     .match{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:#1e293b;padding:14px 18px;border-radius:10px;margin:8px 0;text-decoration:none;color:#e2e8f0;border:1px solid #334155}
     .match:hover{border-color:#10b981}
     .teams{font-weight:bold;color:#10b981;font-size:1.05rem}
-    .league{color:#64748b;font-size:0.85rem}
+    .league{color:#94a3b8;font-size:0.85rem}
     .pred{background:#0f172a;padding:5px 12px;border-radius:20px;font-size:0.9rem;color:#34d399}
     .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:13px 26px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:8px 5px 8px 0}
     .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
-    .langbar a{color:#64748b;text-decoration:none}
+    .langbar a{color:#94a3b8;text-decoration:none}
     .langbar a.active,.langbar a:hover{color:#10b981}
-    footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+    footer{text-align:center;padding:30px;color:#94a3b8;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
   ${siteSchemaTag(domainUrl, profile)}</head>
 <body>
@@ -4721,9 +4721,9 @@ ${socialMeta(domainUrl, esc(title), esc(desc))}
     .card b{color:#10b981;margin:0 6px}
     .card:hover{border-color:#10b981}
     .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
-    .langbar a{color:#64748b;text-decoration:none}
+    .langbar a{color:#94a3b8;text-decoration:none}
     .langbar a.active,.langbar a:hover{color:#10b981}
-    footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+    footer{text-align:center;padding:30px;color:#94a3b8;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
   ${siteSchemaTag(domainUrl, profile)}</head>
 <body>
@@ -4800,7 +4800,7 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
     table.vs{width:100%;border-collapse:collapse;margin:15px 0;background:#1e293b;border-radius:10px;overflow:hidden}
     table.vs th,table.vs td{padding:12px 14px;text-align:left;border-bottom:1px solid #334155;vertical-align:top}
     table.vs th{background:#0f172a;color:#10b981;font-size:1rem}
-    table.vs td:first-child{color:#64748b;white-space:nowrap}
+    table.vs td:first-child{color:#94a3b8;white-space:nowrap}
     table.vs tr:last-child td{border-bottom:none}
     code{background:#0f172a;color:#34d399;padding:3px 10px;border-radius:6px;font-weight:bold;letter-spacing:1px}
     .faq{background:#1e293b;padding:15px 18px;border-radius:10px;margin:10px 0}
@@ -4811,9 +4811,9 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
     .card b{color:#10b981;margin:0 5px}
     .card:hover{border-color:#10b981}
     .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
-    .langbar a{color:#64748b;text-decoration:none}
+    .langbar a{color:#94a3b8;text-decoration:none}
     .langbar a.active,.langbar a:hover{color:#10b981}
-    footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+    footer{text-align:center;padding:30px;color:#94a3b8;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
   ${siteSchemaTag(domainUrl, profile)}</head>
 <body>
@@ -4931,9 +4931,9 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
     .faq{background:#1e293b;padding:15px 18px;border-radius:10px;margin:10px 0}
     .faq strong{color:#34d399;display:block;margin-bottom:6px}
     .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
-    .langbar a{color:#64748b;text-decoration:none}
+    .langbar a{color:#94a3b8;text-decoration:none}
     .langbar a.active,.langbar a:hover{color:#10b981}
-    footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+    footer{text-align:center;padding:30px;color:#94a3b8;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
   ${siteSchemaTag(domainUrl, profile)}</head>
 <body>
@@ -4943,7 +4943,7 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
     </nav>
     <h1>🏆 ${title}</h1>
     <p>${T_('best.intro')}</p>
-    <p style="font-size:0.85rem;color:#64748b;">${T_('best.updated')} ${today}</p>
+    <p style="font-size:0.85rem;color:#94a3b8;">${T_('best.updated')} ${today}</p>
 
     <h2>🥇 ${T_('best.rank_title')}</h2>
     ${cards}
@@ -5019,7 +5019,7 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
         <li>${tt('home.b4', lang)}</li>
         <li>${tt('home.b5', lang)}</li>
       </ul>
-      <p style="color:#64748b;font-size:0.9rem;margin-top:15px;">
+      <p style="color:#94a3b8;font-size:0.9rem;margin-top:15px;">
         ${tt('home.keywords_label', lang)}: ${profile.focus} — <a href="${domainUrl}/guides/claim-compensation${langQ(lang)}" style="color:#10b981;">${tt('link.guide_comp', lang)}</a> |
         <a href="${domainUrl}/guides/ai-predictions-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_ai', lang)}</a> |
         <a href="${domainUrl}/guides/provably-fair-lottery${langQ(lang)}" style="color:#10b981;">${tt('link.guide_lottery', lang)}</a> |
@@ -5035,7 +5035,7 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
         <a href="${domainUrl}/guides${langQ(lang)}" style="color:#10b981;">${tt('hub.guides_h1', lang)}</a>
       </p>
       <nav style="margin-top:12px;font-size:0.9rem;">
-        ${LANGS.map(l => `<a href="${domainUrl}/${langQ(l)}" hreflang="${l}" style="color:${l === lang ? '#10b981' : '#475569'};text-decoration:none;display:inline-block;padding:6px 8px;margin:0 4px;min-width:24px;min-height:24px;text-align:center;">${l.toUpperCase()}</a>`).join('')}
+        ${LANGS.map(l => `<a href="${domainUrl}/${langQ(l)}" hreflang="${l}" style="color:${l === lang ? '#10b981' : '#94a3b8'};text-decoration:none;display:inline-block;padding:6px 8px;margin:0 4px;min-width:24px;min-height:24px;text-align:center;">${l.toUpperCase()}</a>`).join('')}
       </nav>
     </section>`;
       // Inject inside #root so React's initial render replaces it in place
