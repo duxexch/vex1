@@ -3235,6 +3235,7 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
 - ${url}/predictions/today - Today's AI predictions (win probabilities and predicted scores)
 - ${url}/predictions/tomorrow - Tomorrow's AI predictions (ahead of kickoff)
 ${leagueList}
+- ${url}/predictions/team/<team> - Per-team predictions (for example /predictions/team/arsenal)
 
 ## Company Pages
 ${companyList}
@@ -3309,6 +3310,7 @@ It helps users:
 - ${url}/predictions/tomorrow - Tomorrow's AI predictions before kickoff
 - Each match page under /predictions/<slug> contains win/draw/loss probabilities, a predicted score and a generated tactical report
 - League pages live at /predictions/league/<league-slug> (for example /predictions/league/premier-league) and group all upcoming matches of that competition
+- Team pages live at /predictions/team/<team-slug> (for example /predictions/team/arsenal) and list every upcoming match involving that team
 
 ## Comparisons
 - ${url}/compare - Hub with side-by-side comparisons of all supported bookmakers
@@ -3721,6 +3723,35 @@ Sitemap: https://${domain}/sitemap.xml
     <lastmod>${now}</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
+  </url>
+`;
+        }
+      }
+
+      // Team prediction pages (only teams with upcoming fixtures)
+      const teamKeysSeen = [...new Set(getFixtures().flatMap(f => [f.home, f.away]))];
+      for (const tk of teamKeysSeen) {
+        const page = `/predictions/team/${slugify(TEAMS[tk].name)}`;
+        urls += `  <url>
+    <loc>https://${domain}${page}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+`;
+        for (const l of langs) {
+          urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}${page}${langQ(l)}"/>
+`;
+        }
+        urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}${page}"/>
+  </url>
+`;
+        for (const l of langs) {
+          if (l === 'ar') continue;
+          urls += `  <url>
+    <loc>https://${domain}${page}?lang=${l}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
   </url>
 `;
         }
@@ -4202,7 +4233,7 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
 
     // Predictions list page
     // Shared renderer for /predictions and daily /predictions/{today|tomorrow} pages
-    const renderPredictionsList = (req: import('express').Request, res: import('express').Response, dayKey?: string, leagueSlug?: string) => {
+    const renderPredictionsList = (req: import('express').Request, res: import('express').Response, dayKey?: string, leagueSlug?: string, teamSlug?: string) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const domainUrl = `https://${domain}`;
       const lang = getLang(req);
@@ -4217,12 +4248,21 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
       if (leagueSlug && !league) {
         return send404(res, profile, lang === 'ar' ? 'الدوري غير موجود.' : 'League not found.');
       }
-      const basePath = leagueSlug ? `/predictions/league/${leagueSlug}` : dayKey ? `/predictions/${dayKey}` : '/predictions';
+      const teamEntry = teamSlug ? Object.entries(TEAMS).find(([, t]) => slugify(t.name) === teamSlug) : undefined;
+      const teamKey = teamEntry?.[0];
+      const team = teamEntry?.[1];
+      if (teamSlug && !team) {
+        return send404(res, profile, lang === 'ar' ? 'الفريق غير موجود.' : 'Team not found.');
+      }
+      const basePath = teamSlug ? `/predictions/team/${teamSlug}`
+        : leagueSlug ? `/predictions/league/${leagueSlug}`
+        : dayKey ? `/predictions/${dayKey}` : '/predictions';
       let fixtures = allFixtures;
       if (dayDate) fixtures = fixtures.filter(f => f.date === dayDate);
       if (league) fixtures = fixtures.filter(f => f.league === league);
-      if ((dayKey || leagueSlug) && fixtures.length === 0) {
-        return send404(res, profile, lang === 'ar' ? 'لا توجد مباريات في هذا اليوم.' : 'No matches on this date.');
+      if (teamKey) fixtures = fixtures.filter(f => f.home === teamKey || f.away === teamKey);
+      if ((dayKey || leagueSlug || teamSlug) && fixtures.length === 0) {
+        return send404(res, profile, lang === 'ar' ? 'لا توجد مباريات.' : 'No matches available.');
       }
       const byDate: Record<string, typeof fixtures> = {};
       for (const f of fixtures) (byDate[f.date] ||= []).push(f);
@@ -4242,25 +4282,32 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
         : dayKey === 'tomorrow' ? tt('pred.tomorrow_h1', lang)
         : dayKey ? `${tt('pred.day_h1', lang)} ${dayDate}` : '';
       const leagueTitle = league ? tt('pred.league_h1', lang, { league }) : '';
-      const listTitle = league ? `${leagueTitle} — ${profile.brand}`
+      const teamTitle = team ? tt('pred.team_h1', lang, { team: team.name }) : '';
+      const listTitle = team ? `${teamTitle} — ${profile.brand}`
+        : league ? `${leagueTitle} — ${profile.brand}`
         : dayKey ? `${dayTitle} — ${dayDate} — ${profile.brand}` : `${tt('pred.list_h1', lang)} — ${profile.brand}`;
-      const listDesc = league ? tt('pred.league_desc', lang, { league: league!, brand: profile.brand })
+      const listDesc = team ? tt('pred.team_desc', lang, { team: team.name, brand: profile.brand })
+        : league ? tt('pred.league_desc', lang, { league: league!, brand: profile.brand })
         : dayKey ? tt('pred.day_desc', lang, { date: dayDate!, brand: profile.brand }) : tt('pred.list_desc', lang, { brand: profile.brand });
-      const h1 = league ? `🏆 ${leagueTitle}` : dayKey ? `📅 ${dayTitle}` : `⚽ ${tt('pred.list_h1', lang)}`;
+      const h1 = team ? `🛡️ ${teamTitle}` : league ? `🏆 ${leagueTitle}` : dayKey ? `📅 ${dayTitle}` : `⚽ ${tt('pred.list_h1', lang)}`;
       const canonical = canonicalUrl(domainUrl, basePath, lang);
       const ogUrl = `${domainUrl}${basePath}${langQ(lang)}`;
-      const crumbName = league || dayTitle || tt('pred.list_h1', lang);
-      const breadcrumbLd = (dayKey || leagueSlug) ? `,"breadcrumb":{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"${esc(profile.brand)}","item":"${domainUrl}/"},{"@type":"ListItem","position":2,"name":"${esc(tt('pred.list_h1', lang))}","item":"${domainUrl}/predictions"},{"@type":"ListItem","position":3,"name":"${esc(crumbName)}","item":"${domainUrl}${basePath}"}]}` : '';
+      const crumbName = team?.name || league || dayTitle || tt('pred.list_h1', lang);
+      const breadcrumbLd = (dayKey || leagueSlug || teamSlug) ? `,"breadcrumb":{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"${esc(profile.brand)}","item":"${domainUrl}/"},{"@type":"ListItem","position":2,"name":"${esc(tt('pred.list_h1', lang))}","item":"${domainUrl}/predictions"},{"@type":"ListItem","position":3,"name":"${esc(crumbName)}","item":"${domainUrl}${basePath}"}]}` : '';
       const dayLinks = `
         <div class="daynav">
           <a href="/predictions/today${langQ(lang)}" class="${dayKey === 'today' ? 'active' : ''}">📅 ${tt('pred.today_h1', lang)}</a>
           <a href="/predictions/tomorrow${langQ(lang)}" class="${dayKey === 'tomorrow' ? 'active' : ''}">📅 ${tt('pred.tomorrow_h1', lang)}</a>
-          <a href="/predictions${langQ(lang)}" class="${!dayKey && !leagueSlug ? 'active' : ''}">⚽ ${tt('pred.list_h1', lang)}</a>
+          <a href="/predictions${langQ(lang)}" class="${!dayKey && !leagueSlug && !teamSlug ? 'active' : ''}">⚽ ${tt('pred.list_h1', lang)}</a>
         </div>`;
       const leagueLinks = `
         <div class="daynav">
           ${leagues.map(n => `<a href="/predictions/league/${slugify(n)}${langQ(lang)}" class="${n === league ? 'active' : ''}">${esc(n)}</a>`).join('\n          ')}
         </div>`;
+      const teamLinks = (league && LEAGUE_TEAMS[league]) ? `
+        <div class="daynav">
+          ${LEAGUE_TEAMS[league].map(k => `<a href="/predictions/team/${slugify(TEAMS[k].name)}${langQ(lang)}" class="${k === teamKey ? 'active' : ''}">${esc(TEAMS[k].name)}</a>`).join('\n          ')}
+        </div>` : '';
 
       const html = `<!doctype html>
 <html lang="${lang}" dir="${profile.dir}">
@@ -4311,6 +4358,7 @@ ${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
     <p>${listDesc}</p>
     ${dayLinks}
     ${leagueLinks}
+    ${teamLinks}
     <p>ℹ️ ${tt('pred.list_note', lang)} — ${tt('pred.updated_only', lang)} ${dayDate || todayStr}</p>
     ${rows}
     <div style="margin-top:30px;text-align:center;">
@@ -4333,6 +4381,8 @@ ${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
     app.get('/predictions/tomorrow', (req, res) => renderPredictionsList(req, res, 'tomorrow'));
     // League pages — MUST be before /predictions/:slug
     app.get('/predictions/league/:lslug', (req, res) => renderPredictionsList(req, res, undefined, req.params.lslug));
+    // Team pages — MUST be before /predictions/:slug
+    app.get('/predictions/team/:tslug', (req, res) => renderPredictionsList(req, res, undefined, undefined, req.params.tslug));
 
     // Single prediction page
     app.get('/predictions/:slug', (req, res) => {
@@ -4416,8 +4466,8 @@ ${socialMeta(domainUrl, escAttr(`${title} | ${profile.brand}`), escAttr(ogDesc))
     <nav class="langbar">
       ${LANGS.map(l => `<a href="${pagePath}${langQ(l)}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
     </nav>
-    <p style="color:#64748b;"><a href="/predictions${langQ(lang)}" style="color:#10b981;text-decoration:none;">${tt('pred.breadcrumb', lang)}</a> ← ${esc(fixture.league)}</p>
-    <h1>${esc(H.name)} vs ${esc(A.name)}</h1>
+    <p style="color:#64748b;"><a href="/predictions${langQ(lang)}" style="color:#10b981;text-decoration:none;">${tt('pred.breadcrumb', lang)}</a> ← <a href="/predictions/league/${slugify(fixture.league)}${langQ(lang)}" style="color:#64748b;text-decoration:none;">${esc(fixture.league)}</a></p>
+    <h1><a href="/predictions/team/${slugify(H.name)}${langQ(lang)}" style="color:#10b981;text-decoration:none;">${esc(H.name)}</a> vs <a href="/predictions/team/${slugify(A.name)}${langQ(lang)}" style="color:#10b981;text-decoration:none;">${esc(A.name)}</a></h1>
     <div>
       <span class="badge">📅 ${fixture.date}</span>
       <span class="badge">🕐 ${tt('pred.kickoff', lang)} ${fixture.kickOff}</span>
