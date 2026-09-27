@@ -3106,8 +3106,129 @@ async function setupServer() {
       }
     });
 
+    // Dynamic robots.txt per domain
+    app.get('/robots.txt', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const robots = `# VEX Deals - Robots.txt for Search Engines and AI Crawlers
+User-agent: *
+Allow: /
+Disallow: /api/
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /
+
+User-agent: AdsBot-Google
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+Sitemap: https://${domain}/sitemap.xml
+`;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.send(robots);
+    });
+
+    // Dynamic sitemap.xml per domain
+    app.get('/sitemap.xml', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const now = new Date().toISOString().split('T')[0];
+      const langs = ['ar', 'en', 'es', 'ru', 'fr', 'de', 'tr', 'pt'];
+      const companies = storage.getCompanies();
+
+      let urls: string = '';
+
+      // Homepage with hreflang alternates
+      urls += `  <url>
+    <loc>https://${domain}/</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+`;
+      for (const l of langs) {
+        urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}/?lang=${l}"/>
+`;
+      }
+      urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}/"/>
+  </url>
+`;
+
+      // Language variants
+      for (const l of langs) {
+        urls += `  <url>
+    <loc>https://${domain}/?lang=${l}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+`;
+      }
+
+      // Company detail pages (server-side rendered)
+      for (const c of companies) {
+        const slug = c.id;
+        urls += `  <url>
+    <loc>https://${domain}/company/${slug}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+`;
+        for (const l of langs) {
+          urls += `  <url>
+    <loc>https://${domain}/company/${slug}?lang=${l}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+`;
+        }
+      }
+
+      const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+${urls}</urlset>`;
+
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.send(sitemap);
+    });
+
+    // Domain-specific index.html with dynamic SEO tags
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const domainUrl = `https://${domain}`;
+      const filePath = path.join(distPath, 'index.html');
+      let html = fs.readFileSync(filePath, 'utf8');
+
+      // Replace all vex.deals references with actual domain
+      html = html.replace(/https:\/\/vex\.deals/g, domainUrl);
+
+      // Inject Google Search Console verification meta tags
+      const gscMeta = `
+    <!-- Google Search Console Verification -->
+    <meta name="google-site-verification" content="vex_deals_${domain.replace(/\./g, '_')}" />
+    <meta name="msvalidate.01" content="vex_deals_${domain.replace(/\./g, '_')}" />`;
+      html = html.replace('</head>', `${gscMeta}\n  </head>`);
+
+      // Add domain-specific canonical if not already present
+      if (!html.includes(`href="${domainUrl}/"`)) {
+        html = html.replace(/<link rel="canonical"[^>]*\/?>/, `<link rel="canonical" href="${domainUrl}/" />`);
+      }
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(html);
     });
   }
 
