@@ -12,7 +12,7 @@ import { ServerCompensationRequest } from './server/seedData';
 import { agentEngine, calculateNotificationTiming } from './server/agentEngine';
 import { LANGS, isLang, tt, type Lang } from './server/i18nUi';
 import { getProfileText, type ProfileText } from './server/i18nProfiles';
-import { getGuide } from './server/i18nGuides';
+import { GUIDES, getGuide } from './server/i18nGuides';
 
 const currentFilename = '';
 const currentDirname = process.cwd();
@@ -3169,6 +3169,11 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
     const siteSchemaTag = (domainUrl: string, profile: Profile): string =>
       `  <script type="application/ld+json">${siteSchema(domainUrl, profile)}</script>\n`;
 
+    // Self-canonical: base URL (default ar = x-default) has no ?lang; other languages keep ?lang=xx
+    const canonicalUrl = (domainUrl: string, path: string, lang: Lang): string =>
+      `${domainUrl}${path}${langQ(lang)}`;
+    const langQ = (lang: Lang): string => lang === 'ar' ? '' : '?lang=' + lang;
+
     // ==================== GEO: llms.txt for AI Search Engines ====================
     app.get('/llms.txt', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
@@ -3198,6 +3203,8 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
 - ${url}/guides/unfreeze-balance - How to unfreeze referral balance
 - ${url}/guides/ai-predictions-guide - How to read AI match predictions
 - ${url}/guides/provably-fair-lottery - How provably fair lottery works
+- ${url}/guides/1xbet-bonus-promo-guide - 1xBet bonus, promo codes and loss recovery
+- ${url}/guides/betting-wallet-tracking-guide - Track balances across betting wallets
 
 ## Company Pages
 ${companyList}
@@ -3253,6 +3260,8 @@ It helps users:
 - ${url}/guides/unfreeze-balance - How to unfreeze referral balance
 - ${url}/guides/ai-predictions-guide - How to read AI match predictions
 - ${url}/guides/provably-fair-lottery - How provably fair lottery works (SHA-256)
+- ${url}/guides/1xbet-bonus-promo-guide - 1xBet bonus, promo codes and loss recovery
+- ${url}/guides/betting-wallet-tracking-guide - Track balances across betting wallets
 
 ## Platform Statistics
 - Supported Companies: ${companies.length}
@@ -3500,7 +3509,7 @@ Sitemap: https://${domain}/sitemap.xml
       }
 
       // How-to guide pages (Programmatic SEO) — base + 8 language variants
-      const guideSlugs = ['claim-compensation', 'unfreeze-balance', 'ai-predictions-guide', 'provably-fair-lottery'];
+      const guideSlugs = ['claim-compensation', 'unfreeze-balance', 'ai-predictions-guide', 'provably-fair-lottery', '1xbet-bonus-promo-guide', 'betting-wallet-tracking-guide'];
       for (const slug of guideSlugs) {
         urls += `  <url>
     <loc>https://${domain}/guides/${slug}</loc>
@@ -3610,11 +3619,11 @@ ${urls}</urlset>`;
   <meta name="description" content="${T_('company.meta_desc')} ${details.substring(0, 120)}" />
   <meta name="keywords" content="${name} ${profile.focus}" />
   <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
-  <link rel="canonical" href="${domainUrl}${pagePath}?lang=${lang}" />
+  <link rel="canonical" href="${canonicalUrl(domainUrl, pagePath, lang)}" />
 ${hreflangs(domainUrl, pagePath)}
   <meta property="og:title" content="${name} - ${profile.brand}" />
   <meta property="og:description" content="${T_('company.og_desc')}" />
-  <meta property="og:url" content="${domainUrl}${pagePath}?lang=${lang}" />
+  <meta property="og:url" content="${domainUrl}${pagePath}${langQ(lang)}" />
   <meta property="og:type" content="article" />
   <meta property="og:locale" content="${lang === 'ar' ? 'ar_AR' : lang + '_' + lang.toUpperCase()}" />
 
@@ -3742,13 +3751,13 @@ ${hreflangs(domainUrl, pagePath)}
 
     <h2>🔗 ${T_('company.related_title')}</h2>
     <div class="related">
-      ${companies.filter(c => c.id !== company.id).slice(0, 6).map(c => `<a href="/company/${c.id}?lang=${lang}">${c.name}</a>`).join('')}
+      ${companies.filter(c => c.id !== company.id).slice(0, 6).map(c => `<a href="/company/${c.id}${langQ(lang)}">${c.name}</a>`).join('')}
     </div>
 
     <div style="margin-top:30px;text-align:center;">
       <a href="/#companies" class="cta">🏢 ${tt('cta.companies', lang)}</a>
       <a href="/download/apk" class="cta">📱 ${tt('cta.download', lang)}</a>
-      <a href="/predictions?lang=${lang}" class="cta">⚽ ${tt('cta.ai', lang)}</a>
+      <a href="/predictions${langQ(lang)}" class="cta">⚽ ${tt('cta.ai', lang)}</a>
     </div>
   </div>
   <footer>
@@ -3774,6 +3783,12 @@ ${hreflangs(domainUrl, pagePath)}
       const pagePath = `/guides/${req.params.slug}`;
       const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
       const jstr = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ');
+      const relatedGuides = Object.keys(GUIDES)
+        .filter(s => s !== req.params.slug)
+        .map(s => {
+          const g = GUIDES[s][lang] || GUIDES[s]['en'] || GUIDES[s]['ar'];
+          return `<a href="/guides/${s}${langQ(lang)}">${escAttr(g.title)}</a>`;
+        }).join('');
 
       const html = `<!doctype html>
 <html lang="${lang}" dir="${profile.dir}">
@@ -3783,11 +3798,11 @@ ${hreflangs(domainUrl, pagePath)}
   <title>${escAttr(guide.title)} | ${profile.brand}</title>
   <meta name="description" content="${escAttr(guide.desc)} — ${escAttr(profile.brand)}." />
   <meta name="robots" content="index, follow, max-snippet:-1" />
-  <link rel="canonical" href="${domainUrl}${pagePath}?lang=${lang}" />
+  <link rel="canonical" href="${canonicalUrl(domainUrl, pagePath, lang)}" />
 ${hreflangs(domainUrl, pagePath)}
   <meta property="og:title" content="${escAttr(guide.title)} | ${profile.brand}" />
   <meta property="og:description" content="${escAttr(guide.desc)}" />
-  <meta property="og:url" content="${domainUrl}${pagePath}?lang=${lang}" />
+  <meta property="og:url" content="${domainUrl}${pagePath}${langQ(lang)}" />
   <meta property="og:type" content="article" />
 
   <script type="application/ld+json">
@@ -3830,10 +3845,13 @@ ${hreflangs(domainUrl, pagePath)}
     <h2>❓ ${tt('guides.faq_title', lang)}</h2>
     ${guide.faq.map(f => `<div class="faq"><strong>${tt('faq.q_prefix', lang)} ${f.q}</strong><p>${f.a}</p></div>`).join('\n')}
 
+    <h2>📚 ${tt('guides.related_title', lang)}</h2>
+    <div class="related">${relatedGuides}</div>
+
     <div style="margin-top:30px;text-align:center;">
-      <a href="/?lang=${lang}" class="cta">🏠 ${tt('guides.cta_home', lang)}</a>
+      <a href="/${langQ(lang)}" class="cta">🏠 ${tt('guides.cta_home', lang)}</a>
       <a href="/download/apk" class="cta">📱 ${tt('cta.download', lang)}</a>
-      <a href="/predictions?lang=${lang}" class="cta">⚽ ${tt('cta.ai', lang)}</a>
+      <a href="/predictions${langQ(lang)}" class="cta">⚽ ${tt('cta.ai', lang)}</a>
     </div>
   </div>
   <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
@@ -3959,7 +3977,7 @@ ${hreflangs(domainUrl, pagePath)}
         <h2>📅 ${date}</h2>
         ${list.map(f => {
           const p = predictMatch(f, lang);
-          return `<a class="match" href="/predictions/${f.slug}?lang=${lang}">
+          return `<a class="match" href="/predictions/${f.slug}${langQ(lang)}">
             <span class="teams">${esc(TEAMS[f.home].name)} vs ${esc(TEAMS[f.away].name)}</span>
             <span class="league">${esc(f.league)} • ${tt('pred.kickoff', lang)} ${f.kickOff}</span>
             <span class="pred">${p.pH}% / ${p.pD}% / ${p.pA}% — ${p.score}</span>
@@ -3977,11 +3995,11 @@ ${hreflangs(domainUrl, pagePath)}
   <title>${esc(listTitle)}</title>
   <meta name="description" content="${esc(listDesc)}" />
   <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
-  <link rel="canonical" href="${domainUrl}/predictions?lang=${lang}" />
+  <link rel="canonical" href="${canonicalUrl(domainUrl, '/predictions', lang)}" />
 ${hreflangs(domainUrl, '/predictions')}
   <meta property="og:title" content="${esc(listTitle)}" />
   <meta property="og:description" content="${esc(listDesc)}" />
-  <meta property="og:url" content="${domainUrl}/predictions?lang=${lang}" />
+  <meta property="og:url" content="${domainUrl}/predictions${langQ(lang)}" />
   <meta property="og:type" content="website" />
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"CollectionPage","name":"${esc(listTitle)}","description":"${esc(listDesc)}","url":"${domainUrl}/predictions","inLanguage":"${lang}","publisher":{"@id":"${domainUrl}/#organization"}}</script>
@@ -4015,7 +4033,7 @@ ${hreflangs(domainUrl, '/predictions')}
     <p>ℹ️ ${tt('pred.list_note', lang)} — ${tt('pred.updated_only', lang)} ${new Date().toISOString().split('T')[0]}</p>
     ${rows}
     <div style="margin-top:30px;text-align:center;">
-      <a href="/guides/ai-predictions-guide?lang=${lang}" class="cta">📖 ${tt('pred.cta_guide', lang)}</a>
+      <a href="/guides/ai-predictions-guide${langQ(lang)}" class="cta">📖 ${tt('pred.cta_guide', lang)}</a>
       <a href="/#ai-sports" class="cta">🤖 ${tt('cta.ai', lang)}</a>
     </div>
   </div>
@@ -4062,11 +4080,11 @@ ${hreflangs(domainUrl, '/predictions')}
   <title>${escAttr(title)} | ${profile.brand}</title>
   <meta name="description" content="${escAttr(metaDesc)}" />
   <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
-  <link rel="canonical" href="${domainUrl}${pagePath}?lang=${lang}" />
+  <link rel="canonical" href="${canonicalUrl(domainUrl, pagePath, lang)}" />
 ${hreflangs(domainUrl, pagePath)}
   <meta property="og:title" content="${escAttr(title)}" />
   <meta property="og:description" content="${escAttr(ogDesc)}" />
-  <meta property="og:url" content="${domainUrl}${pagePath}?lang=${lang}" />
+  <meta property="og:url" content="${domainUrl}${pagePath}${langQ(lang)}" />
   <meta property="og:type" content="article" />
 
   <script type="application/ld+json">
@@ -4109,7 +4127,7 @@ ${hreflangs(domainUrl, pagePath)}
     <nav class="langbar">
       ${LANGS.map(l => `<a href="${pagePath}?lang=${l}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
     </nav>
-    <p style="color:#64748b;"><a href="/predictions?lang=${lang}" style="color:#10b981;text-decoration:none;">${tt('pred.breadcrumb', lang)}</a> ← ${esc(fixture.league)}</p>
+    <p style="color:#64748b;"><a href="/predictions${langQ(lang)}" style="color:#10b981;text-decoration:none;">${tt('pred.breadcrumb', lang)}</a> ← ${esc(fixture.league)}</p>
     <h1>${esc(H.name)} vs ${esc(A.name)}</h1>
     <div>
       <span class="badge">📅 ${fixture.date}</span>
@@ -4143,12 +4161,12 @@ ${hreflangs(domainUrl, pagePath)}
 
     <h2>🔗 ${tt('pred.related', lang)}</h2>
     <div class="related">
-      ${getFixtures().filter(f => f.slug !== fixture.slug && f.date === fixture.date).slice(0, 6).map(f => `<a href="/predictions/${f.slug}?lang=${lang}">${esc(TEAMS[f.home].name)} vs ${esc(TEAMS[f.away].name)}</a>`).join('')}
+      ${getFixtures().filter(f => f.slug !== fixture.slug && f.date === fixture.date).slice(0, 6).map(f => `<a href="/predictions/${f.slug}${langQ(lang)}">${esc(TEAMS[f.home].name)} vs ${esc(TEAMS[f.away].name)}</a>`).join('')}
     </div>
 
     <div style="margin-top:30px;text-align:center;">
-      <a href="/predictions?lang=${lang}" class="cta">⚽ ${tt('pred.cta_all', lang)}</a>
-      <a href="/guides/ai-predictions-guide?lang=${lang}" class="cta">📖 ${tt('pred.cta_guide', lang)}</a>
+      <a href="/predictions${langQ(lang)}" class="cta">⚽ ${tt('pred.cta_all', lang)}</a>
+      <a href="/guides/ai-predictions-guide${langQ(lang)}" class="cta">📖 ${tt('pred.cta_guide', lang)}</a>
     </div>
   </div>
   <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
@@ -4162,7 +4180,7 @@ ${hreflangs(domainUrl, pagePath)}
 
     // ==================== SEO: Add guide URLs to sitemap ====================
     app.get('/guides', (req, res) => {
-      res.redirect('/guides/claim-compensation');
+      res.redirect(301, `/guides/claim-compensation${langQ(getLang(req))}`);
     });
 
     // Domain-specific index.html with dynamic SEO tags - MUST be after express.static
@@ -4197,7 +4215,7 @@ ${hreflangs(domainUrl, pagePath)}
 
       // Canonical points to this language variant
       html = html.replace(/<link rel="canonical"[^>]*\/?>/,
-        `<link rel="canonical" href="${domainUrl}/?lang=${lang}" />`);
+        `<link rel="canonical" href="${domainUrl}/${langQ(lang)}" />`);
 
       // Unique visible SEO block (different visible text per domain + language)
       const seoBlock = `
@@ -4213,9 +4231,11 @@ ${hreflangs(domainUrl, pagePath)}
         <li>${tt('home.b5', lang)}</li>
       </ul>
       <p style="color:#64748b;font-size:0.9rem;margin-top:15px;">
-        ${tt('home.keywords_label', lang)}: ${profile.focus} — <a href="${domainUrl}/guides/claim-compensation?lang=${lang}" style="color:#10b981;">${tt('link.guide_comp', lang)}</a> |
-        <a href="${domainUrl}/guides/ai-predictions-guide?lang=${lang}" style="color:#10b981;">${tt('link.guide_ai', lang)}</a> |
-        <a href="${domainUrl}/guides/provably-fair-lottery?lang=${lang}" style="color:#10b981;">${tt('link.guide_lottery', lang)}</a>
+        ${tt('home.keywords_label', lang)}: ${profile.focus} — <a href="${domainUrl}/guides/claim-compensation${langQ(lang)}" style="color:#10b981;">${tt('link.guide_comp', lang)}</a> |
+        <a href="${domainUrl}/guides/ai-predictions-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_ai', lang)}</a> |
+        <a href="${domainUrl}/guides/provably-fair-lottery${langQ(lang)}" style="color:#10b981;">${tt('link.guide_lottery', lang)}</a> |
+        <a href="${domainUrl}/guides/1xbet-bonus-promo-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_1xbet', lang)}</a> |
+        <a href="${domainUrl}/guides/betting-wallet-tracking-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_wallet', lang)}</a>
       </p>
       <nav style="margin-top:12px;font-size:0.9rem;">
         ${LANGS.map(l => `<a href="${domainUrl}/?lang=${l}" hreflang="${l}" style="color:${l === lang ? '#10b981' : '#475569'};text-decoration:none;margin-left:8px;">${l.toUpperCase()}</a>`).join('')}

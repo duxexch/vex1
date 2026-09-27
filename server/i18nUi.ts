@@ -80,6 +80,14 @@ const T: Record<string, Row> = {
     ar: 'اليانصيب العادل', en: 'Fair Lottery', es: 'Lotería justa', ru: 'Честная лотерея',
     fr: 'Loterie équitable', de: 'Faires Lotto', tr: 'Adil Piyango', pt: 'Loteria justa',
   },
+  'link.guide_1xbet': {
+    ar: 'دليل بونص 1xBet', en: '1xBet Bonus Guide', es: 'Guía de bonos 1xBet', ru: 'Гайд по бонусам 1xBet',
+    fr: 'Guide des bonus 1xBet', de: '1xBet Bonus-Leitfaden', tr: '1xBet Bonus Rehberi', pt: 'Guia de bônus 1xBet',
+  },
+  'link.guide_wallet': {
+    ar: 'تتبّع المحافظ', en: 'Wallet Tracking', es: 'Seguimiento de carteras', ru: 'Отслеживание кошельков',
+    fr: 'Suivi des portefeuilles', de: 'Wallet-Tracking', tr: 'Cüzdan Takibi', pt: 'Acompanhamento de carteiras',
+  },
 
   // ---------- Company pages ----------
   'company.subtitle': {
@@ -161,6 +169,7 @@ const T: Record<string, Row> = {
   'guides.steps_title': { ar: 'الخطوات', en: 'Steps', es: 'Pasos', ru: 'Шаги', fr: 'Étapes', de: 'Schritte', tr: 'Adımlar', pt: 'Etapas' },
   'guides.faq_title': { ar: 'الأسئلة الشائعة', en: 'Frequently Asked Questions', es: 'Preguntas frecuentes', ru: 'Частые вопросы', fr: 'Questions fréquentes', de: 'Häufige Fragen', tr: 'Sık Sorulan Sorular', pt: 'Perguntas frequentes' },
   'guides.cta_home': { ar: 'الصفحة الرئيسية', en: 'Home Page', es: 'Página de inicio', ru: 'Главная страница', fr: 'Page d’accueil', de: 'Startseite', tr: 'Ana Sayfa', pt: 'Página inicial' },
+  'guides.related_title': { ar: 'أدلة ذات صلة', en: 'Related Guides', es: 'Guías relacionadas', ru: 'Похожие руководства', fr: 'Guides associés', de: 'Verwandte Leitfäden', tr: 'İlgili Rehberler', pt: 'Guias relacionados' },
 
   // ---------- Predictions list ----------
   'pred.list_h1': { ar: 'توقعات المباريات بالذكاء الاصطناعي', en: 'AI Football Match Predictions', es: 'Predicciones de fútbol con IA', ru: 'AI-прогнозы футбольных матчей', fr: 'Prédictions de football par IA', de: 'KI-Fußballspielprognosen', tr: 'Yapay Zeka Futbol Maç Tahminleri', pt: 'Previsões de futebol com IA' },

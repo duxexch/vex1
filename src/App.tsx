@@ -35,13 +35,13 @@ import { detectUserRegionalCurrency } from './utils/currency';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
 import { CompaniesTab } from './components/CompaniesTab';
-import { WalletTab } from './components/WalletTab';
-import { ReferralsTab } from './components/ReferralsTab';
-import { TransfersTab } from './components/TransfersTab';
-import { ActivityTab } from './components/ActivityTab';
-import { AiSportsHubTab } from './components/AiSportsHubTab';
-import { UnluckyWallTab } from './components/UnluckyWallTab';
-import { LotteryTab } from './components/LotteryTab';
+const WalletTab = lazy(() => import('./components/WalletTab').then(m => ({ default: m.WalletTab })));
+const ReferralsTab = lazy(() => import('./components/ReferralsTab').then(m => ({ default: m.ReferralsTab })));
+const TransfersTab = lazy(() => import('./components/TransfersTab').then(m => ({ default: m.TransfersTab })));
+const ActivityTab = lazy(() => import('./components/ActivityTab').then(m => ({ default: m.ActivityTab })));
+const AiSportsHubTab = lazy(() => import('./components/AiSportsHubTab').then(m => ({ default: m.AiSportsHubTab })));
+const UnluckyWallTab = lazy(() => import('./components/UnluckyWallTab').then(m => ({ default: m.UnluckyWallTab })));
+const LotteryTab = lazy(() => import('./components/LotteryTab').then(m => ({ default: m.LotteryTab })));
 import { RegisterModal } from './components/RegisterModal';
 import { CompensationRequestModal } from './components/CompensationRequestModal';
 import { CompanyDetailsModal } from './components/CompanyDetailsModal';
@@ -660,6 +660,7 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
           >
+            <Suspense fallback={null}>
             {activeTab === 'companies' && (
               <CompaniesTab
                 companies={localizedCompanies}
@@ -757,6 +758,7 @@ export default function App() {
                 onCopyToast={showToast}
               />
             )}
+            </Suspense>
           </motion.div>
 
           {/* Footer Legal & Store Compliance Links */}
