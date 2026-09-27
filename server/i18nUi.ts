@@ -88,6 +88,14 @@ const T: Record<string, Row> = {
     ar: 'تتبّع المحافظ', en: 'Wallet Tracking', es: 'Seguimiento de carteras', ru: 'Отслеживание кошельков',
     fr: 'Suivi des portefeuilles', de: 'Wallet-Tracking', tr: 'Cüzdan Takibi', pt: 'Acompanhamento de carteiras',
   },
+  'link.guide_odds': {
+    ar: 'دليل الأرقام', en: 'Odds Explained', es: 'Cuotas explicadas', ru: 'Как читать коэффициенты',
+    fr: 'Cotes expliquées', de: 'Quoten erklärt', tr: 'Oranlar Açıklamalı', pt: 'Odds explicadas',
+  },
+  'link.guide_bankroll': {
+    ar: 'إدارة الرصيد', en: 'Bankroll Management', es: 'Gestión de bankroll', ru: 'Управление банкроллом',
+    fr: 'Gestion de bankroll', de: 'Bankroll-Management', tr: 'Bankroll Yönetimi', pt: 'Gestão de bankroll',
+  },
 
   // ---------- Company pages ----------
   'company.subtitle': {

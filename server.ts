@@ -3145,6 +3145,17 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
         + `\n  <link rel="alternate" hreflang="x-default" href="${domainUrl}${path}" />`;
     };
 
+    // Open Graph image + Twitter card for SSR pages (social previews + image search)
+    const socialMeta = (domainUrl: string, title: string, desc: string): string => `
+  <meta property="og:image" content="${domainUrl}/share-icon-512.png" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta property="og:image:alt" content="${title}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${title}" />
+  <meta name="twitter:description" content="${desc}" />
+  <meta name="twitter:image" content="${domainUrl}/share-icon-512.png" />`;
+
     // Organization + WebSite entity schema shared by every SSR page (consistent entity for Google & AI)
     const siteSchema = (domainUrl: string, profile: Profile): string => JSON.stringify({
       '@context': 'https://schema.org',
@@ -3211,6 +3222,8 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
 - ${url}/guides/provably-fair-lottery - How provably fair lottery works
 - ${url}/guides/1xbet-bonus-promo-guide - 1xBet bonus, promo codes and loss recovery
 - ${url}/guides/betting-wallet-tracking-guide - Track balances across betting wallets
+- ${url}/guides/betting-odds-explained - Read decimal, fractional and American odds
+- ${url}/guides/bankroll-management-guide - Bankroll management and stake sizing
 
 ## Company Pages
 ${companyList}
@@ -3270,6 +3283,8 @@ It helps users:
 - ${url}/guides/provably-fair-lottery - How provably fair lottery works (SHA-256)
 - ${url}/guides/1xbet-bonus-promo-guide - 1xBet bonus, promo codes and loss recovery
 - ${url}/guides/betting-wallet-tracking-guide - Track balances across betting wallets
+- ${url}/guides/betting-odds-explained - How to read betting odds (decimal, fractional, American)
+- ${url}/guides/bankroll-management-guide - Bankroll management rules for long-term profit
 
 ## Platform Statistics
 - Supported Companies: ${companies.length}
@@ -3331,29 +3346,59 @@ Last updated: ${new Date().toISOString().split('T')[0]}
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const url = `https://${domain}`;
       const companies = storage.getCompanies();
+      const profile = getProfile(domain, 'en');
       const now = new Date().toUTCString();
+      const xmlEsc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-      const items = companies.map(c => `    <item>
-      <title>${c.name} - VEX Deals Compensation</title>
+      const companyItems = companies.map(c => `    <item>
+      <title>${xmlEsc(`${c.name} — ${profile.brand} compensation`)}</title>
       <link>${url}/company/${c.id}</link>
-      <guid>${url}/company/${c.id}</guid>
-      <description>${(c.details || '').replace(/[<>&]/g, '')}</description>
+      <guid isPermaLink="true">${url}/company/${c.id}</guid>
+      <description>${xmlEsc((c.details || '').substring(0, 300))}</description>
       <pubDate>${now}</pubDate>
     </item>`).join('\n');
 
+      // Guides: evergreen how-to content for crawlers
+      const guideItems = Object.keys(GUIDES).map(slug => {
+        const g = GUIDES[slug]['en'] || GUIDES[slug]['ar'];
+        return `    <item>
+      <title>${xmlEsc(g.title)}</title>
+      <link>${url}/guides/${slug}</link>
+      <guid isPermaLink="true">${url}/guides/${slug}</guid>
+      <description>${xmlEsc(g.desc)}</description>
+      <category>Guides</category>
+      <pubDate>${now}</pubDate>
+    </item>`;
+      }).join('\n');
+
+      // Today's top predictions: fresh daily content
+      const predItems = getFixtures().filter(f => f.date === isoDate(new Date())).slice(0, 10).map(f => {
+        const H = TEAMS[f.home], A = TEAMS[f.away];
+        const p = predictMatch(f, 'en');
+        return `    <item>
+      <title>${xmlEsc(`${H.name} vs ${A.name} — AI prediction ${p.score} (${p.pH}%/${p.pD}%/${p.pA}%)`)}</title>
+      <link>${url}/predictions/${f.slug}</link>
+      <guid isPermaLink="true">${url}/predictions/${f.slug}</guid>
+      <description>${xmlEsc(`${f.league}, ${f.date} ${f.kickOff}. Confidence ${p.confidence}%, risk ${p.risk}.`)}</description>
+      <category>Predictions</category>
+      <pubDate>${now}</pubDate>
+    </item>`;
+      }).join('\n');
+
       const rss = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2007/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
-    <title>VEX Deals - Loyalty & Compensation Platform</title>
+    <title>${xmlEsc(`${profile.brand} — ${profile.tagline}`)}</title>
     <link>${url}</link>
-    <description>Track betting wallets, claim compensation, and get AI sports predictions</description>
+    <description>${xmlEsc(`${profile.description} Betting wallet tracking, loss compensation, AI sports predictions and how-to guides.`)}</description>
     <language>en</language>
     <lastBuildDate>${now}</lastBuildDate>
     <atom:link href="${url}/rss.xml" rel="self" type="application/rss+xml"/>
-${items}
+${[predItems, guideItems, companyItems].filter(Boolean).join('\n')}
   </channel>
 </rss>`;
-      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      res.setHeader('Content-Type', 'application/rss+xml; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
       res.send(rss);
     });
 
@@ -3533,7 +3578,7 @@ Sitemap: https://${domain}/sitemap.xml
       }
 
       // How-to guide pages (Programmatic SEO) — base + 8 language variants
-      const guideSlugs = ['claim-compensation', 'unfreeze-balance', 'ai-predictions-guide', 'provably-fair-lottery', '1xbet-bonus-promo-guide', 'betting-wallet-tracking-guide'];
+      const guideSlugs = ['claim-compensation', 'unfreeze-balance', 'ai-predictions-guide', 'provably-fair-lottery', '1xbet-bonus-promo-guide', 'betting-wallet-tracking-guide', 'betting-odds-explained', 'bankroll-management-guide'];
       for (const slug of guideSlugs) {
         urls += `  <url>
     <loc>https://${domain}/guides/${slug}</loc>
@@ -3662,6 +3707,7 @@ ${urls}</urlset>`;
       const pagePath = `/company/${company.id}`;
       const T_ = (k: string, vars: Record<string, string> = {}) => tt(k, lang, { name, brand: profile.brand, promo, ...vars });
       const jstr = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ');
+      const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
       const html = `<!doctype html>
 <html lang="${lang}" dir="${profile.dir}">
@@ -3679,6 +3725,7 @@ ${hreflangs(domainUrl, pagePath)}
   <meta property="og:url" content="${domainUrl}${pagePath}${langQ(lang)}" />
   <meta property="og:type" content="article" />
   <meta property="og:locale" content="${lang === 'ar' ? 'ar_AR' : lang + '_' + lang.toUpperCase()}" />
+${socialMeta(domainUrl, escAttr(`${name} - ${profile.brand}`), escAttr(T_('company.og_desc')))}
 
   <script type="application/ld+json">
   {
@@ -3857,6 +3904,7 @@ ${hreflangs(domainUrl, pagePath)}
   <meta property="og:description" content="${escAttr(guide.desc)}" />
   <meta property="og:url" content="${domainUrl}${pagePath}${langQ(lang)}" />
   <meta property="og:type" content="article" />
+${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(guide.desc))}
 
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"HowTo","name":"${jstr(guide.title)}","description":"${jstr(guide.desc)}","inLanguage":"${lang}","totalTime":"PT10M","step":[${guide.steps.map((s,i) => `{"@type":"HowToStep","position":${i+1},"name":"${jstr(s)}","text":"${jstr(s)}"}`).join(',')}]}</script>
@@ -4054,6 +4102,7 @@ ${hreflangs(domainUrl, '/predictions')}
   <meta property="og:description" content="${esc(listDesc)}" />
   <meta property="og:url" content="${domainUrl}/predictions${langQ(lang)}" />
   <meta property="og:type" content="website" />
+${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"CollectionPage","name":"${esc(listTitle)}","description":"${esc(listDesc)}","url":"${domainUrl}/predictions","inLanguage":"${lang}","publisher":{"@id":"${domainUrl}/#organization"}}</script>
   <style>
@@ -4139,6 +4188,7 @@ ${hreflangs(domainUrl, pagePath)}
   <meta property="og:description" content="${escAttr(ogDesc)}" />
   <meta property="og:url" content="${domainUrl}${pagePath}${langQ(lang)}" />
   <meta property="og:type" content="article" />
+${socialMeta(domainUrl, escAttr(`${title} | ${profile.brand}`), escAttr(ogDesc))}
 
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"SportsEvent","name":"${jstr(`${H.name} vs ${A.name}`)}","startDate":"${fixture.date}T${fixture.kickOff.split(' ')[0]}:00Z","eventStatus":"https://schema.org/EventScheduled","eventAttendanceMode":"https://schema.org/OfflineEventAttendanceMode","location":{"@type":"SportsActivityLocation","name":"${jstr(fixture.league)}"},"competitor":[{"@type":"SportsTeam","name":"${jstr(H.name)}"},{"@type":"SportsTeam","name":"${jstr(A.name)}"}],"url":"${domainUrl}${pagePath}","inLanguage":"${lang}"}</script>
@@ -4302,6 +4352,7 @@ ${hreflangs(domainUrl, pagePath)}
   <meta property="og:description" content="${escA(desc)}" />
   <meta property="og:url" content="${domainUrl}${pagePath}${langQ(lang)}" />
   <meta property="og:type" content="website" />
+${socialMeta(domainUrl, escA(pageTitle), escA(desc))}
   <script type="application/ld+json">${ld}</script>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
@@ -4403,6 +4454,8 @@ ${hreflangs(domainUrl, pagePath)}
         <a href="${domainUrl}/guides/provably-fair-lottery${langQ(lang)}" style="color:#10b981;">${tt('link.guide_lottery', lang)}</a> |
         <a href="${domainUrl}/guides/1xbet-bonus-promo-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_1xbet', lang)}</a> |
         <a href="${domainUrl}/guides/betting-wallet-tracking-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_wallet', lang)}</a> |
+        <a href="${domainUrl}/guides/betting-odds-explained${langQ(lang)}" style="color:#10b981;">${tt('link.guide_odds', lang)}</a> |
+        <a href="${domainUrl}/guides/bankroll-management-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_bankroll', lang)}</a> |
         <a href="${domainUrl}/companies${langQ(lang)}" style="color:#10b981;">${tt('hub.companies_h1', lang)}</a> |
         <a href="${domainUrl}/guides${langQ(lang)}" style="color:#10b981;">${tt('hub.guides_h1', lang)}</a>
       </p>
