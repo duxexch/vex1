@@ -4195,6 +4195,22 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
       nss: { name: 'Al Nassr', rating: 1910, league: 'Saudi Pro League' },
       itt: { name: 'Al Ittihad', rating: 1870, league: 'Saudi Pro League' },
       ahs: { name: 'Al Ahli', rating: 1885, league: 'Saudi Pro League' },
+      ajx: { name: 'Ajax', rating: 1750, league: 'Eredivisie' },
+      psv: { name: 'PSV', rating: 1770, league: 'Eredivisie' },
+      fey: { name: 'Feyenoord', rating: 1730, league: 'Eredivisie' },
+      azl: { name: 'AZ Alkmaar', rating: 1690, league: 'Eredivisie' },
+      ben: { name: 'Benfica', rating: 1840, league: 'Primeira Liga' },
+      por: { name: 'Porto', rating: 1830, league: 'Primeira Liga' },
+      spo: { name: 'Sporting CP', rating: 1820, league: 'Primeira Liga' },
+      brg: { name: 'Braga', rating: 1740, league: 'Primeira Liga' },
+      gal: { name: 'Galatasaray', rating: 1790, league: 'Turkish Super Lig' },
+      fen: { name: 'Fenerbahce', rating: 1780, league: 'Turkish Super Lig' },
+      bes: { name: 'Besiktas', rating: 1720, league: 'Turkish Super Lig' },
+      tra: { name: 'Trabzonspor', rating: 1690, league: 'Turkish Super Lig' },
+      fla: { name: 'Flamengo', rating: 1850, league: 'Brasileiro Serie A' },
+      pal: { name: 'Palmeiras', rating: 1860, league: 'Brasileiro Serie A' },
+      cor: { name: 'Corinthians', rating: 1760, league: 'Brasileiro Serie A' },
+      flu: { name: 'Fluminense', rating: 1750, league: 'Brasileiro Serie A' },
     };
 
     const LEAGUE_TEAMS: Record<string, string[]> = {
@@ -4205,6 +4221,10 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
       'Ligue 1': ['psg', 'mrs', 'lil', 'mon'],
       'Egyptian Premier League': ['ahl', 'zam', 'pyr', 'sma'],
       'Saudi Pro League': ['hil', 'nss', 'itt', 'ahs'],
+      'Eredivisie': ['ajx', 'psv', 'fey', 'azl'],
+      'Primeira Liga': ['ben', 'por', 'spo', 'brg'],
+      'Turkish Super Lig': ['gal', 'fen', 'bes', 'tra'],
+      'Brasileiro Serie A': ['fla', 'pal', 'cor', 'flu'],
     };
 
     const isoDate = (d: Date) => d.toISOString().split('T')[0];
