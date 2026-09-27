@@ -96,6 +96,14 @@ const T: Record<string, Row> = {
     ar: 'إدارة الرصيد', en: 'Bankroll Management', es: 'Gestión de bankroll', ru: 'Управление банкроллом',
     fr: 'Gestion de bankroll', de: 'Bankroll-Management', tr: 'Bankroll Yönetimi', pt: 'Gestão de bankroll',
   },
+  'link.guide_live': {
+    ar: 'المراهنات المباشرة', en: 'Live Betting', es: 'Apuestas en vivo', ru: 'Live-ставки',
+    fr: 'Paris en direct', de: 'Live-Wetten', tr: 'Canlı Bahis', pt: 'Apostas ao vivo',
+  },
+  'link.guide_responsible': {
+    ar: 'اللعب المسؤول', en: 'Responsible Gambling', es: 'Juego responsable', ru: 'Ответственная игра',
+    fr: 'Jeu responsable', de: 'Verantwortungsvolles Spielen', tr: 'Sorumlu Bahis', pt: 'Jogo responsável',
+  },
 
   // ---------- Company pages ----------
   'company.subtitle': {

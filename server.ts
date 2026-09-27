@@ -3229,6 +3229,8 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
 - ${url}/guides/bankroll-management-guide - Bankroll management and stake sizing
 - ${url}/guides/parlay-accumulator-guide - How parlay and accumulator payouts work
 - ${url}/guides/how-to-choose-betting-site - 7 checks for a trusted betting site
+- ${url}/guides/live-betting-guide - How in-play betting works (odds shifts, cash out)
+- ${url}/guides/responsible-gambling-guide - Money and time limits, self-exclusion
 
 ## Sports Predictions
 - ${url}/best-betting-sites - Best betting sites ranking (bonuses, promo codes, apps)
@@ -3304,6 +3306,8 @@ It helps users:
 - ${url}/guides/bankroll-management-guide - Bankroll management rules for long-term profit
 - ${url}/guides/parlay-accumulator-guide - Parlay and accumulator betting explained (legs, odds, cash out)
 - ${url}/guides/how-to-choose-betting-site - How to choose a trusted betting site (license, withdrawals, support)
+- ${url}/guides/live-betting-guide - Live betting explained: reacting to events, odds movement, cash out, discipline
+- ${url}/guides/responsible-gambling-guide - Responsible gambling: deposit/loss limits, session timers, self-exclusion
 
 ## Sports Predictions
 - ${url}/predictions - Full list of AI match predictions grouped by date
@@ -3623,7 +3627,7 @@ Sitemap: https://${domain}/sitemap.xml
       }
 
       // How-to guide pages (Programmatic SEO) — base + 8 language variants
-      const guideSlugs = ['claim-compensation', 'unfreeze-balance', 'ai-predictions-guide', 'provably-fair-lottery', '1xbet-bonus-promo-guide', 'betting-wallet-tracking-guide', 'betting-odds-explained', 'bankroll-management-guide', 'parlay-accumulator-guide', 'how-to-choose-betting-site'];
+      const guideSlugs = ['claim-compensation', 'unfreeze-balance', 'ai-predictions-guide', 'provably-fair-lottery', '1xbet-bonus-promo-guide', 'betting-wallet-tracking-guide', 'betting-odds-explained', 'bankroll-management-guide', 'parlay-accumulator-guide', 'how-to-choose-betting-site', 'live-betting-guide', 'responsible-gambling-guide'];
       for (const slug of guideSlugs) {
         urls += `  <url>
     <loc>https://${domain}/guides/${slug}</loc>
@@ -5023,6 +5027,8 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
         <a href="${domainUrl}/guides/betting-wallet-tracking-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_wallet', lang)}</a> |
         <a href="${domainUrl}/guides/betting-odds-explained${langQ(lang)}" style="color:#10b981;">${tt('link.guide_odds', lang)}</a> |
         <a href="${domainUrl}/guides/bankroll-management-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_bankroll', lang)}</a> |
+        <a href="${domainUrl}/guides/live-betting-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_live', lang)}</a> |
+        <a href="${domainUrl}/guides/responsible-gambling-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_responsible', lang)}</a> |
         <a href="${domainUrl}/compare${langQ(lang)}" style="color:#10b981;">${tt('link.compare', lang)}</a> |
         <a href="${domainUrl}/best-betting-sites${langQ(lang)}" style="color:#10b981;">${tt('link.best', lang)}</a> |
         <a href="${domainUrl}/companies${langQ(lang)}" style="color:#10b981;">${tt('hub.companies_h1', lang)}</a> |
