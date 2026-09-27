@@ -3093,16 +3093,68 @@ async function setupServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
 
+    // ==================== DOMAIN PROFILES (avoid duplicate content across 5 domains) ====================
+    const DOMAIN_PROFILES: Record<string, {
+      brand: string; tagline: string; focus: string; description: string; intro: string; h1: string;
+    }> = {
+      'vex.deals': {
+        brand: 'VEX Deals',
+        tagline: 'منصة التعويضات والولاء الرسمية',
+        focus: 'betting compensation, wallet tracking, loyalty rewards',
+        description: 'VEX Deals هي المنصة الرسمية لتعويض خسائر المراهنات وتتبع المحافظ وتوقعات المباريات بالذكاء الاصطناعي.',
+        intro: 'VEX Deals هي المنصة الرائدة في مجال تعويض خسائر المراهنات وتتبع أرصدة المحافظ عبر أكثر من 12 شركة معتمدة، مع توقعات مباريات مدعومة بالذكاء الاصطناعي ويانصيب تكافلي عادل.',
+        h1: 'VEX Deals — منصة التعويضات والولاء الرسمية',
+      },
+      'betjam.sbs': {
+        brand: 'BetJam',
+        tagline: 'مركز استرداد خسائر المراهنات',
+        focus: 'betting loss recovery, cashback, refund requests',
+        description: 'BetJam متخصص في استرداد خسائر المراهنات واسترجاع النسب النقدية من شركات المقامرة المعتمدة.',
+        intro: 'BetJam يساعدك على استعادة جزء من خسائرك عبر طلبات استرداد نقدي مباشرة، مع متابعة لحظية لأرصدة حساباتك في شركات المراهنات وتحويلات فورية لمحفظتك.',
+        h1: 'BetJam — استرداد خسائر المراهنات والنقد المسترد',
+      },
+      '1xbetservices.com': {
+        brand: '1xBet Services',
+        tagline: 'دليل خدمات ودعم 1xBet الشامل',
+        focus: '1xbet support, 1xbet bonus, 1xbet promo code, 1xbet apk',
+        description: 'دليل شامل لخدمات 1xBet: أكواد الخصم، الدعم الفني، تحميل التطبيق، وأكواد الإحالة.',
+        intro: '1xBet Services هو دليلك الشامل لكل ما يتعلق بـ 1xBet: أحدث أكواد الخصم والبونص الترحيبي، حلول الدعم الفني، روابط تحميل التطبيق APK، وشرح نظام الإحالات والأرباح.',
+        h1: '1xBet Services — الدليل الشامل لخدمات 1xBet',
+      },
+      'vixo.uno': {
+        brand: 'Vixo',
+        tagline: 'توقعات المباريات بالذكاء الاصطناعي',
+        focus: 'AI football predictions, match analysis, win probability',
+        description: 'Vixo يقدم توقعات مباريات دقيقة بالذكاء الاصطناعي مع تحليلات تكتيكية واحتمالات فوز.',
+        intro: 'Vixo منصة التحليل الرياضي بالذكاء الاصطناعي: توقعات دقيقة للمباريات باستخدام نموذج Gemini، مع احتمالات فوز ونتائج متوقعة وملخصات تكتيكية ومؤشر ثقة لكل مباراة.',
+        h1: 'Vixo — توقعات المباريات بالذكاء الاصطناعي',
+      },
+      'betongame.cloud': {
+        brand: 'BetoGame',
+        tagline: 'اليانصيب التكافلي والتحليلات الرياضية',
+        focus: 'provably fair lottery, jackpot, sports analytics',
+        description: 'BetoGame يجمع بين اليانصيب التكافلي المُثبت العدالة والتحليلات الرياضية المتقدمة.',
+        intro: 'BetoGame وجهتك لليانصيب التكافلي المُثبت العدالة بتشفير SHA-256، مع جوائز Jackpot تصل إلى 10,000$، وتحليلات رياضية متقدمة وتوقعات مباريات يومية.',
+        h1: 'BetoGame — اليانصيب التكافلي والتحليلات الرياضية',
+      },
+    };
+    const DEFAULT_PROFILE = DOMAIN_PROFILES['vex.deals'];
+    const getProfile = (domain: string) => DOMAIN_PROFILES[domain] || DEFAULT_PROFILE;
+
     // ==================== GEO: llms.txt for AI Search Engines ====================
     app.get('/llms.txt', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const url = `https://${domain}`;
+      const profile = getProfile(domain);
       const companies = storage.getCompanies();
       const companyList = companies.map(c => `- [${c.name}](${url}/company/${c.id}): ${c.details?.substring(0, 120)}`).join('\n');
 
-      const llms = `# VEX Deals - Loyalty, Compensation & AI Sports Analytics Platform
+      const llms = `# ${profile.brand} - ${profile.tagline}
 
-> VEX Deals is a multi-language (Arabic, English, Spanish, Russian, French, German, Turkish, Portuguese) loyalty rewards and betting compensation platform. Users track betting company wallets, claim loss compensation, unfreeze referral balances, and get AI-powered football match predictions using Google Gemini.
+> ${profile.description} Multi-language platform (Arabic, English, Spanish, Russian, French, German, Turkish, Portuguese).
+
+## Focus
+- Primary topic: ${profile.focus}
 
 ## Core Features
 - Wallet Tracking: Monitor balances across 12+ licensed betting companies
@@ -3112,6 +3164,12 @@ async function setupServer() {
 - Lottery System: Provably fair 5-tier lottery with SHA-256 verification
 - Money Transfers: Move funds between accounts with instant settlement
 - Multi-Language: Full support for 8 languages with regional content
+
+## Guides
+- ${url}/guides/claim-compensation - How to claim betting compensation
+- ${url}/guides/unfreeze-balance - How to unfreeze referral balance
+- ${url}/guides/ai-predictions-guide - How to read AI match predictions
+- ${url}/guides/provably-fair-lottery - How provably fair lottery works
 
 ## Company Pages
 ${companyList}
@@ -3131,7 +3189,7 @@ ${companyList}
 - ${url}/sitemap.xml - Full sitemap of all pages
 
 ## Contact & Support
-- Platform: VEX Deals
+- Platform: ${profile.brand}
 - Website: ${url}
 - Support: support@vex.deals
 
@@ -3147,16 +3205,26 @@ Last updated: ${new Date().toISOString().split('T')[0]}
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const url = `https://${domain}`;
       const companies = storage.getCompanies();
-      const full = `# VEX Deals Platform - Complete Documentation for AI Systems
+      const profile = getProfile(domain);
+      const full = `# ${profile.brand} Platform - Complete Documentation for AI Systems
 
-## About VEX Deals
-VEX Deals is a comprehensive loyalty rewards and betting compensation platform that helps users:
+## About ${profile.brand}
+${profile.description}
+${profile.intro}
+
+It helps users:
 1. Track wallet balances across multiple licensed betting companies
 2. Claim loss compensation (refund percentages) on betting losses
 3. Unfreeze referral balances through social sharing
 4. Get AI-powered sports match predictions
 5. Participate in provably fair lottery draws
 6. Transfer funds between accounts
+
+## Guides
+- ${url}/guides/claim-compensation - How to claim betting compensation (step by step)
+- ${url}/guides/unfreeze-balance - How to unfreeze referral balance
+- ${url}/guides/ai-predictions-guide - How to read AI match predictions
+- ${url}/guides/provably-fair-lottery - How provably fair lottery works (SHA-256)
 
 ## Platform Statistics
 - Supported Companies: ${companies.length}
@@ -3355,6 +3423,24 @@ Sitemap: https://${domain}/sitemap.xml
 `;
       }
 
+      // Prediction pages (daily fresh content)
+      urls += `  <url>
+    <loc>https://${domain}/predictions</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+`;
+      for (const f of getFixtures()) {
+        urls += `  <url>
+    <loc>https://${domain}/predictions/${f.slug}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>0.8</priority>
+  </url>
+`;
+      }
+
       const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xhtml="http://www.w3.org/1999/xhtml">
@@ -3384,6 +3470,7 @@ ${urls}</urlset>`;
     app.get('/company/:id', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const domainUrl = `https://${domain}`;
+      const profile = getProfile(domain);
       const companies = storage.getCompanies();
       const company = companies.find(c => c.id === req.params.id);
       if (!company) return res.status(404).redirect('/');
@@ -3398,16 +3485,16 @@ ${urls}</urlset>`;
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${name} - دليل التعويضات والبونص الكامل | VEX Deals</title>
-  <meta name="description" content="كل ما تحتاج معرفته عن ${name}: أكواد الخصم، طلبات التعويض، تحميل التطبيق، وأفضل استراتيجيات الربح. ${details.substring(0, 120)}" />
-  <meta name="keywords" content="${name} تعويض, ${name} بونص, ${name} برومو كود, ${name} APK, ${name} تحميل, ${name} review" />
+  <title>${name} - دليل التعويضات والبونص الكامل | ${profile.brand}</title>
+  <meta name="description" content="كل ما تحتاج معرفته عن ${name} عبر ${profile.brand}: أكواد الخصم، طلبات التعويض، تحميل التطبيق، وأفضل استراتيجيات الربح. ${details.substring(0, 120)}" />
+  <meta name="keywords" content="${name} تعويض, ${name} بونص, ${name} برومو كود, ${name} APK, ${name} تحميل, ${name} review, ${profile.focus}" />
   <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
   <link rel="canonical" href="${domainUrl}/company/${company.id}" />
   <link rel="alternate" hreflang="ar" href="${domainUrl}/company/${company.id}?lang=ar" />
   <link rel="alternate" hreflang="en" href="${domainUrl}/company/${company.id}?lang=en" />
   <link rel="alternate" hreflang="x-default" href="${domainUrl}/company/${company.id}" />
-  <meta property="og:title" content="${name} - VEX Deals" />
-  <meta property="og:description" content="دليل ${name} الكامل: تعويضات، بونص، تحميل" />
+  <meta property="og:title" content="${name} - ${profile.brand}" />
+  <meta property="og:description" content="دليل ${name} الكامل على ${profile.brand}: تعويضات، بونص، تحميل" />
   <meta property="og:url" content="${domainUrl}/company/${company.id}" />
   <meta property="og:type" content="article" />
 
@@ -3492,7 +3579,8 @@ ${urls}</urlset>`;
       <span class="badge">⚡ تحويل فوري</span>
     </div>
 
-    <p style="margin-top:20px;font-size:1.1rem;color:#e2e8f0;">${details}</p>
+    <p style="margin-top:20px;font-size:1.05rem;color:#10b981;">${profile.intro}</p>
+    <p style="margin-top:15px;font-size:1.1rem;color:#e2e8f0;">${details}</p>
 
     <div class="promo">
       <p>كود الخصم الرسمي</p>
@@ -3537,7 +3625,7 @@ ${urls}</urlset>`;
     </div>
   </div>
   <footer>
-    <p>© 2026 VEX Deals — منصة التعويضات والولاء | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></p>
+    <p>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></p>
     <p>صفحة ${name} — آخر تحديث: ${new Date().toISOString().split('T')[0]}</p>
   </footer>
 </body>
@@ -3620,6 +3708,7 @@ ${urls}</urlset>`;
     app.get('/guides/:slug', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const domainUrl = `https://${domain}`;
+      const profile = getProfile(domain);
       const guide = guides[req.params.slug];
       if (!guide) return res.status(404).redirect('/');
 
@@ -3628,11 +3717,11 @@ ${urls}</urlset>`;
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${guide.title}</title>
-  <meta name="description" content="${guide.desc}" />
+  <title>${guide.title} | ${profile.brand}</title>
+  <meta name="description" content="${guide.desc} — على منصة ${profile.brand}." />
   <meta name="robots" content="index, follow, max-snippet:-1" />
   <link rel="canonical" href="${domainUrl}/guides/${req.params.slug}" />
-  <meta property="og:title" content="${guide.title}" />
+  <meta property="og:title" content="${guide.title} | ${profile.brand}" />
   <meta property="og:description" content="${guide.desc}" />
   <meta property="og:url" content="${domainUrl}/guides/${req.params.slug}" />
   <meta property="og:type" content="article" />
@@ -3663,6 +3752,7 @@ ${urls}</urlset>`;
   <div class="container">
     <h1>${guide.title}</h1>
     <p style="font-size:1.1rem;color:#e2e8f0;">${guide.desc}</p>
+    <p style="color:#10b981;">هذا الدليل من <strong>${profile.brand}</strong> — ${profile.tagline}. ${profile.intro}</p>
 
     <h2>📋 الخطوات</h2>
     ${guide.steps.map((s, i) => `<div class="step"><div class="step-num">${i + 1}</div><div>${s}</div></div>`).join('\n')}
@@ -3675,7 +3765,281 @@ ${urls}</urlset>`;
       <a href="/download/apk" class="cta">📱 تحميل التطبيق</a>
     </div>
   </div>
-  <footer>© 2026 VEX Deals — <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+  <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+</body>
+</html>`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Robots-Tag', 'index, follow, max-snippet:-1');
+      res.send(html);
+    });
+
+    // ==================== PREDICTION PAGES (Daily fresh content for crawlers) ====================
+    const TEAMS: Record<string, { name: string; rating: number; league: string }> = {
+      ars: { name: 'Arsenal', rating: 1980, league: 'Premier League' },
+      liv: { name: 'Liverpool', rating: 1995, league: 'Premier League' },
+      mci: { name: 'Manchester City', rating: 2010, league: 'Premier League' },
+      che: { name: 'Chelsea', rating: 1900, league: 'Premier League' },
+      mun: { name: 'Manchester United', rating: 1850, league: 'Premier League' },
+      tot: { name: 'Tottenham', rating: 1870, league: 'Premier League' },
+      rma: { name: 'Real Madrid', rating: 2020, league: 'La Liga' },
+      fcb: { name: 'Barcelona', rating: 1990, league: 'La Liga' },
+      atm: { name: 'Atletico Madrid', rating: 1920, league: 'La Liga' },
+      sev: { name: 'Sevilla', rating: 1820, league: 'La Liga' },
+      int: { name: 'Inter Milan', rating: 1960, league: 'Serie A' },
+      juv: { name: 'Juventus', rating: 1900, league: 'Serie A' },
+      mil: { name: 'AC Milan', rating: 1890, league: 'Serie A' },
+      nap: { name: 'Napoli', rating: 1930, league: 'Serie A' },
+      bay: { name: 'Bayern Munich', rating: 2005, league: 'Bundesliga' },
+      bvb: { name: 'Borussia Dortmund', rating: 1900, league: 'Bundesliga' },
+      rbl: { name: 'RB Leipzig', rating: 1870, league: 'Bundesliga' },
+      lev: { name: 'Bayer Leverkusen', rating: 1930, league: 'Bundesliga' },
+      psg: { name: 'Paris Saint-Germain', rating: 1975, league: 'Ligue 1' },
+      mrs: { name: 'Marseille', rating: 1850, league: 'Ligue 1' },
+      lil: { name: 'Lille', rating: 1830, league: 'Ligue 1' },
+      mon: { name: 'Monaco', rating: 1860, league: 'Ligue 1' },
+      ahl: { name: 'Al Ahly', rating: 1880, league: 'Egyptian Premier League' },
+      zam: { name: 'Zamalek', rating: 1820, league: 'Egyptian Premier League' },
+      pyr: { name: 'Pyramids FC', rating: 1790, league: 'Egyptian Premier League' },
+      sma: { name: 'Smouha', rating: 1700, league: 'Egyptian Premier League' },
+      hil: { name: 'Al Hilal', rating: 1950, league: 'Saudi Pro League' },
+      nss: { name: 'Al Nassr', rating: 1910, league: 'Saudi Pro League' },
+      itt: { name: 'Al Ittihad', rating: 1870, league: 'Saudi Pro League' },
+      ahs: { name: 'Al Ahli', rating: 1885, league: 'Saudi Pro League' },
+    };
+
+    const LEAGUE_TEAMS: Record<string, string[]> = {
+      'Premier League': ['ars', 'liv', 'mci', 'che', 'mun', 'tot'],
+      'La Liga': ['rma', 'fcb', 'atm', 'sev'],
+      'Serie A': ['int', 'juv', 'mil', 'nap'],
+      'Bundesliga': ['bay', 'bvb', 'rbl', 'lev'],
+      'Ligue 1': ['psg', 'mrs', 'lil', 'mon'],
+      'Egyptian Premier League': ['ahl', 'zam', 'pyr', 'sma'],
+      'Saudi Pro League': ['hil', 'nss', 'itt', 'ahs'],
+    };
+
+    const isoDate = (d: Date) => d.toISOString().split('T')[0];
+
+    type Fixture = { slug: string; home: string; away: string; league: string; date: string; kickOff: string };
+
+    // Deterministic fixtures for next 7 days (rotating pairings = fresh pages daily)
+    function getFixtures(): Fixture[] {
+      const fixtures: Fixture[] = [];
+      const today = new Date();
+      for (let day = 0; day < 7; day++) {
+        const d = new Date(today.getTime() + day * 86400000);
+        const date = isoDate(d);
+        let i = 0;
+        for (const [league, ids] of Object.entries(LEAGUE_TEAMS)) {
+          const rotated = ids.slice((day + i) % ids.length).concat(ids.slice(0, (day + i) % ids.length));
+          for (let k = 0; k + 1 < rotated.length; k += 2) {
+            const home = rotated[k], away = rotated[k + 1];
+            const kickOff = `${['15:00', '17:30', '20:00', '22:00'][i % 4]} UTC`;
+            fixtures.push({ slug: `${home}-vs-${away}-${date}`, home, away, league, date, kickOff });
+          }
+          i++;
+        }
+      }
+      return fixtures;
+    }
+
+    function predictMatch(f: { home: string; away: string; date: string }) {
+      const H = TEAMS[f.home], A = TEAMS[f.away];
+      const pHome = 1 / (1 + Math.pow(10, (A.rating - H.rating) / 400));
+      const draw = 0.26 - Math.abs(pHome - 0.5) * 0.12;
+      const pH = Math.max(0.08, pHome - draw / 2);
+      const pA = Math.max(0.08, 1 - pHome - draw / 2);
+      const diff = Math.round((H.rating - A.rating) / 180);
+      const homeGoals = Math.max(0, Math.round(1.4 + diff * 0.6));
+      const awayGoals = Math.max(0, Math.round(1.2 - diff * 0.6));
+      const strength = Math.abs(pH - pA);
+      const confidence = Math.round(Math.min(95, 55 + strength * 90));
+      const favorite = pH >= pA ? H : A;
+      const risk = confidence > 78 ? 'منخفضة' : confidence > 65 ? 'متوسطة' : 'عالية';
+      return {
+        pH: Math.round(pH * 100), pD: Math.round(draw * 100), pA: Math.round(pA * 100),
+        homeGoals, awayGoals, confidence, favorite: favorite.name, risk,
+        pick: pH >= pA ? `فوز ${H.name}` : `فوز ${A.name}`,
+        summary: `${H.name} (${H.rating}) مقابل ${A.name} (${A.rating}) — الترجيح يميل لـ ${favorite.name} بنسبة ${Math.round(Math.max(pH, pA) * 100)}%، والنتيجة المتوقعة ${homeGoals}-${awayGoals}.`,
+      };
+    }
+
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    // Predictions list page
+    app.get('/predictions', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const domainUrl = `https://${domain}`;
+      const profile = getProfile(domain);
+      const fixtures = getFixtures();
+      const byDate: Record<string, typeof fixtures> = {};
+      for (const f of fixtures) (byDate[f.date] ||= []).push(f);
+
+      const rows = Object.entries(byDate).map(([date, list]) => `
+        <h2>📅 ${date}</h2>
+        ${list.map(f => {
+          const p = predictMatch(f);
+          return `<a class="match" href="/predictions/${f.slug}">
+            <span class="teams">${esc(TEAMS[f.home].name)} vs ${esc(TEAMS[f.away].name)}</span>
+            <span class="league">${esc(f.league)} • ${f.kickOff}</span>
+            <span class="pred">${p.pH}% / ${p.pD}% / ${p.pA}% — ${p.homeGoals}-${p.awayGoals}</span>
+          </a>`;
+        }).join('')}`).join('');
+
+      const html = `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>توقعات المباريات اليوم والغد — AI Football Predictions | ${profile.brand}</title>
+  <meta name="description" content="توقعات مباريات اليوم والغد بالذكاء الاصطناعي: احتمالات فوز، نتائج متوقعة، وتحليلات تكتيكية لأشهر الدوريات على ${profile.brand}." />
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
+  <link rel="canonical" href="${domainUrl}/predictions" />
+  <meta property="og:title" content="توقعات المباريات بالذكاء الاصطناعي | ${profile.brand}" />
+  <meta property="og:description" content="توقعات مباريات اليوم والغد: احتمالات فوز ونتائج متوقعة لأشهر الدوريات." />
+  <meta property="og:url" content="${domainUrl}/predictions" />
+  <meta property="og:type" content="website" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"CollectionPage","name":"توقعات المباريات بالذكاء الاصطناعي","url":"${domainUrl}/predictions","publisher":{"@id":"${domainUrl}/#organization"}}</script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.8}
+    .container{max-width:900px;margin:0 auto;padding:40px 20px}
+    h1{font-size:1.9rem;color:#10b981;margin-bottom:10px}
+    h2{font-size:1.3rem;color:#34d399;margin:30px 0 12px}
+    p{color:#94a3b8;margin-bottom:15px}
+    .match{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:#1e293b;padding:14px 18px;border-radius:10px;margin:8px 0;text-decoration:none;color:#e2e8f0;border:1px solid #334155}
+    .match:hover{border-color:#10b981}
+    .teams{font-weight:bold;color:#10b981;font-size:1.05rem}
+    .league{color:#64748b;font-size:0.85rem}
+    .pred{background:#0f172a;padding:5px 12px;border-radius:20px;font-size:0.9rem;color:#34d399}
+    .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:13px 26px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:8px 5px 8px 0}
+    footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚽ توقعات المباريات بالذكاء الاصطناعي</h1>
+    <p>${profile.intro}</p>
+    <p>كل صفحة توقعات تحتوي على احتمالات فوز، النتيجة المتوقعة، وتحليل تكتيكي مُولّد لحظياً — محدّث يومياً لأفضل الدوريات في العالم.</p>
+    ${rows}
+    <div style="margin-top:30px;text-align:center;">
+      <a href="/guides/ai-predictions-guide" class="cta">📖 كيف تقرأ التوقعات</a>
+      <a href="/#ai-sports" class="cta">🤖 تحليل AI مباشر</a>
+    </div>
+  </div>
+  <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+</body>
+</html>`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Robots-Tag', 'index, follow, max-snippet:-1');
+      res.send(html);
+    });
+
+    // Single prediction page
+    app.get('/predictions/:slug', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const domainUrl = `https://${domain}`;
+      const profile = getProfile(domain);
+      const fixture = getFixtures().find(f => f.slug === req.params.slug);
+      if (!fixture) return res.redirect('/predictions');
+
+      const H = TEAMS[fixture.home], A = TEAMS[fixture.away];
+      const p = predictMatch(fixture);
+      const title = `${H.name} vs ${A.name} توقعات — ${fixture.date} احتمالات ونتيجة متوقعة`;
+
+      const html = `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title} | ${profile.brand}</title>
+  <meta name="description" content="توقعات ${H.name} ضد ${A.name} بتاريخ ${fixture.date}: احتمال الفوز ${p.pH}% مقابل ${p.pA}%، النتيجة المتوقعة ${p.homeGoals}-${p.awayGoals}، وثقة ${p.confidence}%." />
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
+  <link rel="canonical" href="${domainUrl}/predictions/${fixture.slug}" />
+  <meta property="og:title" content="${title}" />
+  <meta property="og:description" content="احتمال الفوز ${p.pH}% مقابل ${p.pA}% — النتيجة المتوقعة ${p.homeGoals}-${p.awayGoals}" />
+  <meta property="og:url" content="${domainUrl}/predictions/${fixture.slug}" />
+  <meta property="og:type" content="article" />
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"SportsEvent","name":"${esc(H.name)} vs ${esc(A.name)}","startDate":"${fixture.date}T${fixture.kickOff.split(' ')[0]}:00Z","eventStatus":"https://schema.org/EventScheduled","location":{"@type":"SportsActivityLocation","name":"${esc(fixture.league)}"},"competitor":[{"@type":"SportsTeam","name":"${esc(H.name)}"},{"@type":"SportsTeam","name":"${esc(A.name)}"}],"url":"${domainUrl}/predictions/${fixture.slug}"}</script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"Article","headline":"${esc(title)}","description":"توقعات ${esc(H.name)} ضد ${esc(A.name)} بتاريخ ${fixture.date}","url":"${domainUrl}/predictions/${fixture.slug}","author":{"@type":"Organization","name":"${profile.brand}"},"publisher":{"@id":"${domainUrl}/#organization"},"dateModified":"${new Date().toISOString()}"}</script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+    {"@type":"Question","name":"من هو المرشح للفوز في ${esc(H.name)} ضد ${esc(A.name)}؟","acceptedAnswer":{"@type":"Answer","text":"${esc(p.summary)}"}},
+    {"@type":"Question","name":"ما هي النتيجة المتوقعة لمباراة ${esc(H.name)} ضد ${esc(A.name)}؟","acceptedAnswer":{"@type":"Answer","text":"النتيجة المتوقعة ${p.homeGoals}-${p.awayGoals} لصالح ${esc(p.favorite)}."}},
+    {"@type":"Question","name":"ما مستوى المخاطرة في توقع ${esc(H.name)} ضد ${esc(A.name)}؟","acceptedAnswer":{"@type":"Answer","text":"مستوى المخاطرة ${p.risk} مع ثقة ${p.confidence}% والتوصية: ${esc(p.pick)}."}}
+  ]}</script>
+
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.9}
+    .container{max-width:800px;margin:0 auto;padding:40px 20px}
+    h1{font-size:1.8rem;color:#10b981;margin-bottom:8px}
+    h2{font-size:1.3rem;color:#34d399;margin:28px 0 12px;border-bottom:2px solid #1e293b;padding-bottom:8px}
+    p{color:#94a3b8;margin-bottom:14px}
+    .badge{display:inline-block;background:#10b981;color:#0f172a;padding:4px 12px;border-radius:20px;font-weight:bold;font-size:0.85rem;margin:4px 4px 4px 0}
+    .probs{display:flex;gap:10px;margin:15px 0}
+    .prob{flex:1;background:#1e293b;padding:15px;border-radius:12px;text-align:center}
+    .prob .num{font-size:1.6rem;font-weight:bold;color:#10b981}
+    .prob .lbl{font-size:0.85rem;color:#94a3b8}
+    .score{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:20px;border-radius:14px;text-align:center;font-size:2rem;font-weight:bold;margin:15px 0}
+    .card{background:#1e293b;padding:18px;border-radius:12px;margin:12px 0}
+    .faq{background:#1e293b;padding:15px;border-radius:10px;margin:10px 0}
+    .faq strong{color:#34d399}
+    .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:13px 26px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:8px 5px 8px 0}
+    .related a{display:inline-block;background:#1e293b;padding:8px 14px;border-radius:8px;color:#10b981;text-decoration:none;margin:4px}
+    footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <p style="color:#64748b;"><a href="/predictions" style="color:#10b981;text-decoration:none;">توقعات المباريات</a> ← ${esc(fixture.league)}</p>
+    <h1>${esc(H.name)} vs ${esc(A.name)}</h1>
+    <div>
+      <span class="badge">📅 ${fixture.date}</span>
+      <span class="badge">🕐 ${fixture.kickOff}</span>
+      <span class="badge">🏟️ ${esc(fixture.league)}</span>
+      <span class="badge">🤖 Gemini AI</span>
+    </div>
+
+    <h2>📊 احتمالات المباراة</h2>
+    <div class="probs">
+      <div class="prob"><div class="num">${p.pH}%</div><div class="lbl">فوز ${esc(H.name)}</div></div>
+      <div class="prob"><div class="num">${p.pD}%</div><div class="lbl">تعادل</div></div>
+      <div class="prob"><div class="num">${p.pA}%</div><div class="lbl">فوز ${esc(A.name)}</div></div>
+    </div>
+
+    <div class="score">النتيجة المتوقعة: ${p.homeGoals} - ${p.awayGoals}</div>
+
+    <div class="card">
+      <h2>🤖 التحليل التكتيكي</h2>
+      <p>${p.summary}</p>
+      <p><strong>التوصية:</strong> ${p.pick}</p>
+      <p><strong>مستوى المخاطرة:</strong> ${p.risk}</p>
+      <p><strong>مؤشر الثقة:</strong> ${p.confidence}%</p>
+      <p><strong>تصنيف الفريقين:</strong> ${esc(H.name)}: ${H.rating} | ${esc(A.name)}: ${A.rating}</p>
+    </div>
+
+    <h2>❓ الأسئلة الشائعة</h2>
+    <div class="faq"><strong>س: من المرشح للفوز؟</strong><p>${p.summary}</p></div>
+    <div class="faq"><strong>س: ما النتيجة المتوقعة؟</strong><p>${p.homeGoals}-${p.awayGoals} لصالح ${p.favorite}.</p></div>
+    <div class="faq"><strong>س: ما مستوى المخاطرة؟</strong><p>${p.risk} — ثقة ${p.confidence}% والتوصية: ${p.pick}.</p></div>
+
+    <h2>🔗 توقعات ذات صلة</h2>
+    <div class="related">
+      ${getFixtures().filter(f => f.slug !== fixture.slug && f.date === fixture.date).slice(0, 6).map(f => `<a href="/predictions/${f.slug}">${esc(TEAMS[f.home].name)} vs ${esc(TEAMS[f.away].name)}</a>`).join('')}
+    </div>
+
+    <div style="margin-top:30px;text-align:center;">
+      <a href="/predictions" class="cta">⚽ كل التوقعات</a>
+      <a href="/guides/ai-predictions-guide" class="cta">📖 دليل قراءة التوقعات</a>
+    </div>
+  </div>
+  <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
 </body>
 </html>`;
 
@@ -3693,11 +4057,43 @@ ${urls}</urlset>`;
     app.get('*', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const domainUrl = `https://${domain}`;
+      const profile = getProfile(domain);
       const filePath = path.join(distPath, 'index.html');
       let html = fs.readFileSync(filePath, 'utf8');
 
       // Replace all vex.deals references with actual domain
       html = html.replace(/https:\/\/vex\.deals/g, domainUrl);
+
+      // Domain-specific title + description (avoid duplicate content penalty)
+      html = html.replace(/<title>[^<]*<\/title>/,
+        `<title>${profile.brand} — ${profile.tagline}</title>`);
+      html = html.replace(/<meta name="description" content="[^"]*"\s*\/?>/,
+        `<meta name="description" content="${profile.description} ${profile.focus}" />`);
+      html = html.replace(/<meta property="og:title" content="[^"]*"\s*\/?>/,
+        `<meta property="og:title" content="${profile.brand} — ${profile.tagline}" />`);
+      html = html.replace(/<meta property="og:description" content="[^"]*"\s*\/?>/,
+        `<meta property="og:description" content="${profile.description}" />`);
+
+      // Unique visible SEO block (different visible text per domain = unique content)
+      const seoBlock = `
+    <section style="max-width:900px;margin:0 auto;padding:40px 20px;font-family:sans-serif;color:#e2e8f0;background:#0f172a;">
+      <h1 style="color:#10b981;font-size:1.8rem;">${profile.h1}</h1>
+      <p style="line-height:1.9;color:#94a3b8;margin-top:15px;">${profile.intro}</p>
+      <h2 style="color:#34d399;font-size:1.2rem;margin-top:25px;">${profile.tagline} — ماذا تحصل عليه؟</h2>
+      <ul style="line-height:2;color:#94a3b8;padding-right:20px;">
+        <li><strong>تتبع المحافظ:</strong> راقب أرصدة أكثر من 12 شركة مراهنات معتمدة في مكان واحد</li>
+        <li><strong>تعويض الخسائر:</strong> احصل على نسب مئوية حقيقية على خسائرك وحوّلها فوراً</li>
+        <li><strong>توقعات AI:</strong> تحليلات مباريات دقيقة بمحرك Gemini مع احتمالات فوز ونتائج متوقعة</li>
+        <li><strong>يانصيب عادل:</strong> سحوبات مُثبتة بتشفير SHA-256 مع جوائز تصل إلى 10,000$</li>
+        <li><strong>تطبيق جوال:</strong> APK + PWA + iOS مع إشعارات لحظية</li>
+      </ul>
+      <p style="color:#64748b;font-size:0.9rem;margin-top:15px;">
+        كلمات مفتاحية: ${profile.focus} — <a href="${domainUrl}/guides/claim-compensation" style="color:#10b981;">دليل التعويض</a> |
+        <a href="${domainUrl}/guides/ai-predictions-guide" style="color:#10b981;">دليل توقعات AI</a> |
+        <a href="${domainUrl}/guides/provably-fair-lottery" style="color:#10b981;">اليانصيب العادل</a>
+      </p>
+    </section>`;
+      html = html.replace('</body>', `${seoBlock}\n  </body>`);
 
       // Inject Google Search Console verification meta tags
       const gscMeta = `
@@ -3721,10 +4117,10 @@ ${urls}</urlset>`;
       "@context": "https://schema.org",
       "@type": "Organization",
       "@id": "${domainUrl}/#organization",
-      "name": "VEX Deals",
+      "name": "${profile.brand}",
       "url": "${domainUrl}",
       "logo": "${domainUrl}/icon-192.svg",
-      "description": "منصة VEX Deals للتعويضات الرياضية وتتبع المحافظ وتوقعات المباريات بالذكاء الاصطناعي",
+      "description": "${profile.description}",
       "sameAs": ["${domainUrl}"],
       "contactPoint": {
         "@type": "ContactPoint",
@@ -3754,8 +4150,8 @@ ${urls}</urlset>`;
       "@type": "WebPage",
       "@id": "${domainUrl}/#webpage",
       "url": "${domainUrl}",
-      "name": "VEX Deals - منصة مكافآت التعويضات الرياضية",
-      "description": "منصة VEX Deals لتتبع محافظ شركات المراهنات، طلبات تعويض الخسائر، وتوقعات المباريات بالذكاء الاصطناعي",
+      "name": "${profile.brand} - ${profile.tagline}",
+      "description": "${profile.description}",
       "inLanguage": ["ar", "en", "es", "ru", "fr", "de", "tr", "pt"],
       "isPartOf": {"@id": "${domainUrl}/#website"},
       "about": {"@id": "${domainUrl}/#organization"},
@@ -3769,12 +4165,12 @@ ${urls}</urlset>`;
       "@type": "FAQPage",
       "@id": "${domainUrl}/#faq-extended",
       "mainEntity": [
-        {"@type": "Question", "name": "What is VEX Deals?", "acceptedAnswer": {"@type": "Answer", "text": "VEX Deals is a loyalty rewards and betting compensation platform that helps users track wallet balances across 12+ betting companies, claim loss compensation percentages, unfreeze referral balances, and get AI-powered football match predictions using Google Gemini."}},
-        {"@type": "Question", "name": "How does betting loss compensation work?", "acceptedAnswer": {"@type": "Answer", "text": "Users register betting company accounts through VEX Deals. The platform tracks betting activity and calculates losses. Users submit compensation requests with proof. Approved compensation percentages are added to their wallet for withdrawal or transfer."}},
-        {"@type": "Question", "name": "Is the VEX Deals lottery provably fair?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. VEX Deals uses SHA-256 server seed hashing with client seed and nonce for provably fair lottery draws. Users select 5 numbers from 1-30. Draws happen hourly, daily, and weekly with 5 prize tiers. All draws are publicly verifiable."}},
-        {"@type": "Question", "name": "How accurate are the AI sports predictions?", "acceptedAnswer": {"@type": "Answer", "text": "VEX Deals uses Google Gemini 3.8 Flash to analyze team statistics, form, odds, and tactical data. Predictions include predicted scores, win probabilities, tactical summaries, risk levels, and confidence scores based on historical accuracy."}},
-        {"@type": "Question", "name": "What languages does VEX Deals support?", "acceptedAnswer": {"@type": "Answer", "text": "VEX Deals supports 8 languages: Arabic, English, Spanish, Russian, French, German, Turkish, and Portuguese. Content is localized for each region including the Middle East, North Africa, Europe, and CIS countries."}},
-        {"@type": "Question", "name": "Is VEX Deals safe and secure?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. VEX Deals uses banking-grade security including rate limiting, CSP headers, SHA-256 PIN hashing, OTP two-factor authentication, and protection against circular transfers and balance draining attacks."}}
+        {"@type": "Question", "name": "What is ${profile.brand}?", "acceptedAnswer": {"@type": "Answer", "text": "${profile.brand} is a loyalty rewards and betting compensation platform (${profile.focus}) that helps users track wallet balances across 12+ betting companies, claim loss compensation percentages, unfreeze referral balances, and get AI-powered football match predictions using Google Gemini."}},
+        {"@type": "Question", "name": "How does betting loss compensation work?", "acceptedAnswer": {"@type": "Answer", "text": "Users register betting company accounts through ${profile.brand}. The platform tracks betting activity and calculates losses. Users submit compensation requests with proof. Approved compensation percentages are added to their wallet for withdrawal or transfer."}},
+        {"@type": "Question", "name": "Is the ${profile.brand} lottery provably fair?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. ${profile.brand} uses SHA-256 server seed hashing with client seed and nonce for provably fair lottery draws. Users select 5 numbers from 1-30. Draws happen hourly, daily, and weekly with 5 prize tiers. All draws are publicly verifiable."}},
+        {"@type": "Question", "name": "How accurate are the AI sports predictions?", "acceptedAnswer": {"@type": "Answer", "text": "${profile.brand} uses Google Gemini 3.8 Flash to analyze team statistics, form, odds, and tactical data. Predictions include predicted scores, win probabilities, tactical summaries, risk levels, and confidence scores based on historical accuracy."}},
+        {"@type": "Question", "name": "What languages does ${profile.brand} support?", "acceptedAnswer": {"@type": "Answer", "text": "${profile.brand} supports 8 languages: Arabic, English, Spanish, Russian, French, German, Turkish, and Portuguese. Content is localized for each region including the Middle East, North Africa, Europe, and CIS countries."}},
+        {"@type": "Question", "name": "Is ${profile.brand} safe and secure?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. ${profile.brand} uses banking-grade security including rate limiting, CSP headers, SHA-256 PIN hashing, OTP two-factor authentication, and protection against circular transfers and balance draining attacks."}}
       ]
     }
     </script>`;
