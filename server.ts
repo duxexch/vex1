@@ -3135,9 +3135,9 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
 
 
     // hreflang alternate tags for a page (all 8 languages + x-default)
+    // ar = default = base URL (no ?lang) so each hreflang URL is self-canonical
     const hreflangs = (domainUrl: string, path: string): string => {
-      const sep = path.includes('?') ? '&' : '?';
-      return LANGS.map(l => `  <link rel="alternate" hreflang="${l}" href="${domainUrl}${path}${sep}lang=${l}" />`).join('\n')
+      return LANGS.map(l => `  <link rel="alternate" hreflang="${l}" href="${domainUrl}${path}${langQ(l)}" />`).join('\n')
         + `\n  <link rel="alternate" hreflang="x-default" href="${domainUrl}${path}" />`;
     };
 
@@ -3456,7 +3456,7 @@ Sitemap: https://${domain}/sitemap.xml
     app.get('/sitemap.xml', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
       const now = new Date().toISOString().split('T')[0];
-      const langs = ['ar', 'en', 'es', 'ru', 'fr', 'de', 'tr', 'pt'];
+      const langs: Lang[] = [...LANGS];
       const companies = storage.getCompanies();
 
       let urls: string = '';
@@ -3469,15 +3469,16 @@ Sitemap: https://${domain}/sitemap.xml
     <priority>1.0</priority>
 `;
       for (const l of langs) {
-        urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}/?lang=${l}"/>
+        urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}/${langQ(l)}"/>
 `;
       }
       urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}/"/>
   </url>
 `;
 
-      // Language variants
+      // Language variants (ar = base URL, already listed above)
       for (const l of langs) {
+        if (l === 'ar') continue;
         urls += `  <url>
     <loc>https://${domain}/?lang=${l}</loc>
     <lastmod>${now}</lastmod>
@@ -3498,6 +3499,7 @@ Sitemap: https://${domain}/sitemap.xml
   </url>
 `;
         for (const l of langs) {
+          if (l === 'ar') continue;
           urls += `  <url>
     <loc>https://${domain}/company/${slug}?lang=${l}</loc>
     <lastmod>${now}</lastmod>
@@ -3518,13 +3520,14 @@ Sitemap: https://${domain}/sitemap.xml
     <priority>0.9</priority>
 `;
         for (const l of langs) {
-          urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}/guides/${slug}?lang=${l}"/>
+          urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}/guides/${slug}${langQ(l)}"/>
 `;
         }
         urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}/guides/${slug}"/>
   </url>
 `;
         for (const l of langs) {
+          if (l === 'ar') continue;
           urls += `  <url>
     <loc>https://${domain}/guides/${slug}?lang=${l}</loc>
     <lastmod>${now}</lastmod>
@@ -3543,13 +3546,14 @@ Sitemap: https://${domain}/sitemap.xml
     <priority>0.9</priority>
 `;
       for (const l of langs) {
-        urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}/predictions?lang=${l}"/>
+        urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}/predictions${langQ(l)}"/>
 `;
       }
       urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}/predictions"/>
   </url>
 `;
       for (const l of langs) {
+        if (l === 'ar') continue;
         urls += `  <url>
     <loc>https://${domain}/predictions?lang=${l}</loc>
     <lastmod>${now}</lastmod>
@@ -3704,7 +3708,7 @@ ${hreflangs(domainUrl, pagePath)}
     <a href="/download/apk">📱 ${tt('nav.download', lang)}</a>
   </nav>
   <nav class="langbar">
-    ${LANGS.map(l => `<a href="${pagePath}?lang=${l}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('    ')}
+    ${LANGS.map(l => `<a href="${pagePath}${langQ(l)}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('    ')}
   </nav>
   <div class="container">
     <h1>${name}</h1>
@@ -3833,7 +3837,7 @@ ${hreflangs(domainUrl, pagePath)}
 <body>
   <div class="container">
     <nav class="langbar">
-      ${LANGS.map(l => `<a href="${pagePath}?lang=${l}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
+      ${LANGS.map(l => `<a href="${pagePath}${langQ(l)}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
     </nav>
     <h1>${guide.title}</h1>
     <p style="font-size:1.1rem;color:#e2e8f0;">${guide.desc}</p>
@@ -4025,7 +4029,7 @@ ${hreflangs(domainUrl, '/predictions')}
 <body>
   <div class="container">
     <nav class="langbar">
-      ${LANGS.map(l => `<a href="/predictions?lang=${l}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
+      ${LANGS.map(l => `<a href="/predictions${langQ(l)}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
     </nav>
     <h1>⚽ ${tt('pred.list_h1', lang)}</h1>
     <p>${profile.intro}</p>
@@ -4125,7 +4129,7 @@ ${hreflangs(domainUrl, pagePath)}
 <body>
   <div class="container">
     <nav class="langbar">
-      ${LANGS.map(l => `<a href="${pagePath}?lang=${l}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
+      ${LANGS.map(l => `<a href="${pagePath}${langQ(l)}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
     </nav>
     <p style="color:#64748b;"><a href="/predictions${langQ(lang)}" style="color:#10b981;text-decoration:none;">${tt('pred.breadcrumb', lang)}</a> ← ${esc(fixture.league)}</p>
     <h1>${esc(H.name)} vs ${esc(A.name)}</h1>
@@ -4208,8 +4212,9 @@ ${hreflangs(domainUrl, pagePath)}
       html = html.replace(/<meta property="og:description" content="[^"]*"\s*\/?>/,
         `<meta property="og:description" content="${profile.description}" />`);
 
-      // hreflang alternates (all 8 languages)
-      const homeLinks = LANGS.map(l => `  <link rel="alternate" hreflang="${l}" href="${domainUrl}/?lang=${l}" />`).join('\n')
+      // hreflang alternates (all 8 languages) — strip static ones from index.html first to avoid duplicates
+      html = html.replace(/<link rel="alternate" hreflang=[^>]*\/?>\s*\n?/g, '');
+      const homeLinks = LANGS.map(l => `  <link rel="alternate" hreflang="${l}" href="${domainUrl}/${langQ(l)}" />`).join('\n')
         + `\n  <link rel="alternate" hreflang="x-default" href="${domainUrl}/" />`;
       html = html.replace('</head>', `${homeLinks}\n  </head>`);
 
@@ -4238,7 +4243,7 @@ ${hreflangs(domainUrl, pagePath)}
         <a href="${domainUrl}/guides/betting-wallet-tracking-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_wallet', lang)}</a>
       </p>
       <nav style="margin-top:12px;font-size:0.9rem;">
-        ${LANGS.map(l => `<a href="${domainUrl}/?lang=${l}" hreflang="${l}" style="color:${l === lang ? '#10b981' : '#475569'};text-decoration:none;margin-left:8px;">${l.toUpperCase()}</a>`).join('')}
+        ${LANGS.map(l => `<a href="${domainUrl}/${langQ(l)}" hreflang="${l}" style="color:${l === lang ? '#10b981' : '#475569'};text-decoration:none;margin-left:8px;">${l.toUpperCase()}</a>`).join('')}
       </nav>
     </section>`;
       html = html.replace('</body>', `${seoBlock}\n  </body>`);
