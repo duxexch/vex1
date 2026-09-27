@@ -3119,6 +3119,21 @@ async function setupServer() {
     };
     const getLang = (req: { query: Record<string, unknown> }): Lang => isLang(req.query.lang) ? req.query.lang : 'ar';
 
+    // Proper 404 (status code matters for SEO — no soft-404 redirects)
+    const send404 = (res: import('express').Response, profile: { brand: string; tagline: string; dir: string; lang: string }, notFound: string) => {
+      res.status(404).set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html>
+<html lang="${profile.lang}" dir="${profile.dir}">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>404 — ${profile.brand}</title>
+<meta name="robots" content="noindex">
+<style>body{font-family:sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center}
+.box{max-width:520px;padding:30px}h1{color:#10b981;font-size:3.5rem;margin:0}p{color:#94a3b8}
+a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border-radius:12px;text-decoration:none;font-weight:bold;margin-top:14px}</style>
+</head>
+<body><div class="box"><h1>404</h1><p>${notFound}</p><p>${profile.brand} — ${profile.tagline}</p><a href="/">${tt('guides.cta_home', profile.lang as Lang)}</a></div></body></html>`);
+    };
+
+
     // hreflang alternate tags for a page (all 8 languages + x-default)
     const hreflangs = (domainUrl: string, path: string): string => {
       const sep = path.includes('?') ? '&' : '?';
@@ -3307,6 +3322,54 @@ Expires: ${new Date(Date.now() + 365*24*60*60*1000).toISOString()}
 `);
     });
 
+    // ==================== IndexNow (Bing, Yandex, DuckDuckGo, Seznam) ====================
+    const INDEXNOW_KEY = '9f4c2b7e8a1d3f6c5b0e9a7d2c1f4b8e';
+    app.get(`/${INDEXNOW_KEY}.txt`, (req, res) => {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.send(INDEXNOW_KEY);
+    });
+
+    // OpenSearch description (browser search + some crawlers)
+    app.get('/opensearch.xml', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      res.setHeader('Content-Type', 'application/opensearchdescription+xml; charset=utf-8');
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
+  <ShortName>VEX Deals</ShortName>
+  <Description>Search VEX Deals predictions, companies and guides</Description>
+  <Url type="text/html" template="https://${domain}/?q={searchTerms}"/>
+  <Image width="512" height="512">https://${domain}/share-icon-512.png</Image>
+  <Language>ar</Language>
+  <Language>en</Language>
+</OpenSearchDescription>`);
+    });
+
+    // Submit URLs to IndexNow: POST /api/indexnow {urls:[...]}
+    app.post('/api/indexnow', async (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const urls: unknown = req.body?.urls;
+      if (!Array.isArray(urls) || urls.length === 0) {
+        return res.status(400).json({ error: 'urls array required' });
+      }
+      // Only allow URLs on this domain (IndexNow key must be hosted on the submitting host)
+      const clean = urls.filter((u): u is string =>
+        typeof u === 'string' && u.startsWith(`https://${domain}/`)).slice(0, 10000);
+      if (clean.length === 0) {
+        return res.status(400).json({ error: `urls must start with https://${domain}/` });
+      }
+      try {
+        const r = await fetch('https://api.indexnow.org/indexnow', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ host: domain, key: INDEXNOW_KEY, keyLocation: `https://${domain}/${INDEXNOW_KEY}.txt`, urlList: clean }),
+        });
+        res.json({ submitted: clean.length, status: r.status });
+      } catch (err) {
+        console.error('[IndexNow] submit failed:', err);
+        res.status(502).json({ error: 'indexnow failed' });
+      }
+    });
+
     // Dynamic robots.txt per domain - MUST be before express.static
     app.get('/robots.txt', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
@@ -3489,7 +3552,7 @@ ${urls}</urlset>`;
       const profile = getProfile(domain, lang);
       const companies = storage.getCompanies();
       const company = companies.find(c => c.id === req.params.id);
-      if (!company) return res.status(404).redirect('/');
+      if (!company) return send404(res, profile, lang === 'ar' ? 'الشركة غير موجودة.' : 'Company not found.');
 
       const name = company.name;
       const details = company.details || '';
@@ -3667,7 +3730,7 @@ ${hreflangs(domainUrl, pagePath)}
       const lang = getLang(req);
       const profile = getProfile(domain, lang);
       const guide = getGuide(req.params.slug, lang);
-      if (!guide) return res.status(404).redirect('/');
+      if (!guide) return send404(res, profile, lang === 'ar' ? 'الدليل غير موجود.' : 'Guide not found.');
       const pagePath = `/guides/${req.params.slug}`;
       const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
       const jstr = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ');
@@ -3932,7 +3995,7 @@ ${hreflangs(domainUrl, '/predictions')}
       const lang = getLang(req);
       const profile = getProfile(domain, lang);
       const fixture = getFixtures().find(f => f.slug === req.params.slug);
-      if (!fixture) return res.redirect('/predictions');
+      if (!fixture) return send404(res, profile, lang === 'ar' ? 'المباراة غير موجودة.' : 'Match not found.');
 
       const H = TEAMS[fixture.home], A = TEAMS[fixture.away];
       const p = predictMatch(fixture, lang);
