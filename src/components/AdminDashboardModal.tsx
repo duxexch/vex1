@@ -18,7 +18,9 @@ import { AppIconRenderer } from './AppIconRenderer';
 import { CompanyBrandLogo } from './CompanyBrandLogo';
 import { CompanyApiIntegration } from './CompanyApiIntegration';
 import { IntegrationTester } from './IntegrationTester';
-import { IntegrationHealthDashboard } from './IntegrationHealthDashboard';
+const IntegrationHealthDashboard = React.lazy(() =>
+  import('./IntegrationHealthDashboard').then(m => ({ default: m.IntegrationHealthDashboard })),
+);
 import { AdminAiAgentsHub } from './AdminAiAgentsHub';
 import { COMPANY_THEMES, getCompanyTheme } from '../data/companyThemes';
 import { autoTranslateCompany } from '../utils/companyTranslator';
@@ -3488,6 +3490,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
               {/* TAB: INTEGRATION HEALTH DASHBOARD                         */}
               {/* ========================================================= */}
               {activeTab === 'integration_health' && (
+                <React.Suspense fallback={null}>
                 <IntegrationHealthDashboard
                   companies={companies}
                   lang={lang}
@@ -3501,6 +3504,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                     setActiveTab('company_api');
                   }}
                 />
+                </React.Suspense>
               )}
 
               {/* ========================================================= */}

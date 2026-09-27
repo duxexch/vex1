@@ -3141,6 +3141,34 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
         + `\n  <link rel="alternate" hreflang="x-default" href="${domainUrl}${path}" />`;
     };
 
+    // Organization + WebSite entity schema shared by every SSR page (consistent entity for Google & AI)
+    const siteSchema = (domainUrl: string, profile: Profile): string => JSON.stringify({
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'Organization',
+          '@id': `${domainUrl}/#organization`,
+          name: profile.brand,
+          url: `${domainUrl}/`,
+          logo: { '@type': 'ImageObject', url: `${domainUrl}/share-icon-512.png`, width: 512, height: 512 },
+          description: profile.description,
+          slogan: profile.tagline,
+          inLanguage: profile.lang,
+          sameAs: [`${domainUrl}/`],
+        },
+        {
+          '@type': 'WebSite',
+          '@id': `${domainUrl}/#website`,
+          name: profile.brand,
+          url: `${domainUrl}/`,
+          inLanguage: profile.lang,
+          publisher: { '@id': `${domainUrl}/#organization` },
+        },
+      ],
+    });
+    const siteSchemaTag = (domainUrl: string, profile: Profile): string =>
+      `  <script type="application/ld+json">${siteSchema(domainUrl, profile)}</script>\n`;
+
     // ==================== GEO: llms.txt for AI Search Engines ====================
     app.get('/llms.txt', (req, res) => {
       const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
@@ -3656,7 +3684,7 @@ ${hreflangs(domainUrl, pagePath)}
     .langbar a.active, .langbar a:hover { color: #10b981; }
     footer { text-align: center; padding: 30px; color: #475569; font-size: 0.85rem; border-top: 1px solid #1e293b; margin-top: 40px; }
   </style>
-</head>
+  ${siteSchemaTag(domainUrl, profile)}</head>
 <body>
   <nav class="nav">
     <a href="/">🏠 ${tt('nav.home', lang)}</a>
@@ -3786,7 +3814,7 @@ ${hreflangs(domainUrl, pagePath)}
     .langbar a.active,.langbar a:hover{color:#10b981}
     footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
-</head>
+  ${siteSchemaTag(domainUrl, profile)}</head>
 <body>
   <div class="container">
     <nav class="langbar">
@@ -3975,7 +4003,7 @@ ${hreflangs(domainUrl, '/predictions')}
     .langbar a.active,.langbar a:hover{color:#10b981}
     footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
-</head>
+  ${siteSchemaTag(domainUrl, profile)}</head>
 <body>
   <div class="container">
     <nav class="langbar">
@@ -4075,7 +4103,7 @@ ${hreflangs(domainUrl, pagePath)}
     .langbar a.active,.langbar a:hover{color:#10b981}
     footer{text-align:center;padding:30px;color:#475569;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
   </style>
-</head>
+  ${siteSchemaTag(domainUrl, profile)}</head>
 <body>
   <div class="container">
     <nav class="langbar">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { motion } from 'motion/react';
 import { io } from 'socket.io-client';
 import {
@@ -49,7 +49,9 @@ import { PhoneVerificationModal } from './components/PhoneVerificationModal';
 import { SecurityAndSettingsModal } from './components/SecurityAndSettingsModal';
 import { SecurityAnalysisModal } from './components/SecurityAnalysisModal';
 import { NotificationCenterModal } from './components/NotificationCenterModal';
-import { AdminDashboardModal } from './components/AdminDashboardModal';
+const AdminDashboardModal = lazy(() =>
+  import('./components/AdminDashboardModal').then(m => ({ default: m.AdminDashboardModal })),
+);
 import { AiMatchAnalysisModal } from './components/AiMatchAnalysisModal';
 import { ResponsibleGamingModal } from './components/ResponsibleGamingModal';
 import { LegalTermsModal } from './components/LegalTermsModal';
@@ -885,6 +887,8 @@ export default function App() {
       />
 
       {/* Admin Dashboard Hub (Custom Branding, Approvals, News, Store Compliance) */}
+      {adminDashboardOpen && (
+      <Suspense fallback={null}>
       <AdminDashboardModal
         isOpen={adminDashboardOpen}
         onClose={handleCloseAdmin}
@@ -918,6 +922,8 @@ export default function App() {
             window.location.search.includes('admin=true'))
         }
       />
+      </Suspense>
+      )}
 
       {/* AI Match Analysis Modal (Gemini 3.8 Flash Tactical Prediction) */}
       <AiMatchAnalysisModal
