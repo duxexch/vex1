@@ -5219,7 +5219,7 @@ ${secsHtml}
       html = html.replace(/<title>[^<]*<\/title>/,
         `<title>${profile.brand} — ${profile.tagline}</title>`);
       html = html.replace(/<meta name="description" content="[^"]*"\s*\/?>/,
-        `<meta name="description" content="${profile.description} ${profile.focus}" />`);
+        `<meta name="description" content="${profile.description}" />`);
       html = html.replace(/<meta property="og:title" content="[^"]*"\s*\/?>/,
         `<meta property="og:title" content="${profile.brand} — ${profile.tagline}" />`);
       html = html.replace(/<meta property="og:description" content="[^"]*"\s*\/?>/,
