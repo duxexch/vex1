@@ -791,8 +791,10 @@ export interface UnluckyBetPost {
   betSlipId: string;
   companyName: string;
   amount: number;
+  lossAmount?: number;
   lostBy: string; // e.g., "هدف واحد الدقيقة 92"
   storyAr: string;
+  story?: string;
   imageUrl?: string;
   votes: number;
   timestamp: string;

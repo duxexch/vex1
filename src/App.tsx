@@ -91,6 +91,17 @@ class ErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode
   }
 }
 
+const ALL_TABS: TabType[] = ['companies', 'wallets', 'transfers', 'referrals', 'activity', 'ai-sports', 'unlucky-wall', 'lottery'];
+
+const tabFromUrl = (): TabType => {
+  try {
+    const p = new URLSearchParams(window.location.search).get('tab');
+    if (p && (ALL_TABS as string[]).includes(p)) return p as TabType;
+  } catch {
+  }
+  return 'companies';
+};
+
 export default function App() {
   const { lang, setLang, t } = useTranslation();
 
@@ -110,7 +121,26 @@ export default function App() {
   const [userId, setUserId] = useState<string>('');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [themeMode] = useState<ThemeMode>('light');
-  const [activeTab, setActiveTab] = useState<TabType>('companies');
+  const [activeTab, setActiveTabState] = useState<TabType>(() => tabFromUrl());
+  const setActiveTab = (tab: TabType) => {
+    const safeTab = (ALL_TABS as string[]).includes(tab) ? tab : 'companies';
+    setActiveTabState(safeTab);
+    try {
+      const url = new URL(window.location.href);
+      if (safeTab === 'companies') url.searchParams.delete('tab');
+      else url.searchParams.set('tab', safeTab);
+      const target = url.pathname + url.search + url.hash;
+      const current = window.location.pathname + window.location.search + window.location.hash;
+      if (target !== current) window.history.pushState({ tab: safeTab }, '', target);
+    } catch {
+    }
+  };
+
+  useEffect(() => {
+    const syncTabFromUrl = () => setActiveTabState(tabFromUrl());
+    window.addEventListener('popstate', syncTabFromUrl);
+    return () => window.removeEventListener('popstate', syncTabFromUrl);
+  }, []);
   const [displayCurrency, setDisplayCurrency] = useState<string>(() => {
     return localStorage.getItem('vex_display_currency') || detectUserRegionalCurrency();
   });
@@ -299,13 +329,15 @@ export default function App() {
   const handleCloseAdmin = () => {
     setAdminDashboardOpen(false);
     if (window.location.hash === '#admin') {
-      window.history.pushState({}, '', window.location.pathname);
+      window.history.pushState({}, '', window.location.pathname + window.location.search);
     }
     if (window.location.pathname === '/admin' || window.location.pathname.endsWith('/admin')) {
-      window.history.pushState({}, '', '/');
+      window.history.pushState({}, '', '/' + window.location.search);
     }
     if (window.location.search.includes('admin=true')) {
-      window.history.pushState({}, '', window.location.pathname);
+      const u = new URL(window.location.href);
+      u.searchParams.delete('admin');
+      window.history.pushState({}, '', u.pathname + u.search);
     }
   };
 

@@ -14,7 +14,12 @@ export const UnluckyWallTab: React.FC<{ lang: Language }> = ({ lang }) => {
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          setPosts(data.posts);
+          const list = Array.isArray(data.bets)
+            ? data.bets
+            : Array.isArray(data.posts)
+            ? data.posts
+            : [];
+          setPosts(list);
         }
         setLoading(false);
       })
@@ -23,14 +28,20 @@ export const UnluckyWallTab: React.FC<{ lang: Language }> = ({ lang }) => {
 
   const handleVote = async (postId: string) => {
     try {
-      const res = await fetch('/api/viral/unlucky-bets', {
+      const res = await fetch(`/api/viral/unlucky-bets/${postId}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'vote', postId, userId: vexApi.getUserId() })
+        body: JSON.stringify({ userId: vexApi.getUserId() })
       });
       const data = await res.json();
-      if (data.success) {
-        setPosts(data.posts);
+      if (data.success && data.bet) {
+        setPosts(prev =>
+          prev.map(p =>
+            p.id === postId
+              ? { ...p, votes: Number(data.bet.votes) || (Number(p.votes) || 0) + 1 }
+              : p
+          )
+        );
       }
     } catch (e) {
       console.error(e);
@@ -79,12 +90,12 @@ export const UnluckyWallTab: React.FC<{ lang: Language }> = ({ lang }) => {
                 <span className="text-slate-400">• {new Date(post.timestamp).toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}</span>
               </div>
               <div className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-rose-50 text-rose-700 border border-rose-200">
-                Loss: ${post.lossAmount}
+                {'Loss: $' + (post.lossAmount ?? post.amount ?? 0)}
               </div>
             </div>
 
             <p className="text-sm text-slate-700 leading-relaxed mb-4">
-              "{post.story}"
+              {'\u201C' + (post.story ?? post.storyAr ?? '') + '\u201D'}
             </p>
 
             <div className="flex items-center gap-3 pt-3 border-t border-slate-100">
@@ -93,7 +104,7 @@ export const UnluckyWallTab: React.FC<{ lang: Language }> = ({ lang }) => {
                 className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-rose-600 transition-colors"
               >
                 <Flame className="w-4 h-4" />
-                <span>{post.votes} {isAr ? 'صوت' : 'Votes'}</span>
+                <span>{post.votes || 0} {isAr ? 'صوت' : 'Votes'}</span>
               </button>
               <button className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-indigo-600 transition-colors">
                 <Share2 className="w-4 h-4" />
