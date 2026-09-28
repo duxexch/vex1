@@ -19,6 +19,11 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode; initialLang
   initialLang = 'ar',
 }) => {
   const [lang, setLangState] = useState<Language>(() => {
+    // URL ?lang= wins (matches SSR + hreflang), then saved preference, then default
+    const urlLang = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('lang')
+      : null;
+    if (urlLang && (TRANSLATIONS as Record<string, unknown>)[urlLang]) return urlLang as Language;
     const saved = localStorage.getItem('vex_lang') as Language;
     return saved && TRANSLATIONS[saved] ? saved : initialLang;
   });
@@ -29,6 +34,13 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode; initialLang
       localStorage.setItem('vex_lang', newLang);
       document.documentElement.dir = newLang === 'ar' ? 'rtl' : 'ltr';
       document.documentElement.lang = newLang;
+      // Keep the URL in sync with the rendered language (hreflang/canonical consistency)
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        const url = new URL(window.location.href);
+        if (newLang === 'ar') url.searchParams.delete('lang');
+        else url.searchParams.set('lang', newLang);
+        window.history.replaceState({}, '', url);
+      }
     }
   };
 
