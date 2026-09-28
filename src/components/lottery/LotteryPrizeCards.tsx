@@ -41,8 +41,8 @@ export const LotteryPrizeCards: React.FC<LotteryPrizeCardsProps> = ({
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {isAr
-              ? 'توزيع جوائز مدعوم بالشفافية التشفيرية، مع إيداع تلقائي فوري 100% في المحفظة بدون أي رسوم خفية.'
-              : 'Cryptographically backed prize pool with 100% instant wallet credit and zero hidden deductions.'}
+              ? 'توزيع جوائز مدعوم بالسحب التشفيري القابل للتحقق، مع إيداع تلقائي في المحفظة بدون رسوم خفية.'
+              : 'Prize pool settled by verifiable draw hashing, with automatic wallet credit and no hidden fees.'}
           </p>
         </div>
 
@@ -138,7 +138,7 @@ export const LotteryPrizeCards: React.FC<LotteryPrizeCardsProps> = ({
                   <div>
                     <span className="text-[10px] text-slate-400 block font-bold">
                       {isJackpot 
-                        ? (isAr ? 'الجائزة الكبرى المضمونة' : 'Guaranteed Min Jackpot') 
+                        ? (isAr ? 'الحد الأدنى للجائزة الكبرى' : 'Minimum Jackpot') 
                         : (isAr ? 'قيمة الجائزة التقديرية' : 'Estimated Prize')}
                     </span>
                     <span className="text-xl sm:text-2xl font-black text-amber-400 font-mono tracking-tight">
@@ -158,7 +158,7 @@ export const LotteryPrizeCards: React.FC<LotteryPrizeCardsProps> = ({
                 <div className="flex items-center justify-between text-[11px] text-slate-400">
                   <span className="flex items-center gap-1 text-emerald-400 font-bold">
                     <Zap className="w-3 h-3 text-emerald-400" />
-                    {isAr ? 'صرف فوري 100% للمحفظة' : 'Instant 100% Wallet Credit'}
+                    {isAr ? 'صرف الجائزة للمحفظة' : 'Prize Wallet Credit'}
                   </span>
                   <span className="text-[10px] text-slate-400">0% عمولة</span>
                 </div>
@@ -273,7 +273,7 @@ export const LotteryPrizeCards: React.FC<LotteryPrizeCardsProps> = ({
                 <div className="space-y-1.5">
                   <h4 className="font-black text-emerald-400 flex items-center gap-1.5 text-xs">
                     <Wallet className="w-4 h-4 text-emerald-400" />
-                    <span>{isAr ? 'شروط وآلية الصرف والتسليم الفوري' : 'Instant Payout & Delivery Terms'}</span>
+                    <span>{isAr ? 'شروط وآلية الصرف والتسليم' : 'Payout & Delivery Terms'}</span>
                   </h4>
                   <p className="text-slate-300 leading-relaxed bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
                     {isAr ? selectedPrizeTier.payoutTermsAr : selectedPrizeTier.payoutTermsEn}

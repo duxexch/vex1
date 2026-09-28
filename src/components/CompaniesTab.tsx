@@ -181,7 +181,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
               <div className="bg-black/30 backdrop-blur-md p-3.5 rounded-2xl border border-white/20 flex items-center justify-between gap-3 shadow-inner">
                 <div className="space-y-0.5">
                   <span className="text-[11px] text-white/80 block font-medium">
-                    {isAr ? 'كود الوكالة المعتمد للبونص وحماية الخسائر:' : 'Official Agency Code for Cashback:'}
+                    {isAr ? 'كود الوكالة للبونص وحماية الخسائر:' : 'Agency Code for Cashback:'}
                   </span>
                   <span className="font-mono text-base font-black text-amber-300 tracking-wider">
                     {exclusiveCompany.promo_code}
@@ -247,7 +247,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                     </div>
                     <div>
                       <h4 className="text-xs font-black text-slate-900 dark:text-white">
-                        {isAr ? 'التسجيل وفتح الحساب الرسمي' : 'Official Account Registration'}
+                        {isAr ? 'التسجيل وفتح الحساب' : 'Account Registration'}
                       </h4>
                       <p className="text-[11px] text-slate-500">
                         {isAr ? `سجل بالكود (${promo}) للبونص` : `Register with code (${promo})`}
@@ -266,10 +266,10 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                     </div>
                     <div>
                       <h4 className="text-xs font-black text-slate-900 dark:text-white">
-                        {isAr ? 'تحميل تطبيق الموبايل الرسمي' : 'Download Official Mobile App'}
+                        {isAr ? 'تحميل تطبيق الموبايل' : 'Download Mobile App'}
                       </h4>
                       <p className="text-[11px] text-slate-500">
-                        {isAr ? 'تطبيق سريع وآمن لأندرويد وآيفون' : 'Fast & secure app for Android/iOS'}
+                        {isAr ? 'تطبيق لأندرويد وآيفون' : 'App for Android/iOS'}
                       </p>
                     </div>
                   </a>
@@ -286,7 +286,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                         {isAr ? 'طلب حماية الخسائر والاسترداد' : 'Request Cashback & Protection'}
                       </h4>
                       <p className="text-[11px] text-slate-500">
-                        {isAr ? 'استرداد نقدي فوري على خسائر رهاناتك' : 'Instant cashback on losses'}
+                        {isAr ? 'استرداد نقدي على خسائر رهاناتك' : 'Cashback on losses'}
                       </p>
                     </div>
                   </button>
@@ -306,8 +306,8 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                     {isAr
-                      ? customSite?.sections?.overview?.contentAr || `${exclusiveCompany.description} تعتبر المنصة من أهم الشركاء المعتمدين لدينا، حيث نوفر لجميع اللاعبين المسجلين عبر كود الوكالة (${promo}) ميزات استثنائية تشمل بونص ترحيبي مضاعف، حماية خسائر أسبوعية، وسرعة فائقة في عمليات الإيداع والسحب.`
-                      : customSite?.sections?.overview?.contentEn || `${exclusiveCompany.description} As our certified official partner, players registering with agency code (${promo}) receive exceptional privileges including doubled welcome bonuses, weekly loss protection, and priority deposits/withdrawals.`}
+                      ? customSite?.sections?.overview?.contentAr || `${exclusiveCompany.description} تعتبر المنصة شريكاً لدينا، حيث نوفر لجميع اللاعبين المسجلين عبر كود الوكالة (${promo}) مزايا تشمل بونص ترحيبي، وحماية خسائر أسبوعية، وخيارات إيداع وسحب مدعومة.`
+                      : customSite?.sections?.overview?.contentEn || `${exclusiveCompany.description} As our partner, players registering with agency code (${promo}) receive perks including a welcome bonus, weekly loss protection, and deposit and withdrawal options.`}
                   </p>
                 </div>
 
@@ -328,10 +328,10 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                     <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 space-y-1.5">
                       <span className="w-6 h-6 rounded-full bg-sky-600 text-white text-xs font-black flex items-center justify-center">1</span>
                       <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                        {isAr ? 'الدخول عبر رابط الوكالة المعتمد' : 'Open Official Link'}
+                        {isAr ? 'الدخول عبر رابط الوكالة' : 'Open Partner Link'}
                       </h4>
                       <p className="text-[11px] text-slate-500 leading-snug">
-                        {isAr ? 'اضغط على زر التسجيل الرسمي للانتقال مباشرة للموقع الآمن.' : 'Click official registration to access secure portal.'}
+                        {isAr ? 'اضغط على زر التسجيل للانتقال مباشرة إلى موقع المشغّل.' : 'Click the registration button to continue to the operator site.'}
                       </p>
                     </div>
 
@@ -351,7 +351,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                         {isAr ? 'ربط الحساب وبدء الاستفادة' : 'Link & Claim Benefits'}
                       </h4>
                       <p className="text-[11px] text-slate-500 leading-snug">
-                        {isAr ? 'سجل رقم حسابك في المنصة هنا لتفعيل حماية الخسائر والبونص فوراً.' : 'Register account number here to activate loss protection instantly.'}
+                        {isAr ? 'سجل رقم حسابك في المنصة هنا لتفعيل حماية الخسائر والبونص.' : 'Register your account number here to activate loss protection.'}
                       </p>
                     </div>
                   </div>
@@ -371,8 +371,8 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                     {isAr
-                      ? customSite?.sections?.cashbackPolicy?.contentAr || `نوفر لك في VEX Deals شبكة أمان متكاملة؛ ففي حال واجهتك خسائر في رهاناتك عبر منصة ${exclusiveCompany.name}، يمكنك تقديم رقم الحساب وقسيمة الرهان عبر قسم المحفظة والتعويضات لاسترداد جزء كبير من الخسائر وفق جدول التعويضات المعتمد للوكالة.`
-                      : customSite?.sections?.cashbackPolicy?.contentEn || `VEX Deals provides an integrated safety net. If you experience losses on ${exclusiveCompany.name}, submit your account ID and bet slip in the compensation wallet to recover a substantial percentage according to official agency terms.`}
+                      ? customSite?.sections?.cashbackPolicy?.contentAr || `نوفر لك في VEX Deals شبكة أمان متكاملة؛ ففي حال واجهتك خسائر في رهاناتك عبر منصة ${exclusiveCompany.name}، يمكنك تقديم رقم الحساب وقسيمة الرهان عبر قسم المحفظة والتعويضات لاسترداد جزء من الخسائر وفق جدول التعويضات الخاص بالوكالة.`
+                      : customSite?.sections?.cashbackPolicy?.contentEn || `VEX Deals provides an integrated safety net. If you experience losses on ${exclusiveCompany.name}, submit your account ID and bet slip in the compensation wallet to recover a percentage of your losses according to the agency terms.`}
                   </p>
                 </div>
 

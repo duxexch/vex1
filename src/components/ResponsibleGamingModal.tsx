@@ -87,7 +87,7 @@ export const ResponsibleGamingModal: React.FC<ResponsibleGamingModalProps> = ({
               <div className="space-y-2">
                 <h4 className="font-black text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
                   <HeartHandshake className="w-4 h-4 text-sky-600" />
-                  {isAr ? 'منظمات المساعدة الدولية المعتمدة:' : 'Official Helplines & Resources:'}
+                  {isAr ? 'منظمات مساعدة دولية:' : 'Helplines & Resources:'}
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <a
@@ -116,8 +116,8 @@ export const ResponsibleGamingModal: React.FC<ResponsibleGamingModalProps> = ({
                 <Scale className="w-4 h-4 shrink-0 text-emerald-600 mt-0.5" />
                 <span>
                   {isAr
-                    ? 'نحن نلتزم بحظر الحسابات وحذف البيانات فوراً عند طلب الاستبعاد الذاتي (Self-Exclusion) من خلال إعدادات الأمان وحذف الحساب.'
-                    : 'We support instant self-exclusion and total account data deletion via Settings pursuant to Apple Guideline 5.1.1.'}
+                    ? 'نحن نلتزم بحظر الحسابات وحذف البيانات عند طلب الاستبعاد الذاتي (Self-Exclusion) من خلال إعدادات الأمان وحذف الحساب.'
+                    : 'We support self-exclusion and total account data deletion via Settings pursuant to Apple Guideline 5.1.1.'}
                 </span>
               </div>
             </div>

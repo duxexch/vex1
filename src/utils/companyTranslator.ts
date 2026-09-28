@@ -4,9 +4,9 @@ import { Company, Language } from '../types';
 const DICTIONARY: Record<string, { en: string; es: string; ru: string }> = {
   // General platform & company terms
   'شركة مراهنات رياضية شريكة': {
-    en: 'Official Sports Betting Partner Platform',
-    es: 'Plataforma oficial de apuestas deportivas asociada',
-    ru: 'Официальная партнерская платформа ставок на спорт',
+    en: 'Sports Betting Partner Platform',
+    es: 'Plataforma asociada de apuestas deportivas',
+    ru: 'Партнёрская платформа ставок на спорт',
   },
   'منصة مراهنات رياضية': {
     en: 'Sports Betting Platform',
@@ -14,14 +14,14 @@ const DICTIONARY: Record<string, { en: string; es: string; ru: string }> = {
     ru: 'Платформа ставок на спорт',
   },
   'أكبر منصات المراهنات الرياضية والألعاب': {
-    en: 'Leading sports betting & gaming platform with fast payouts',
-    es: 'Plataforma líder de apuestas deportivas y juegos con pagos rápidos',
-    ru: 'Ведущая платформа ставок на спорт и игр с быстрыми выплатами',
+    en: 'Sports betting & gaming platform with regular offers',
+    es: 'Plataforma de apuestas deportivas y juegos con ofertas frecuentes',
+    ru: 'Платформа ставок на спорт и игр с регулярными акциями',
   },
   'أكبر شركات المراهنة عالمياً بعروض دورية وسرعة فائقة في السحب والإيداع': {
-    en: 'Global betting leader with regular offers and ultra-fast deposits and withdrawals',
-    es: 'Líder mundial en apuestas con ofertas regulares y depósitos/retiros ultrarrápidos',
-    ru: 'Мировой лидер ставок с регулярными акциями и мгновенными выплатами',
+    en: 'Betting platform with regular offers and deposit and withdrawal options',
+    es: 'Plataforma de apuestas con ofertas regulares y opciones de depósito y retiro',
+    ru: 'Платформа ставок с регулярными акциями и удобными выплатами',
   },
   'بونص ترحيبي 130%': {
     en: '130% Welcome Bonus',
@@ -64,9 +64,9 @@ const DICTIONARY: Record<string, { en: string; es: string; ru: string }> = {
     ru: 'Королевский VIP кэшбэк клуб',
   },
   'تعويض فوري + تحويلات PIN آمنة': {
-    en: 'Instant Compensation + Secure PIN Transfers',
-    es: 'Compensación instantánea + Transferencias PIN seguras',
-    ru: 'Мгновенная компенсация + безопасные PIN-переводы',
+    en: 'Compensation + PIN Transfers',
+    es: 'Compensación + transferencias PIN',
+    ru: 'Компенсация + PIN-переводы',
   },
   '125% بونص إيداع + تأمين التذاكر المجمعة': {
     en: '125% Deposit Bonus + Accumulator Bet Insurance',
@@ -74,29 +74,29 @@ const DICTIONARY: Record<string, { en: string; es: string; ru: string }> = {
     ru: '125% бонус на депозит + страховка экспресс-ставок',
   },
   'أعلى كاش باك + تحليلات AI': {
-    en: 'Top Cashback + AI Analytics',
-    es: 'Máximo Cashback + Análisis IA',
-    ru: 'Максимальный кэшбэк + ИИ-аналитика',
+    en: 'Cashback + AI Analytics',
+    es: 'Cashback + Análisis IA',
+    ru: 'Кэшбэк + ИИ-аналитика',
   },
   'أعلى استرداد كاش باك + تأمين الحساب': {
-    en: 'Highest Cashback Rebate + Account Insurance',
-    es: 'Mayor reembolso de cashback + Seguro de cuenta',
-    ru: 'Высочайший кэшбэк + страхование счета',
+    en: 'Cashback Rebate + Account Protection',
+    es: 'Reembolso de cashback + protección de cuenta',
+    ru: 'Кэшбэк + защита счёта',
   },
   'أمان مصرفي + سحوبات أسبوعية': {
-    en: 'Bank-Grade Security + Weekly Prize Draws',
-    es: 'Seguridad bancaria + Sorteos semanales',
-    ru: 'Банковская безопасность + еженедельные розыгрыши',
+    en: 'Security + Weekly Prize Draws',
+    es: 'Seguridad + Sorteos semanales',
+    ru: 'Безопасность + еженедельные розыгрыши',
   },
   'تشفير بنكي كامل + دعم متواصل 24/7': {
-    en: 'Full Banking Encryption + 24/7 Support',
-    es: 'Cifrado bancario completo + Soporte 24/7',
-    ru: 'Банковское шифрование + поддержка 24/7',
+    en: 'Encryption + 24/7 Support',
+    es: 'Cifrado + Soporte 24/7',
+    ru: 'Шифрование + поддержка 24/7',
   },
   'كاش باك يصل لـ 100% وبونص ترحيبي': {
-    en: 'Cashback up to 100% and Welcome Bonus',
-    es: 'Cashback hasta 100% y Bono de bienvenida',
-    ru: 'Кэшбэк до 100% и приветственный бонус',
+    en: 'Cashback & Welcome Bonus',
+    es: 'Cashback y Bono de bienvenida',
+    ru: 'Кэшбэк и приветственный бонус',
   },
   'كاش باك يومي وتأمين خسائر': {
     en: 'Daily Cashback & Loss Insurance',
@@ -104,9 +104,9 @@ const DICTIONARY: Record<string, { en: string; es: string; ru: string }> = {
     ru: 'Ежедневный кэшбэк и страхование убытков',
   },
   'استرداد خسائر فوري': {
-    en: 'Instant Loss Compensation',
-    es: 'Compensación instantánea de pérdidas',
-    ru: 'Мгновенная компенсация убытков',
+    en: 'Loss Compensation',
+    es: 'Compensación de pérdidas',
+    ru: 'Компенсация убытков',
   },
   'تأمين شامل على الرهانات الرياضية': {
     en: 'Comprehensive Sports Bet Insurance',
@@ -114,14 +114,14 @@ const DICTIONARY: Record<string, { en: string; es: string; ru: string }> = {
     ru: 'Полная страховка спортивных ставок',
   },
   'سحب فوري لكافة المحافظ': {
-    en: 'Instant Withdrawals to All Wallets',
-    es: 'Retiros instantáneos a todas las billeteras',
-    ru: 'Мгновенный вывод на все кошельки',
+    en: 'Withdrawals to Wallets',
+    es: 'Retiros a billeteras',
+    ru: 'Вывод на кошельки',
   },
   'سحب وإيداع فوري ودعم متواصل': {
-    en: 'Instant Deposits/Withdrawals & Continuous Support',
-    es: 'Depósitos/retiros instantáneos y soporte continuo',
-    ru: 'Мгновенный ввод/вывод и круглосуточная поддержка',
+    en: 'Deposits, Withdrawals & Support',
+    es: 'Depósitos, retiros y soporte',
+    ru: 'Ввод, вывод и поддержка',
   },
 };
 
@@ -153,18 +153,18 @@ function translateDynamicArabicText(text: string, targetLang: 'en' | 'es' | 'ru'
   if (cleanText.includes('كاش باك') || cleanText.includes('استرداد') || cleanText.includes('تعويض')) {
     if (targetLang === 'en') {
       return percent
-        ? `Rebate & Cashback up to ${percent}% with official VEX coverage`
-        : 'Rebate, VIP Cashback & Instant Loss Compensation';
+        ? `Rebate & Cashback up to ${percent}% with VEX coverage`
+        : 'Rebate, VIP Cashback & Loss Compensation';
     }
     if (targetLang === 'es') {
       return percent
-        ? `Reembolso y Cashback de hasta ${percent}% con cobertura oficial VEX`
+        ? `Reembolso y Cashback de hasta ${percent}% con cobertura VEX`
         : 'Reembolso, Cashback VIP y Compensación de pérdidas';
     }
     if (targetLang === 'ru') {
       return percent
-        ? `Кэшбэк и компенсация до ${percent}% с официальной гарантией VEX`
-        : 'Кэшбэк, VIP возврат и мгновенная компенсация убытков';
+        ? `Кэшбэк и компенсация до ${percent}% с покрытием VEX`
+        : 'Кэшбэк, VIP возврат и компенсация убытков';
     }
   }
 
@@ -181,20 +181,20 @@ function translateDynamicArabicText(text: string, targetLang: 'en' | 'es' | 'ru'
   }
 
   if (cleanText.includes('أمان') || cleanText.includes('تشفير') || cleanText.includes('سحب')) {
-    if (targetLang === 'en') return 'High-Speed Payouts, Bank-Grade Encryption & 24/7 VIP Support';
-    if (targetLang === 'es') return 'Pagos de alta velocidad, cifrado bancario y soporte VIP 24/7';
-    if (targetLang === 'ru') return 'Быстрые выплаты, банковское шифрование и VIP поддержка 24/7';
+    if (targetLang === 'en') return 'Payout Options, Encryption & 24/7 Support';
+    if (targetLang === 'es') return 'Opciones de pago, cifrado y soporte 24/7';
+    if (targetLang === 'ru') return 'Выплаты, шифрование и поддержка 24/7';
   }
 
   // Fallback transliteration / translation
   if (targetLang === 'en') {
-    return cleanText.replace(/[\u0600-\u06FF]/g, '').trim() || `Official Partner Platform - ${cleanText}`;
+    return cleanText.replace(/[\u0600-\u06FF]/g, '').trim() || `Partner Platform - ${cleanText}`;
   }
   if (targetLang === 'es') {
-    return cleanText.replace(/[\u0600-\u06FF]/g, '').trim() || `Plataforma asociada oficial - ${cleanText}`;
+    return cleanText.replace(/[\u0600-\u06FF]/g, '').trim() || `Plataforma asociada - ${cleanText}`;
   }
   if (targetLang === 'ru') {
-    return cleanText.replace(/[\u0600-\u06FF]/g, '').trim() || `Официальная партнерская платформа - ${cleanText}`;
+    return cleanText.replace(/[\u0600-\u06FF]/g, '').trim() || `Партнёрская платформа - ${cleanText}`;
   }
 
   return cleanText;
@@ -209,8 +209,8 @@ export function autoTranslateCompany(input: Partial<Company>): Company {
   const rawArName = input.name_ar || name;
   const rawDesc = input.description || input.details || 'منصة مراهنات رياضية شريكة';
   const rawDetails = input.details || rawDesc;
-  const rawBadge = input.badge || 'كاش باك يصل لـ 100%';
-  const rawBonus = input.bonus_text || 'استرداد خسائر فوري + فك تجميد الرصيد';
+  const rawBadge = input.badge || 'كاش باك وتعويضات';
+  const rawBonus = input.bonus_text || 'استرداد خسائر + فك تجميد الرصيد';
 
   const company: Company = {
     id: input.id || `CMP${Date.now().toString(36).toUpperCase()}`,
@@ -272,10 +272,10 @@ export function getLocalizedCompany(
   if (lang === 'ar') {
     return {
       name: company.name_ar || company.name,
-      description: company.description || 'أفضل عروض الكاش باك والتعويضات',
+      description: company.description || 'عروض الكاش باك والتعويضات',
       details: company.details || company.description || '',
-      badge: company.badge || 'كاش باك معتمد',
-      bonus_text: company.bonus_text || 'تعويض خسائر فوري',
+      badge: company.badge || 'كاش باك',
+      bonus_text: company.bonus_text || 'تعويض الخسائر',
     };
   }
 
@@ -285,7 +285,7 @@ export function getLocalizedCompany(
       description:
         company.description_ru ||
         translateDynamicArabicText(company.description, 'ru') ||
-        'Лучшие предложения кэшбэка и компенсаций',
+        'Предложения кэшбэка и компенсаций',
       details:
         company.details_ru ||
         translateDynamicArabicText(company.details || company.description, 'ru') ||
@@ -293,11 +293,11 @@ export function getLocalizedCompany(
       badge:
         company.badge_ru ||
         translateDynamicArabicText(company.badge || '', 'ru') ||
-        'Проверенный кэшбэк',
+        'Кэшбэк',
       bonus_text:
         company.bonus_text_ru ||
         translateDynamicArabicText(company.bonus_text || '', 'ru') ||
-        'Мгновенный возврат средств',
+        'Возврат средств',
     };
   }
 
@@ -307,7 +307,7 @@ export function getLocalizedCompany(
       description:
         company.description_es ||
         translateDynamicArabicText(company.description, 'es') ||
-        'Mejores ofertas de cashback y reembolsos',
+        'Ofertas de cashback y reembolsos',
       details:
         company.details_es ||
         translateDynamicArabicText(company.details || company.description, 'es') ||
@@ -315,11 +315,11 @@ export function getLocalizedCompany(
       badge:
         company.badge_es ||
         translateDynamicArabicText(company.badge || '', 'es') ||
-        'Cashback verificado',
+        'Cashback',
       bonus_text:
         company.bonus_text_es ||
         translateDynamicArabicText(company.bonus_text || '', 'es') ||
-        'Reembolso instantáneo',
+        'Reembolso',
     };
   }
 
@@ -329,7 +329,7 @@ export function getLocalizedCompany(
     description:
       company.description_en ||
       translateDynamicArabicText(company.description, 'en') ||
-      'Top cashback and compensation offers',
+      'Cashback and compensation offers',
     details:
       company.details_en ||
       translateDynamicArabicText(company.details || company.description, 'en') ||
@@ -337,11 +337,11 @@ export function getLocalizedCompany(
     badge:
       company.badge_en ||
       translateDynamicArabicText(company.badge || '', 'en') ||
-      'Verified Cashback',
+      'Cashback',
     bonus_text:
       company.bonus_text_en ||
       translateDynamicArabicText(company.bonus_text || '', 'en') ||
-      'Instant Compensation',
+      'Loss Compensation',
   };
 }
 

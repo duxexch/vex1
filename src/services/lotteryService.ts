@@ -42,8 +42,8 @@ export const DEFAULT_PRIZE_TIERS: LotteryPrizeTier[] = [
     odds: '1 : 139,838,160',
     termsAr: 'تتطلب مطابقة جميع الأرقام الخمسة الرئيسية (من 1 إلى 50) بالإضافة إلى رقمي نجوم الحظ الذهبيين (من 1 إلى 12) بدقة تامة. في حال تعدد التذاكر الفائزة، يُقسّم مجمع الجائزة بالتساوي مع ضمان حد أدنى لا يقل عن $10,000.',
     termsEn: 'Requires an exact match of all 5 main balls (1-50) plus both 2 lucky stars (1-12). If multiple tickets match, the jackpot pool is split equally, guaranteed at no less than $10,000.',
-    payoutTermsAr: 'إيداع تلقائي فوري 100% في المحفظة النشطة بدون أي استقطاعات أو عمولات، ومتاحة للسحب النقدي الفوري عبر USDT أو فودافون كاش أو التحويل البنكي.',
-    payoutTermsEn: '100% instant automatic credit to user active wallet with zero deductions. Immediately withdrawable via USDT, Vodafone Cash, or Bank Transfer.',
+    payoutTermsAr: 'إيداع تلقائي في المحفظة النشطة بعد السحب، ومتاحة للسحب عبر USDT أو فودافون كاش أو التحويل البنكي.',
+    payoutTermsEn: 'Automatic credit to your active wallet after the draw. Withdrawable via USDT, Vodafone Cash, or Bank Transfer.',
   },
   {
     id: 'tier2_match5',
@@ -56,8 +56,8 @@ export const DEFAULT_PRIZE_TIERS: LotteryPrizeTier[] = [
     odds: '1 : 6,991,908',
     termsAr: 'تتطلب مطابقة 5 أرقام رئيسية ورقم ذهبي واحد. يحصل الفائزون على 20% من إجمالي مجمع السحب، بحد أدنى مضمون $2,500.',
     termsEn: 'Requires matching 5 main numbers and 1 lucky star. Awarded 20% of total pool with a guaranteed minimum of $2,500.',
-    payoutTermsAr: 'صرف مباشر وفوري في المحفظة خلال أقل من 10 ثوانٍ من انتهاء السحب التشفيري.',
-    payoutTermsEn: 'Direct instant credit to wallet in under 10 seconds following cryptographic draw execution.',
+    payoutTermsAr: 'صرف مباشر في المحفظة بعد انتهاء السحب.',
+    payoutTermsEn: 'Direct credit to wallet after the draw completes.',
   },
   {
     id: 'tier3_match4_2',
@@ -70,8 +70,8 @@ export const DEFAULT_PRIZE_TIERS: LotteryPrizeTier[] = [
     odds: '1 : 621,503',
     termsAr: 'تتطلب مطابقة 4 أرقام رئيسية ورقمي الحظ الذهبيين. يحصل الفائزون على 15% من المجمع بحد أدنى $1,000.',
     termsEn: 'Requires matching 4 main numbers and both 2 lucky stars. Awarded 15% of pool, minimum $1,000.',
-    payoutTermsAr: 'إيداع لحظي في المحفظة مع إشعار فوري وتوليد إيصال رقمي رسمي معتمد.',
-    payoutTermsEn: 'Instant deposit with push notification alert and verifiable digital payout receipt.',
+    payoutTermsAr: 'إيداع في المحفظة مع إشعار وتوليد إيصال رقمي.',
+    payoutTermsEn: 'Credit to wallet with push notification and a digital payout receipt.',
   },
   {
     id: 'tier4_match3',
@@ -84,8 +84,8 @@ export const DEFAULT_PRIZE_TIERS: LotteryPrizeTier[] = [
     odds: '1 : 3,107',
     termsAr: 'تتطلب مطابقة 3 أرقام رئيسية ورقم ذهبي واحد على الأقل. جائزة نقدية ثابتة بقيمة $25.00 لكل تذكرة فائزة.',
     termsEn: 'Requires matching 3 main numbers and at least 1 lucky star. Fixed cash prize of $25.00 per winning ticket.',
-    payoutTermsAr: 'تضاف فوراً لرصيد المحفظة المتاح للاستخدام في طلبات التعويض أو شراء تذاكر جديدة أو السحب.',
-    payoutTermsEn: 'Instantly credited to spendable wallet balance for withdrawals or new tickets.',
+    payoutTermsAr: 'تضاف لرصيد المحفظة المتاح للاستخدام في طلبات التعويض أو شراء تذاكر جديدة أو السحب.',
+    payoutTermsEn: 'Credited to spendable wallet balance for compensation requests, new tickets or withdrawals.',
   },
   {
     id: 'tier5_match2',
@@ -98,8 +98,8 @@ export const DEFAULT_PRIZE_TIERS: LotteryPrizeTier[] = [
     odds: '1 : 128',
     termsAr: 'تتطلب مطابقة رقمين رئيسيين ورقم ذهبي واحد. تمنحك جائزة نقدية $2.50 أو تذكرة تكافل مجانية إضافية للمشاركة في السحب القادم.',
     termsEn: 'Requires matching 2 main numbers and 1 lucky star. Awards $2.50 cash or free compassion lottery ticket.',
-    payoutTermsAr: 'تسليم فوري للمحفظة وتحديث فوري لرصيد التذاكر المجانية.',
-    payoutTermsEn: 'Immediate credit and updated free ticket balance.',
+    payoutTermsAr: 'تسليم للمحفظة وتحديث لرصيد التذاكر المجانية.',
+    payoutTermsEn: 'Credit to wallet and updated free ticket balance.',
   },
 ];
 

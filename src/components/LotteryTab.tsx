@@ -501,8 +501,8 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
               </div>
               <p className="text-[11px] text-slate-300 max-w-xl leading-relaxed mt-0.5">
                 {isAr
-                  ? 'يصلك إشعار فوري ذكي على جهازك قبل 60 دقيقة من إغلاق التذاكر وبدء سحب اليانصيب لتذكيرك بمراجعة أرقامك وتأكيد مشاركتك في الجائزة الكبرى.'
-                  : 'Receive an instant alert on your device 60 minutes before draw closure to confirm your winning tickets and participate in the progressive jackpot.'}
+                  ? 'يصلك إشعار ذكي على جهازك قبل 60 دقيقة من إغلاق التذاكر وبدء سحب اليانصيب لتذكيرك بمراجعة أرقامك وتأكيد مشاركتك في الجائزة الكبرى.'
+                  : 'Receive an alert on your device 60 minutes before draw closure to confirm your winning tickets and participate in the progressive jackpot.'}
               </p>
               {pushConfirmationMsg && (
                 <p className="text-xs text-emerald-400 font-bold mt-1 animate-pulse">
@@ -1327,7 +1327,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
                 {isAr ? 'محاكاة السحب المباشر بالكرات المتحركة' : 'Live Lottery Ball Drum Simulation'}
               </span>
               <h3 className="text-lg font-black text-white">
-                {isAr ? 'سحب الكرات الفائزة رسمياً' : 'Official Ball Reveal'}
+                {isAr ? 'سحب الكرات الفائزة' : 'Ball Reveal'}
               </h3>
             </div>
 

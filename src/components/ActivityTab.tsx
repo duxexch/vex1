@@ -89,8 +89,8 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
             {lang === 'ar'
-              ? 'متابعة وتدقيق حساباتك المسجلة وحالة طلبات التعويض الفورية'
-              : 'Track registered partner accounts and instant compensation requests'}
+              ? 'متابعة وتدقيق حساباتك المسجلة وحالة طلبات التعويض'
+              : 'Track registered partner accounts and compensation request status'}
           </p>
         </div>
         <button

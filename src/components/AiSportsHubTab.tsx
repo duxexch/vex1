@@ -371,8 +371,8 @@ END:VCALENDAR`;
 
         <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-200">
           {isAr
-            ? 'تحليل تكتيكي مدعوم بالذكاء الاصطناعي لجاهزية الفرق، الغيابات ومعدلات الأهداف المتوقعة مع تنبيهات فورية.'
-            : 'AI-driven tactical analysis of team readiness, line-ups, and expected goals with instant alerts.'}
+            ? 'تحليل تكتيكي مدعوم بالذكاء الاصطناعي لجاهزية الفرق، الغيابات ومعدلات الأهداف المتوقعة مع تنبيهات.'
+            : 'AI-driven tactical analysis of team readiness, line-ups, and expected goals with alerts.'}
         </p>
 
         {/* Quick Highlight of Top Match */}
@@ -583,7 +583,7 @@ END:VCALENDAR`;
                   </div>
                   <p className="text-[10px] text-amber-800">
                     {isAr 
-                      ? 'يقترح تلقائياً تنبيهات فورية عند رصد سيولة مفاجئة أو هبوط حاد في احتمالات الأسواق للدوريات المفعلة.'
+                      ? 'يقترح تلقائياً تنبيهات عند رصد سيولة مفاجئة أو هبوط حاد في احتمالات الأسواق للدوريات المفعلة.'
                       : 'Automatically suggests alerts based on high-volatility betting markets or significant odds shifts.'}
                   </p>
                 </div>

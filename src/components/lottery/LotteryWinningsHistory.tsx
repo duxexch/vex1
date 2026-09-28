@@ -139,8 +139,8 @@ export const LotteryWinningsHistory: React.FC<LotteryWinningsHistoryProps> = ({
             </h3>
             <p className="text-xs text-slate-400 max-w-xl">
               {isAr
-                ? 'توثيق كامل لكافة الجوائز التي فزت بها، ومواعيد الاستحقاق، وحالة الإيداع الفوري بدون اقتطاعات.'
-                : 'Complete cryptographic log of your past lottery winnings, draw timestamps, and instant payout statuses.'}
+                ? 'توثيق كامل لكافة الجوائز التي فزت بها، ومواعيد الاستحقاق، وحالة الإيداع بدون اقتطاعات.'
+                : 'Complete cryptographic log of your past lottery winnings, draw timestamps, and payout statuses.'}
             </p>
           </div>
 

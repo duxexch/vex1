@@ -265,12 +265,12 @@ export const TransfersTab: React.FC<TransfersTabProps> = ({
           <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
           <span>
             {lang === 'ar'
-              ? 'الحد الأقصى 10% لمرة واحدة فقط لكل صديق مع منع التدوير. التحويل محمي برمز OTP فوري.'
+              ? 'الحد الأقصى 10% لمرة واحدة فقط لكل صديق مع منع التدوير. التحويل محمي برمز OTP.'
               : lang === 'es'
-              ? 'Máximo 10% por amigo con verificación instantánea OTP.'
+              ? 'Máximo 10% por amigo con verificación OTP.'
               : lang === 'ru'
-              ? 'Максимум 10% с мгновенным подтверждением по OTP.'
-              : 'Max 10% per friend with instant OTP protection.'}
+              ? 'Максимум 10% с подтверждением по OTP.'
+              : 'Max 10% per friend with OTP protection.'}
           </span>
         </div>
       </div>
@@ -566,10 +566,10 @@ export const TransfersTab: React.FC<TransfersTabProps> = ({
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-2.5">
             <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>{lang === 'ar' ? 'معايير الأمان والتحويل الفوري' : 'Security & Transfer Rules'}</span>
+              <span>{lang === 'ar' ? 'معايير الأمان والتحويل' : 'Security & Transfer Rules'}</span>
             </h3>
             <ul className="text-xs text-slate-600 space-y-1.5 list-disc list-inside leading-relaxed">
-              <li>{lang === 'ar' ? 'التحويل يتم فورياً بين المحافظ المسجلة على نفس الشركة.' : 'Instant transfer between registered wallets.'}</li>
+              <li>{lang === 'ar' ? 'التحويل يتم بين المحافظ المسجلة على نفس الشركة.' : 'Transfer between registered wallets.'}</li>
               <li>{lang === 'ar' ? 'الحد الأقصى المسموح هو 10% من إجمالي الرصيد المجمد.' : 'Up to 10% of frozen balance can be transferred.'}</li>
               <li>{lang === 'ar' ? 'تأكيد العملية يتطلب رقم هاتف مفعل مع كود OTP سري.' : 'Requires verified phone and confidential OTP code.'}</li>
             </ul>

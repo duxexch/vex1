@@ -345,7 +345,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
       title: 'Contact {brand} — Support, Corrections & Data Requests',
       desc: 'Reach the {brand} team at support@vex.deals for support, content corrections, privacy requests and partnership questions.',
       h1: 'Contact Us',
-      intro: 'The fastest way to reach us is email — we read every message.',
+      intro: 'Email is how you can reach us — we read every message.',
       secs: [
         { h2: 'Email', p: ['Write to support@vex.deals. Include your account identifier if you have one, a clear subject line, and screenshots when they help explain the issue.'] },
         { h2: 'What to write to us about', p: ['Account or compensation issues · corrections to guides or company data · privacy and data-deletion requests · security reports · partnership and business enquiries.'] },
@@ -357,7 +357,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
       title: 'اتصل بنا — {brand}: الدعم وتصحيحات المحتوى وطلبات البيانات',
       desc: 'تواصل مع فريق {brand} عبر support@vex.deals للدعم وتصحيح المحتوى وطلبات الخصوصية واستفسارات الشراكة.',
       h1: 'اتصل بنا',
-      intro: 'أسرع طريقة للتواصل معنا هي البريد الإلكتروني — نقرأ كل رسالة.',
+      intro: 'التواصل معنا عبر البريد الإلكتروني — نقرأ كل رسالة.',
       secs: [
         { h2: 'البريد الإلكتروني', p: ['راسلنا على support@vex.deals. أضف معرّف حسابك إن وُجد، وعنوان رسالة واضح، ولقطات شاشة عندما توضّح المشكلة.'] },
         { h2: 'ما الذي تراسلنا بشأنه', p: ['مشاكل الحساب أو التعويض · تصحيحات الأدلة أو بيانات الشركات · طلبات الخصوصية وحذف البيانات · تقارير الأمان · استفسارات الشراكة والأعمال.'] },
@@ -369,7 +369,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
       title: 'Contacta con {brand} — soporte, correcciones y solicitudes de datos',
       desc: 'Contacta al equipo de {brand} en support@vex.deals para soporte, correcciones de contenido, solicitudes de privacidad y consultas de partnership.',
       h1: 'Contáctanos',
-      intro: 'La forma más rápida de llegar a nosotros es por correo — leemos cada mensaje.',
+      intro: 'Puedes escribirnos por correo — leemos cada mensaje.',
       secs: [
         { h2: 'Correo electrónico', p: ['Escribe a support@vex.deals. Incluye tu identificador de cuenta si tienes uno, un asunto claro y capturas de pantalla cuando ayuden a explicar el problema.'] },
         { h2: 'Sobre qué escribirnos', p: ['Problemas de cuenta o compensación · correcciones en guías o datos de empresas · solicitudes de privacidad y eliminación de datos · reportes de seguridad · consultas de partnership.'] },
@@ -381,7 +381,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
       title: 'Контакты {brand} — поддержка, исправления и запросы по данным',
       desc: 'Свяжитесь с командой {brand} по support@vex.deals: поддержка, исправления контента, запросы по конфиденциальности и партнёрство.',
       h1: 'Свяжитесь с нами',
-      intro: 'Самый быстрый способ связаться — электронная почта; мы читаем каждое сообщение.',
+      intro: 'Свяжитесь с нами по электронной почте; мы читаем каждое сообщение.',
       secs: [
         { h2: 'Электронная почта', p: ['Пишите на support@vex.deals. Укажите идентификатор аккаунта (если есть), понятную тему и скриншоты, когда они помогают описать проблему.'] },
         { h2: 'По каким вопросам писать', p: ['Вопросы аккаунта и компенсации · исправления гайдов и данных компаний · запросы на конфиденциальность и удаление данных · отчёты о безопасности · партнёрские и деловые вопросы.'] },
@@ -393,7 +393,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
       title: 'Contact {brand} — support, corrections et demandes de données',
       desc: 'Contactez l’équipe {brand} à support@vex.deals : support, corrections de contenu, demandes de confidentialité et partenariats.',
       h1: 'Nous contacter',
-      intro: 'Le moyen le plus rapide de nous joindre est l’e-mail — nous lisons chaque message.',
+      intro: 'Écrivez-nous par e-mail — nous lisons chaque message.',
       secs: [
         { h2: 'E-mail', p: ['Écrivez à support@vex.deals. Indiquez votre identifiant de compte si vous en avez un, un objet clair et des captures d’écran quand elles aident à expliquer le problème.'] },
         { h2: 'Sur quoi nous écrire', p: ['Questions de compte ou de compensation · corrections de guides ou de données d’entreprises · demandes de confidentialité et de suppression · rapports de sécurité · demandes de partenariat.'] },
@@ -405,7 +405,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
       title: 'Kontakt zu {brand} — Support, Korrekturen und Datenanfragen',
       desc: 'Erreichen Sie das {brand}-Team unter support@vex.deals für Support, Inhaltskorrekturen, Datenschutzanfragen und Partnerschaften.',
       h1: 'Kontakt',
-      intro: 'Der schnellste Weg zu uns ist E-Mail — wir lesen jede Nachricht.',
+      intro: 'Per E-Mail erreichen Sie uns — wir lesen jede Nachricht.',
       secs: [
         { h2: 'E-Mail', p: ['Schreiben Sie an support@vex.deals. Nennen Sie Ihre Kennung (falls vorhanden), einen klaren Betreff und Screenshots, wenn sie das Problem erklären.'] },
         { h2: 'Worum Sie schreiben können', p: ['Konto- oder Erstattungsfragen · Korrekturen in Guides oder Unternehmensdaten · Datenschutz- und Löschanfragen · Sicherheitsmeldungen · Partnerschafts- und Geschäftsanfragen.'] },
@@ -417,7 +417,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
       title: '{brand} ile iletişim — destek, düzeltmeler ve veri talepleri',
       desc: 'Destek, içerik düzeltmeleri, gizlilik talepleri ve ortaklık soruları için {brand} ekibine support@vex.deals adresinden ulaşın.',
       h1: 'Bize Ulaşın',
-      intro: 'Bize ulaşmanın en hızlı yolu e-postadır — her mesajı okuruz.',
+      intro: 'Bize e-posta ile ulaşabilirsiniz — her mesajı okuruz.',
       secs: [
         { h2: 'E-posta', p: ['support@vex.deals adresine yazın. Varsa hesap kimliğinizi, açık bir konu satırını ve sorunu açıklamaya yardımcı olacak ekran görüntülerini ekleyin.'] },
         { h2: 'Neler hakkında yazabilirsiniz', p: ['Hesap veya tazminat sorunları · rehberlerde/şirket verilerinde düzeltmeler · gizlilik ve veri silme talepleri · güvenlik bildirimleri · ortaklık ve iş görüşmeleri.'] },
@@ -429,7 +429,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
       title: 'Contato {brand} — suporte, correções e pedidos de dados',
       desc: 'Fale com a equipe da {brand} em support@vex.deals para suporte, correções de conteúdo, pedidos de privacidade e parcerias.',
       h1: 'Fale conosco',
-      intro: 'O caminho mais rápido até nós é o e-mail — lemos cada mensagem.',
+      intro: 'Envie-nos um e-mail — lemos cada mensagem.',
       secs: [
         { h2: 'E-mail', p: ['Escreva para support@vex.deals. Inclua seu identificador de conta (se tiver), um assunto claro e capturas de tela quando ajudarem a explicar o problema.'] },
         { h2: 'Sobre o que escrever', p: ['Problemas de conta ou compensação · correções em guias ou dados de empresas · pedidos de privacidade e exclusão de dados · relatos de segurança · assuntos de parceria.'] },
@@ -576,7 +576,7 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
       secs: [
         { h2: 'روابط الشركاء', p: ['بعض روابط شركات المراهنات في هذا الموقع روابط تابعة (affiliate). إذا سجّلت عبر أحدها قد نحصل على عمولة. السعر الذي تدفعه والشروط التي تحصل عليها مساوية للتسجيل المباشر — العمولة تأتي من المشغّل لا منك.'] },
         { h2: 'أثرها على محتوانا', p: ['العمولات لا تؤثر على معايير المقارنة أو الترتيب. المعايير منشورة في صفحة الترتيب، ولا نبيع المراكز، وتُدرج الصفحات التي لا تدفع لنا بنفس شروط الشركاء. انظر سياسة التحرير.'] },
-        { h2: 'أكواد الخصم', p: ['الأكواد المعروضة في صفحات الشركات أكواد شريكة/وكالة مقدَّمة عبر علاقاتنا مع المشغّلين. قيمتها وشروطها تحددها شروط المشغّل، وهي المعتمدة دائماً.'] },
+        { h2: 'أكواد الخصم', p: ['الأكواد المعروضة في صفحات الشركات أكواد شريكة/وكالة مقدَّمة عبر علاقاتنا مع المشغّلين. قيمتها وشروطها تحددها أحكام المشغّل وحدها.'] },
         { h2: 'خدمة مجانية', p: ['{brand} ليس لديه مستويات مدفوعة ولا نبيع البيانات الشخصية. تُموَّل الخدمة عبر عمولات الأطراف ذات العلاقة وتتوفر بـ8 لغات على الويب وAPK وPWA.'] },
         { h2: 'تذكير', p: ['المراهنات تنطوي على خسارة مالية وللكبار (18+) فقط. اطّلع على شروط الاستخدام ودليل اللعب المسؤول قبل المراهنات.'] },
       ],

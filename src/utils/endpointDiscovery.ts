@@ -136,7 +136,7 @@ export const BETTING_PLATFORM_PROVIDERS: BettingPlatformProvider[] = [
     id: 'betconstruct_spring',
     name: 'BetConstruct (Spring B2B Platform)',
     nameAr: 'منصة BetConstruct Spring للشركات',
-    description: 'Leading sportsbook platform powering hundreds of regulated and international brands with Spring API wallet protocols.',
+    description: 'Sportsbook platform integration using Spring API wallet protocols.',
     descriptionAr: 'منصة الرهانات الرياضية العالمية مع واجهات برمجية Spring API لإدارة المحافظ الرقمية وحسابات الشركاء.',
     badge: 'Enterprise Platform',
     sampleDomains: ['betconstruct.me', 'vbet.com', 'betshop.com', 'paripesa.com'],

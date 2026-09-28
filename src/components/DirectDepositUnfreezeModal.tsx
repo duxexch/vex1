@@ -309,7 +309,7 @@ export const DirectDepositUnfreezeModal: React.FC<DirectDepositUnfreezeModalProp
               <label className="block font-bold text-slate-700">
                 {getLocalizedText(
                   'select_pm',
-                  'اختر وسيلة الدفع المعتمدة للإيداع *',
+                  'اختر وسيلة الدفع للإيداع *',
                   'Select Payment Gateway *',
                   'Seleccionar método de pago *',
                   'Выберите способ оплаты *'
@@ -412,7 +412,7 @@ export const DirectDepositUnfreezeModal: React.FC<DirectDepositUnfreezeModalProp
 
                       {/* Account Holder Name */}
                       <div className="text-[11px] text-slate-600 flex items-center gap-1.5">
-                        <span className="font-bold text-slate-700">{getLocalizedText('holder', 'المستفيد المعتمد:', 'Beneficiary:', 'Beneficiario:', 'Получатель:')}</span>
+                        <span className="font-bold text-slate-700">{getLocalizedText('holder', 'المستفيد:', 'Beneficiary:', 'Beneficiario:', 'Получатель:')}</span>
                         <span className="font-semibold text-emerald-900">{selectedPm.holderName}</span>
                       </div>
 
@@ -420,7 +420,7 @@ export const DirectDepositUnfreezeModal: React.FC<DirectDepositUnfreezeModalProp
                       <div className="p-2.5 bg-emerald-100/50 border border-emerald-200/80 rounded-xl space-y-1">
                         <div className="flex items-center gap-1.5 font-bold text-[11px] text-emerald-900">
                           <Info className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                          <span>{getLocalizedText('pm_instructions', 'تعليمات التحويل والإيداع:', 'Official Deposit Instructions:', 'Instrucciones:', 'Инструкции:')}</span>
+                          <span>{getLocalizedText('pm_instructions', 'تعليمات التحويل والإيداع:', 'Deposit Instructions:', 'Instrucciones:', 'Инструкции:')}</span>
                         </div>
                         <p className="text-[11px] text-emerald-950 leading-relaxed font-medium">
                           {selectedPm.instructions || selectedPm.instructionsAr || selectedPm.descriptionAr || getLocalizedText('def_inst', 'قم بالتحويل على الرقم أعلاه ثم سجل تفاصيل الإيداع أدناه.', 'Transfer to the account above then submit your details below.', 'Transfiera al número anterior y envíe sus datos.', 'Переведите средства и отправьте детали ниже.')}

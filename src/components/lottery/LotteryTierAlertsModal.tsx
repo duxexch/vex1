@@ -193,7 +193,7 @@ export const LotteryTierAlertsModal: React.FC<LotteryTierAlertsModalProps> = ({
               <Smartphone className="w-5 h-5 text-emerald-400 shrink-0" />
               <div>
                 <span className="text-xs font-bold text-slate-200 block">
-                  {isAr ? 'قناة الإشعارات الفورية (FCM Web Push)' : 'Instant Push Channel (FCM)'}
+                  {isAr ? 'قناة الإشعارات (FCM Web Push)' : 'Push Channel (FCM)'}
                 </span>
                 <span className="text-[11px] text-slate-400">
                   {settings.fcmEnabled

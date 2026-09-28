@@ -321,7 +321,7 @@ export const CompensationRequestModal: React.FC<CompensationRequestModalProps> =
                 ? 'Revisión del boleto y abono en tu saldo'
                 : lang === 'ru'
                 ? 'Проверка купона и зачисление компенсации'
-                : 'Slip review & instant compensation deposit'}
+                : 'Slip review & compensation deposit'}
             </p>
           </div>
           <button

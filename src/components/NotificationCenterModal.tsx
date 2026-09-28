@@ -300,7 +300,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
             <div className="p-3 bg-slate-100 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
                 <Bell className="w-4 h-4 text-emerald-600" />
-                <span>{isAr ? 'تنبيهات فورية على المتصفح والهاتف' : 'Instant push notifications'}</span>
+                <span>{isAr ? 'تنبيهات على المتصفح والهاتف' : 'Push notifications'}</span>
               </div>
               <button
                 onClick={handleRequestPushPermission}

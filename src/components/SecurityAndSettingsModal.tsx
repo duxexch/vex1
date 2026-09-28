@@ -523,7 +523,7 @@ export const SecurityAndSettingsModal: React.FC<SecurityAndSettingsModalProps> =
                       • 10% unfreeze rate per active referral registration.
                       <br />
                       • Max 10% frozen balance transfer per friend with anti-collusion safeguards.
-                      <br />• All compensation requests undergo verification with official bet slip ID.
+                      <br />• All compensation requests undergo verification with valid bet slip ID.
                     </>
                   )}
                 </p>
