@@ -49,6 +49,12 @@ app.use(express.json({ limit: '5mb' }));
 // Gzip compression — faster TTFB & smaller payloads for crawlers/users (SEO/Core Web Vitals)
 app.use(compression({ threshold: 1024 }));
 
+// HTML/JSON must revalidate after every deploy (hashed assets re-set immutable headers below)
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  next();
+});
+
 // Enterprise-Grade Security & Payment Gateway Defense Middleware
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');

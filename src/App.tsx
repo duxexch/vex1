@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense, Component, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import type { Socket } from 'socket.io-client';
 import {
@@ -77,8 +77,35 @@ import { Toast } from './components/Toast';
 const IosInstallModal = lazy(() => import('./components/IosInstallModal').then(m => ({ default: m.IosInstallModal })));
 import { GoldenHourBanner } from './components/GoldenHourBanner';
 
+class ErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { failed: boolean }> {
+  declare props: { children: ReactNode; fallback: ReactNode };
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: unknown) {
+    console.error('Section crashed:', error);
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
 export default function App() {
   const { lang, setLang, t } = useTranslation();
+
+  // Idle-preload lazy tab chunks so switching sections never hits a missing/stale chunk
+  useEffect(() => {
+    const preload = () => {
+      void import('./components/ActivityTab');
+      void import('./components/AiSportsHubTab');
+      void import('./components/UnluckyWallTab');
+      void import('./components/LotteryTab');
+    };
+    const w = window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void };
+    if (w.requestIdleCallback) w.requestIdleCallback(preload, { timeout: 8000 });
+    else setTimeout(preload, 6000);
+  }, []);
   const [userId, setUserId] = useState<string>('');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [themeMode] = useState<ThemeMode>('light');
@@ -713,6 +740,32 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
           >
+            <ErrorBoundary
+              fallback={
+                <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center max-w-lg mx-auto mt-6">
+                  <p className="font-bold text-slate-900 mb-1">
+                    {lang === 'ar' ? 'تعذّر تحميل هذا القسم' : 'Could not load this section'}
+                  </p>
+                  <p className="text-sm text-slate-500 mb-4">
+                    {lang === 'ar' ? 'انتقل إلى قسم آخر أو أعد تحميل الصفحة' : 'Switch to another section or reload the page'}
+                  </p>
+                  <div className="flex gap-3 justify-center">
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="bg-emerald-600 text-white px-5 py-2 rounded-xl text-sm font-semibold"
+                    >
+                      {lang === 'ar' ? 'إعادة التحميل' : 'Reload'}
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('companies')}
+                      className="border border-slate-300 px-5 py-2 rounded-xl text-sm font-semibold text-slate-700"
+                    >
+                      {lang === 'ar' ? 'الشركات' : 'Companies'}
+                    </button>
+                  </div>
+                </div>
+              }
+            >
             <Suspense fallback={null}>
             {activeTab === 'companies' && (
               <CompaniesTab
@@ -812,6 +865,7 @@ export default function App() {
               />
             )}
             </Suspense>
+            </ErrorBoundary>
           </motion.div>
 
           {/* Footer Legal & Store Compliance Links */}
@@ -853,6 +907,7 @@ export default function App() {
         pendingRequestsCount={pendingRequestsCount}
       />
 
+      <ErrorBoundary fallback={null}>
       {/* 2-Step Account Registration Modal */}
       {!!registerModalCompany && (
       <Suspense fallback={null}>
@@ -1068,6 +1123,7 @@ export default function App() {
       />
       </Suspense>
       )}
+      </ErrorBoundary>
 
       {/* Global Copy Success Toast Notification */}
       <Toast message={toastMessage} lang={lang} />
