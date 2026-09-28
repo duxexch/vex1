@@ -97,10 +97,11 @@ export default function App() {
   // Idle-preload lazy tab chunks so switching sections never hits a missing/stale chunk
   useEffect(() => {
     const preload = () => {
-      void import('./components/ActivityTab');
-      void import('./components/AiSportsHubTab');
-      void import('./components/UnluckyWallTab');
-      void import('./components/LotteryTab');
+      const noop = () => {};
+      void import('./components/ActivityTab').catch(noop);
+      void import('./components/AiSportsHubTab').catch(noop);
+      void import('./components/UnluckyWallTab').catch(noop);
+      void import('./components/LotteryTab').catch(noop);
     };
     const w = window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void };
     if (w.requestIdleCallback) w.requestIdleCallback(preload, { timeout: 8000 });
