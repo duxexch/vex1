@@ -362,6 +362,8 @@ const T2: Record<string, Row> = {
   'trust.terms': { ar: 'الشروط والأحكام', en: 'Terms & Conditions', es: 'Términos y condiciones', ru: 'Условия использования', fr: 'Conditions générales', de: 'Nutzungsbedingungen', tr: 'Kullanım Şartları', pt: 'Termos e condições' },
   'trust.editorial': { ar: 'سياسة التحرير', en: 'Editorial Policy', es: 'Política editorial', ru: 'Редакционная политика', fr: 'Charte éditoriale', de: 'Redaktionslinien', tr: 'Editoryal Politika', pt: 'Política editorial' },
   'trust.affiliate': { ar: 'إفصاح الأطراف ذات العلاقة', en: 'Affiliate Disclosure', es: 'Divulgación de afiliados', ru: 'Раскрытие партнёрских ссылок', fr: 'Divulgation d’affiliation', de: 'Affiliate-Hinweis', tr: 'Ortaklık Açıklaması', pt: 'Divulgação de afiliados' },
+  'trust.security': { ar: 'الأمان', en: 'Security', es: 'Seguridad', ru: 'Безопасность', fr: 'Sécurité', de: 'Sicherheit', tr: 'Güvenlik', pt: 'Segurança' },
+  'trust.responsible': { ar: 'اللعب المسؤول', en: 'Responsible Gambling', es: 'Juego responsable', ru: 'Ответственная игра', fr: 'Jeu responsable', de: 'Verantwortungsvolles Spielen', tr: 'Sorumlu Oyun', pt: 'Jogo responsável' },
 
   // ---------- 404 ----------
   'e404.msg': { ar: 'الصفحة غير موجودة — ربما تم نقلها أو حذفها.', en: 'Page not found — it may have moved or been removed.', es: 'Página no encontrada — puede haberse movido o eliminado.', ru: 'Страница не найдена — возможно, она была перемещена или удалена.', fr: 'Page introuvable — elle a peut-être été déplacée ou supprimée.', de: 'Seite nicht gefunden — sie wurde möglicherweise verschoben oder entfernt.', tr: 'Sayfa bulunamadı — taşınmış veya kaldırılmış olabilir.', pt: 'Página não encontrada — pode ter sido movida ou removida.' },

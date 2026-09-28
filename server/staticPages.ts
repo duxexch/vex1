@@ -1,5 +1,5 @@
 // Trust / E-E-A-T static pages (SSR): about, privacy, terms, contact,
-// editorial-policy, affiliate-disclosure — all 8 languages.
+// editorial-policy, affiliate-disclosure, security, responsible-gambling — all 8 languages.
 // Content is factual: it only describes features that actually exist in this
 // project (no invented addresses, licenses, statistics or people).
 
@@ -7,7 +7,7 @@ export type StaticSec = { h2: string; p: string[] };
 export type StaticPageText = { title: string; desc: string; h1: string; intro: string; secs: StaticSec[] };
 export type StaticPage = Record<string, StaticPageText>; // lang -> text
 
-export const STATIC_PAGE_SLUGS = ['about', 'privacy', 'terms', 'contact', 'editorial-policy', 'affiliate-disclosure'] as const;
+export const STATIC_PAGE_SLUGS = ['about', 'privacy', 'terms', 'contact', 'editorial-policy', 'affiliate-disclosure', 'security', 'responsible-gambling'] as const;
 export type StaticPageSlug = (typeof STATIC_PAGE_SLUGS)[number];
 
 export const STATIC_PAGES: Record<string, StaticPage> = {
@@ -660,14 +660,270 @@ export const STATIC_PAGES: Record<string, StaticPage> = {
       ],
     },
   },
+
+  security: {
+    en: {
+      title: 'Security at {brand} — HTTPS, Rate Limiting, OTP & Fair Draws',
+      desc: 'The concrete security measures at {brand}: HTTPS/HSTS, strict security headers, 120 req/min rate limiting, 6-digit OTP verification, PIN lock and SHA-256 provably fair lottery draws.',
+      h1: 'Security at {brand}',
+      intro: 'This page lists the security measures actually implemented on {brand} — no generic promises. Last verified: 2026-09-27.',
+      secs: [
+        { h2: 'Encrypted connections (HTTPS)', p: ['Every page is served over HTTPS with HSTS, so data in transit between you and {brand} cannot be read by eavesdroppers on the network.'] },
+        { h2: 'Security headers', p: ['Responses carry a strict Content-Security-Policy, X-Content-Type-Options: nosniff, X-Frame-Options, a Referrer-Policy and a Permissions-Policy that blocks camera, microphone, geolocation, payment and USB access for pages on this site.'] },
+        { h2: 'Rate limiting', p: ['The API sits behind an in-memory rate limiter capped at 120 requests per minute per IP address; requests over the limit receive HTTP 429, which slows down brute-force attacks and automated abuse.'] },
+        { h2: 'Two-step verification (OTP)', p: ['Account verification uses a 6-digit one-time code (OTP) delivered through our Telegram bot. Phone-number changes require a request that an administrator must confirm.'] },
+        { h2: 'PIN lock', p: ['Accounts support a PIN lock with a failed-attempt counter. Keep your PIN private — never share it in messages, emails or support chats.'] },
+        { h2: 'Provably fair lottery (SHA-256)', p: ['Lottery draws are built on verifiable SHA-256 hashing so results can be checked independently — see the Provably Fair Lottery guide.'] },
+        { h2: 'What we never ask for', p: ['{brand} never asks for bank card numbers or passwords on this platform, and we do not sell personal data — see our Privacy Policy.'] },
+        { h2: 'Report a vulnerability', p: ['If you find a security issue, email support@vex.deals with the steps to reproduce it. Please allow us reasonable time to investigate before publishing details.'] },
+      ],
+    },
+    ar: {
+      title: 'الأمان في {brand} — HTTPS وتحديد المعدل وOTP وسحوبات عادلة',
+      desc: 'إجراءات الأمان المطبَّقة فعلياً في {brand}: HTTPS/HSTS ورؤوس أمان صارمة وتحديد المعدل بـ120 طلباً والتحقق برمز OTP من 6 أرقام والقفل بـPIN وسحوبات يانصيب قابلة للتحقق بـSHA-256.',
+      h1: 'الأمان في {brand}',
+      intro: 'تسرد هذه الصفحة إجراءات الأمان المطبَّقة فعلياً على {brand} — لا وعود عامة. آخر تحقق: 2026-09-27.',
+      secs: [
+        { h2: 'اتصالات مشفّرة (HTTPS)', p: ['كل صفحة تُقدَّم عبر HTTPS مع HSTS، فلا يمكن قراءة البيانات أثناء انتقالها بينك وبين {brand} من المستمعين على الشبكة.'] },
+        { h2: 'رؤوس الأمان', p: ['تحمل الردود سياسة أمان صارمة للمحتوى (CSP)، وX-Content-Type-Options: nosniff، وX-Frame-Options، وسياسة إحالة صارمة، وسياسة أذونات تمنع الكاميرا والميكروفون والموقع والدفع ووصول USB لصفحات هذا الموقع.'] },
+        { h2: 'تحديد المعدل', p: ['واجهة API خلف محدِّد معدل في الذاكرة بسقف 120 طلباً في الدقيقة لكل عنوان IP؛ الطلبات الزائدة تحصل على استجابة 429، ما يبطئ هجمات القوة الغاشمة والاستخدام الآلي المسيء.'] },
+        { h2: 'تحقق بخطوتين (OTP)', p: ['يستخدم التحقق في الحساب رمز تحقق لمرة واحدة من 6 أرقام (OTP) يُرسل عبر بوت تليجرام. تغيير رقم الهاتف يمر بطلب يجب على المسؤول تأكيده.'] },
+        { h2: 'قفل PIN', p: ['تدعم الحسابات قفل رمز PIN مع عدّاد لمحاولات الفشل. حافظ على سرية رمزك — لا تشاركه في الرسائل أو البريد أو محادثات الدعم.'] },
+        { h2: 'اليانصيب القابل للتحقق (SHA-256)', p: ['تقوم سحوبات اليانصيب على تجزئة SHA-256 قابلة للتحقق بشكل مستقل — انظر دليل اليانصيب العادل.'] },
+        { h2: 'ما لا نطلبه أبداً', p: ['لا تطلب {brand} أرقام بطاقات بنكية أو كلمات مرور على هذه المنصة، ولا نبيع البيانات الشخصية — انظر سياسة الخصوصية.'] },
+        { h2: 'أبلغ عن ثغرة أمنية', p: ['إذا وجدت مشكلة أمنية فراسل support@vex.deals مع خطوات إعادة الإنتاج. امنحنا وقتاً معقولاً للتحقيق قبل النشر العلني.'] },
+      ],
+    },
+    es: {
+      title: 'Seguridad en {brand} — HTTPS, límite de tasa, OTP y sorteos justos',
+      desc: 'Medidas de seguridad reales en {brand}: HTTPS/HSTS, cabeceras estrictas, límite de 120 req/min, verificación OTP de 6 dígitos, bloqueo PIN y sorteos de lotería justos verificables con SHA-256.',
+      h1: 'Seguridad en {brand}',
+      intro: 'Esta página enumera las medidas de seguridad realmente implementadas en {brand} — sin promesas genéricas. Última verificación: 2026-09-27.',
+      secs: [
+        { h2: 'Conexiones cifradas (HTTPS)', p: ['Todas las páginas se sirven por HTTPS con HSTS, de modo que los datos en tránsito entre tú y {brand} no pueden leerse desde la red.'] },
+        { h2: 'Cabeceras de seguridad', p: ['Las respuestas incluyen Content-Security-Policy estricta, X-Content-Type-Options: nosniff, X-Frame-Options, una Referrer-Policy y una Permissions-Policy que bloquea cámara, micrófono, geolocalización, pagos y USB en este sitio.'] },
+        { h2: 'Limitación de tasa', p: ['La API está tras un limitador en memoria con tope de 120 peticiones por minuto por IP; las excedidas reciben HTTP 429, lo que frena la fuerza bruta y el abuso automatizado.'] },
+        { h2: 'Verificación en dos pasos (OTP)', p: ['La verificación de cuenta usa un código de un solo uso de 6 dígitos (OTP) enviado por nuestro bot de Telegram. Los cambios de número de teléfono requieren una solicitud confirmada por un administrador.'] },
+        { h2: 'Bloqueo con PIN', p: ['Las cuentas admiten un bloqueo con PIN y un contador de intentos fallidos. Mantén tu PIN privado — no lo compartas en mensajes, correos ni chats de soporte.'] },
+        { h2: 'Lotería justa verificable (SHA-256)', p: ['Los sorteos se basan en hash SHA-256 verificable para que los resultados puedan comprobarse de forma independiente — ver la guía de lotería justa.'] },
+        { h2: 'Lo que nunca pedimos', p: ['{brand} nunca pide números de tarjeta ni contraseñas en esta plataforma, y no vendemos datos personales — ver Política de privacidad.'] },
+        { h2: 'Informar de una vulnerabilidad', p: ['Si encuentras un problema de seguridad, escribe a support@vex.deals con los pasos para reproducirlo. Danos un tiempo razonable para investigar antes de publicar.'] },
+      ],
+    },
+    ru: {
+      title: 'Безопасность {brand} — HTTPS, ограничение запросов, OTP и честные розыгрыши',
+      desc: 'Фактические меры безопасности {brand}: HTTPS/HSTS, строгие заголовки, лимит 120 запросов в минуту, OTP-подтверждение из 6 цифр, PIN-блокировка и проверяемые розыгрыши лотереи на SHA-256.',
+      h1: 'Безопасность {brand}',
+      intro: 'Эта страница перечисляет меры безопасности, реально реализованные в {brand} — без общих обещаний. Последняя проверка: 2026-09-27.',
+      secs: [
+        { h2: 'Защищённые соединения (HTTPS)', p: ['Все страницы отдаются по HTTPS с HSTS, поэтому данные в пути между вами и {brand} нельзя перехватить в сети.'] },
+        { h2: 'Заголовки безопасности', p: ['В ответах — строгая Content-Security-Policy, X-Content-Type-Options: nosniff, X-Frame-Options, Referrer-Policy и Permissions-Policy, блокирующая камеру, микрофон, геолокацию, платежи и USB на этом сайте.'] },
+        { h2: 'Ограничение частоты запросов', p: ['За API стоит in-memory лимитер с потолком 120 запросов в минуту на IP-адрес; превышение получает HTTP 429, что замедляет перебор и автоматизированные атаки.'] },
+        { h2: 'Подтверждение в два шага (OTP)', p: ['Для подтверждения аккаунта используется одноразовый 6-значный код (OTP) через нашего Telegram-бота. Смена номера телефона требует запроса, который подтверждает администратор.'] },
+        { h2: 'PIN-блокировка', p: ['В аккаунтах есть PIN-блокировка со счётчиком неудачных попыток. Храните PIN в тайне — не сообщайте его в сообщениях, письмах или чатах поддержки.'] },
+        { h2: 'Честная лотерея (SHA-256)', p: ['Розыгрыши лотереи построены на проверяемом хешировании SHA-256 — результаты можно проверить самостоятельно, см. гайд о честной лотерее.'] },
+        { h2: 'Чего мы никогда не просим', p: ['{brand} никогда не просит номера банковских карт или пароли на этой платформе и не продаёт персональные данные — см. Политику конфиденциальности.'] },
+        { h2: 'Сообщить об уязвимости', p: ['Если вы нашли проблему безопасности, напишите на support@vex.deals с шагами воспроизведения. Дайте нам разумное время на проверку до публикации.'] },
+      ],
+    },
+    fr: {
+      title: 'Sécurité sur {brand} — HTTPS, limitation de débit, OTP et tirages équitables',
+      desc: 'Les mesures de sécurité réellement déployées sur {brand} : HTTPS/HSTS, en-têtes stricts, limite de 120 req/min, vérification OTP à 6 chiffres, verrouillage PIN et tirages de loterie vérifiables SHA-256.',
+      h1: 'Sécurité sur {brand}',
+      intro: 'Cette page liste les mesures de sécurité réellement mises en œuvre sur {brand} — sans promesses génériques. Dernière vérification : 2026-09-27.',
+      secs: [
+        { h2: 'Connexions chiffrées (HTTPS)', p: ['Toutes les pages sont servies en HTTPS avec HSTS : les données transitant entre vous et {brand} ne peuvent pas être lues sur le réseau.'] },
+        { h2: 'En-têtes de sécurité', p: ['Les réponses incluent une Content-Security-Policy stricte, X-Content-Type-Options: nosniff, X-Frame-Options, une Referrer-Policy et une Permissions-Policy qui bloque caméra, micro, géolocalisation, paiements et USB sur ce site.'] },
+        { h2: 'Limitation de débit', p: ['L’API est protégée par un limiteur en mémoire plafonné à 120 requêtes par minute et par adresse IP ; les requêtes dépassées reçoivent HTTP 429, ce qui ralentit l’attaque par force brute et l’abus automatisé.'] },
+        { h2: 'Vérification en deux étapes (OTP)', p: ['La vérification du compte utilise un code à usage unique à 6 chiffres (OTP) envoyé par notre bot Telegram. Tout changement de numéro de téléphone passe par une demande confirmée par un administrateur.'] },
+        { h2: 'Verrouillage PIN', p: ['Les comptes prennent en charge un verrouillage PIN avec compteur d’échecs. Gardez votre PIN secret — ne le partagez dans aucun message, e-mail ou chat de support.'] },
+        { h2: 'Loterie équitable vérifiable (SHA-256)', p: ['Les tirages s’appuient sur un hachage SHA-256 vérifiable, permettant de contrôler les résultats de façon indépendante — voir le guide de la loterie équitable.'] },
+        { h2: 'Ce que nous ne demandons jamais', p: ['{brand} ne demande jamais de numéro de carte bancaire ni de mot de passe sur cette plateforme et ne vend pas de données personnelles — voir la Politique de confidentialité.'] },
+        { h2: 'Signaler une vulnérabilité', p: ['Si vous trouvez un problème de sécurité, écrivez à support@vex.deals avec les étapes de reproduction. Laissez-nous un délai raisonnable pour investiguer avant publication.'] },
+      ],
+    },
+    de: {
+      title: 'Sicherheit bei {brand} — HTTPS, Ratenlimit, OTP & faire Lose',
+      desc: 'Die tatsächlich umgesetzten Sicherheitsmaßnahmen bei {brand}: HTTPS/HSTS, strenge Security-Header, Limit von 120 Anfragen/Min., 6-stellige OTP-Bestätigung, PIN-Sperre und prüfbare SHA-256-Lose.',
+      h1: 'Sicherheit bei {brand}',
+      intro: 'Diese Seite listet die tatsächlich implementierten Sicherheitsmaßnahmen bei {brand} — ohne allgemeine Versprechen. Zuletzt geprüft: 2026-09-27.',
+      secs: [
+        { h2: 'Verschlüsselte Verbindungen (HTTPS)', p: ['Jede Seite wird über HTTPS mit HSTS ausgeliefert; Daten zwischen Ihnen und {brand} können im Netzwerk nicht mitgelesen werden.'] },
+        { h2: 'Security-Header', p: ['Antworten enthalten eine strikte Content-Security-Policy, X-Content-Type-Options: nosniff, X-Frame-Options, eine Referrer-Policy und eine Permissions-Policy, die Kamera, Mikrofon, Geolokalisierung, Zahlungen und USB auf dieser Seite blockiert.'] },
+        { h2: 'Ratenlimit', p: ['Die API steht hinter einem In-Memory-Ratenlimit von 120 Anfragen pro Minute und IP-Adresse; Überschreitungen erhalten HTTP 429, was Brute-Force und automatisierten Missbrauch bremst.'] },
+        { h2: 'Zwei-Faktor-Bestätigung (OTP)', p: ['Die Kontoverifizierung nutzt einen 6-stelligen Einmalcode (OTP) über unseren Telegram-Bot. Telefonnummernänderungen erfordern einen vom Administrator zu bestätigenden Antrag.'] },
+        { h2: 'PIN-Sperre', p: ['Konten unterstützen eine PIN-Sperre mit Zähler für Fehlversuche. Bewahren Sie Ihren PIN geheim — teilen Sie ihn in keinem Chat, keiner E-Mail oder Support-Nachricht mit.'] },
+        { h2: 'Prüfbare Lotterie (SHA-256)', p: ['Die Lose basieren auf prüfbarem SHA-256-Hashing, sodass Ergebnisse unabhängig verifiziert werden können — siehe den Guide zur fairen Lotterie.'] },
+        { h2: 'Was wir nie verlangen', p: ['{brand} verlangt auf dieser Plattform niemals Bankkartennummern oder Passwörter und verkauft keine personenbezogenen Daten — siehe Datenschutzerklärung.'] },
+        { h2: 'Schwachstelle melden', p: ['Finden Sie ein Sicherheitsproblem, schreiben Sie an support@vex.deals mit Reproduktionsschritten. Geben Sie uns angemessene Zeit zur Untersuchung vor einer Veröffentlichung.'] },
+      ],
+    },
+    tr: {
+      title: '{brand} Güvenliği — HTTPS, hız sınırı, OTP ve adil çekilişler',
+      desc: '{brand}’te gerçekten uygulanan güvenlik önlemleri: HTTPS/HSTS, katı güvenlik başlıkları, dakikada 120 istek limiti, 6 haneli OTP doğrulama, PIN kilidi ve SHA-256 ile doğrulanabilir piyango çekilişleri.',
+      h1: '{brand} Güvenliği',
+      intro: 'Bu sayfa, {brand}’te gerçekten uygulanan güvenlik önlemlerini listeler — genel vaatler yok. Son doğrulama: 2026-09-27.',
+      secs: [
+        { h2: 'Şifreli bağlantılar (HTTPS)', p: ['Her sayfa HSTS ile HTTPS üzerinden sunulur; sizinle {brand} arasındaki veriler ağda okunamaz.'] },
+        { h2: 'Güvenlik başlıkları', p: ['Yanıtlar katı bir Content-Security-Policy, X-Content-Type-Options: nosniff, X-Frame-Options, bir Referrer-Policy ve bu sitede kamera, mikrofon, konum, ödeme ve USB erişimini engelleyen bir Permissions-Policy içerir.'] },
+        { h2: 'Hız sınırı', p: ['API, IP başına dakikada 120 istekle sınırlı bellek içi bir hız sınırlayıcısının arkasındadır; aşılan istekler HTTP 429 alır, bu da kaba kuvveti ve otomatik istismarı yavaşlatır.'] },
+        { h2: 'İki adımlı doğrulama (OTP)', p: ['Hesap doğrulaması, Telegram botumuz üzerinden gönderilen 6 haneli tek kullanımlık kod (OTP) kullanır. Telefon numarası değişikliği yöneticinin onaylaması gerektiren bir talep ister.'] },
+        { h2: 'PIN kilidi', p: ['Hesaplar, başarısız deneme sayacı olan PIN kilidini destekler. PIN’inizi gizli tutun — hiçbir mesajda, e-postada veya destek sohbetinde paylaşmayın.'] },
+        { h2: 'Doğrulanabilir piyango (SHA-256)', p: ['Çekilişler, sonuçların bağımsız olarak doğrulanabilmesi için doğrulanabilir SHA-256 hash’ine dayanır — adil piyango rehberimize bakın.'] },
+        { h2: 'Asla istemediklerimiz', p: ['{brand} bu platformda asla banka kartı numarası veya şifre istemez ve kişisel verileri satmaz — Gizlilik Politikası’na bakın.'] },
+        { h2: 'Güvenlik açığı bildirin', p: ['Bir güvenlik sorunu bulursanız, yeniden üretme adımlarıyla support@vex.deals adresine yazın. Kamuya açıklamadan önce makul bir inceleme süresi tanıyın.'] },
+      ],
+    },
+    pt: {
+      title: 'Segurança na {brand} — HTTPS, limite de taxa, OTP e sorteios justos',
+      desc: 'As medidas de segurança realmente implementadas na {brand}: HTTPS/HSTS, cabeçalhos estritos, limite de 120 req/min, verificação OTP de 6 dígitos, bloqueio por PIN e sorteios de loteria verificáveis com SHA-256.',
+      h1: 'Segurança na {brand}',
+      intro: 'Esta página lista as medidas de segurança realmente implementadas na {brand} — sem promessas genéricas. Última verificação: 2026-09-27.',
+      secs: [
+        { h2: 'Conexões criptografadas (HTTPS)', p: ['Todas as páginas são servidas por HTTPS com HSTS, de modo que os dados em trânsito entre você e a {brand} não podem ser lidos na rede.'] },
+        { h2: 'Cabeçalhos de segurança', p: ['As respostas incluem Content-Security-Policy estrita, X-Content-Type-Options: nosniff, X-Frame-Options, Referrer-Policy e uma Permissions-Policy que bloqueia câmera, microfone, geolocalização, pagamentos e USB neste site.'] },
+        { h2: 'Limite de taxa', p: ['A API fica atrás de um limitador em memória com teto de 120 requisições por minuto por IP; as excedentes recebem HTTP 429, o que freia força bruta e abuso automatizado.'] },
+        { h2: 'Verificação em duas etapas (OTP)', p: ['A verificação da conta usa um código de uso único de 6 dígitos (OTP) enviado pelo nosso bot do Telegram. Mudanças de número de telefone exigem uma solicitação confirmada por um administrador.'] },
+        { h2: 'Bloqueio por PIN', p: ['As contas oferecem bloqueio por PIN com contador de tentativas erradas. Mantenha seu PIN privado — não o compartilhe em mensagens, e-mails ou chats de suporte.'] },
+        { h2: 'Loteria verificável (SHA-256)', p: ['Os sorteios usam hash SHA-256 verificável para que os resultados possam ser conferidos de forma independente — veja o guia de loteria justa.'] },
+        { h2: 'O que nunca pedimos', p: ['A {brand} nunca pede números de cartão bancário nem senhas nesta plataforma e não vendemos dados pessoais — veja a Política de privacidade.'] },
+        { h2: 'Relatar uma vulnerabilidade', p: ['Se você encontrar um problema de segurança, escreva para support@vex.deals com os passos para reproduzi-lo. Dê-nos um tempo razoável para investigar antes de publicar.'] },
+      ],
+    },
+  },
+
+  'responsible-gambling': {
+    en: {
+      title: 'Responsible Gambling — 18+, Limits & Help | {brand}',
+      desc: 'How {brand} approaches responsible gambling: 18+ only, treat betting as entertainment, set limits first, recognize warning signs and where to get free, confidential help.',
+      h1: 'Responsible Gambling',
+      intro: 'Betting involves real risk of loss. This page states our rules and practical guidance for staying in control.',
+      secs: [
+        { h2: '18+ and legal locations only', p: ['The service is for adults aged 18 or over, and only where sports betting is legal under your local laws. By using {brand} you confirm that you meet these conditions.'] },
+        { h2: 'Entertainment, not income', p: ['No betting strategy guarantees profit. Treat stakes as the cost of entertainment, never as an investment or a way to recover money you have lost.'] },
+        { h2: 'Set your limits first', p: ['Decide a budget you can comfortably lose before you start, keep stakes small relative to that budget, and never borrow money or raise stakes to chase losses.'] },
+        { h2: 'Warning signs', p: ['Betting more than planned, hiding it from people close to you, feeling restless when you stop, or trying to win back losses are signs to step back and reassess.'] },
+        { h2: 'Take a break', p: ['Use the deposit-limit and self-exclusion tools offered by the operators you use, and stop using {brand} whenever you need to — your account data stays covered by the Privacy Policy.'] },
+        { h2: 'Where to get help', p: ['Free and confidential support is available internationally from BeGambleAware (begambleaware.org) and GamCare (gamcare.org.uk), which offer information and live chat for anyone affected by problem gambling.'] },
+        { h2: 'How this affects our content', p: ['We do not publish guarantees of winning, and our guides cover risk and bankroll management. For practical steps read our Responsible Gambling guide.'] },
+      ],
+    },
+    ar: {
+      title: 'اللعب المسؤول — +18 وحدود ومساعدة | {brand}',
+      desc: 'كيف تتعامل {brand} مع اللعب المسؤول: للكبار (18+) فقط، اعتبر المراهنات ترفيهاً، ضع حدودك أولاً، تعرّف على علامات التحذير، ومكان الحصول على مساعدة مجانية وسرية.',
+      h1: 'اللعب المسؤول',
+      intro: 'المراهنات تنطوي على خسارة مالية حقيقية. تسرد هذه الصفحة قواعدنا وإرشادات عملية للبقاء تحت السيطرة.',
+      secs: [
+        { h2: '18+ والأماكن القانونية فقط', p: ['الخدمة للكبار (18 عاماً فأكثر) فقط، وفي الأماكن التي تكون فيها مراهنات الرياضة قانونية وفق قوانين بلدك. باستخدامك {brand} تؤكد استيفاءك لهذه الشروط.'] },
+        { h2: 'ترفيه لا دخل', p: ['لا استراتيجية مراهنات تضمن ربحاً. اعتبر المصاريف تكلفة ترفيه، وليس استثماراً أو وسيلة لاسترجاع ما خسرته.'] },
+        { h2: 'ضع حدودك أولاً', p: ['حدّد ميزانية يمكنك تحمّل خسارتها قبل أن تبدأ، وأبقِ الرهانات صغيرة نسبةً إليها، ولا تقترض أبداً أو ترفع الرهانات لتعويض خسائرك.'] },
+        { h2: 'علامات التحذير', p: ['المراهنات أكثر من المخطط، أو إخفاؤها عن المقربين منك، أو الشعور بالقلق عند التوقف، أو محاولة تعويض الخسائر — كلها إشارات للتوقف وإعادة التقييم.'] },
+        { h2: 'خذ استراحة', p: ['استخدم أدوات حدود الإيداع والاستبعاد الذاتي التي تقدمها المشغّلات التي تستخدمها، وأوقف استخدام {brand} كلما احتجت — بيانات حسابك تبقى وفق سياسة الخصوصية.'] },
+        { h2: 'أين تجد المساعدة', p: ['تتوفر مساعدة مجانية وسرية عالمياً من BeGambleAware (begambleaware.org) وGamCare (gamcare.org.uk)، اللذين يقدّمان معلومات ودردشة مباشرة لكل من تأثر بمشكلة المقامرة.'] },
+        { h2: 'كيف ينعكس ذلك على محتوانا', p: ['لا ننشر ضمانات بالفوز، وتغطي أدلتنا المخاطر وإدارة الرصيد. للخطوات العملية انظر دليل اللعب المسؤول.'] },
+      ],
+    },
+    es: {
+      title: 'Juego responsable — 18+, límites y ayuda | {brand}',
+      desc: 'Cómo aborda {brand} el juego responsable: solo 18+, tratar las apuestas como entretenimiento, fijar límites primero, reconocer señales de alerta y dónde obtener ayuda gratuita y confidencial.',
+      h1: 'Juego responsable',
+      intro: 'Las apuestas conllevan riesgo real de pérdida. Esta página expone nuestras reglas y consejos prácticos para mantener el control.',
+      secs: [
+        { h2: 'Solo 18+ y lugares legales', p: ['El servicio es solo para mayores de 18 años y donde las apuestas deportivas sean legales según la legislación local. Al usar {brand} confirmas cumplir estas condiciones.'] },
+        { h2: 'Entretenimiento, no ingresos', p: ['Ninguna estrategia de apuestas garantiza ganancias. Trata las fichas como costo de entretenimiento, nunca como inversión ni forma de recuperar lo perdido.'] },
+        { h2: 'Fija tus límites primero', p: ['Define un presupuesto que puedas permitirte perder antes de empezar, mantén las apuestas pequeñas respecto a él y nunca pidas prestado ni aumentes las apuestas para recuperar pérdidas.'] },
+        { h2: 'Señales de alerta', p: ['Apostar más de lo planeado, ocultarlo a los tuyos, sentir inquietud al parar o intentar recuperar pérdidas son señales para detenerte y reevaluar.'] },
+        { h2: 'Haz una pausa', p: ['Usa los límites de depósito y la autoexclusión que ofrecen los operadores que utilizas y deja de usar {brand} cuando lo necesites — los datos de tu cuenta siguen bajo la Política de privacidad.'] },
+        { h2: 'Dónde conseguir ayuda', p: ['Hay ayuda gratuita y confidencial a nivel internacional en BeGambleAware (begambleaware.org) y GamCare (gamcare.org.uk), con información y chat en vivo para personas afectadas por el juego problemático.'] },
+        { h2: 'Cómo afecta a nuestro contenido', p: ['No publicamos garantías de victoria y nuestras guías cubren el riesgo y la gestión de bankroll. Para pasos prácticos, consulta la guía de Juego responsable.'] },
+      ],
+    },
+    ru: {
+      title: 'Ответственная игра — 18+, лимиты и помощь | {brand}',
+      desc: 'Как {brand} подходит к ответственной игре: только 18+, ставки как развлечение, сначала лимиты, признаки проблемной игры и где получить бесплатную конфиденциальную помощь.',
+      h1: 'Ответственная игра',
+      intro: 'Ставки связаны с реальным риском потери денег. Эта страница излагает наши правила и практические советы по самоконтролю.',
+      secs: [
+        { h2: 'Только 18+ и легальные места', p: ['Сервис только для лиц 18 лет и старше и только там, где спортивные ставки законны по местному законодательству. Используя {brand}, вы подтверждаете соответствие этим условиям.'] },
+        { h2: 'Развлечения, а не доход', p: ['Ни одна стратегия ставок не гарантирует прибыль. Воспринимайте ставки как стоимость развлечения, а не как вложение или способ вернуть проигранное.'] },
+        { h2: 'Сначала лимиты', p: ['Заранее определите бюджет, который вам не жалко проиграть, держите ставки небольшими относительно него и никогда не берите в долг и не увеличивайте ставки ради отыгрыша.'] },
+        { h2: 'Признаки проблемы', p: ['Ставки сверх плана, скрытие от близких, беспокойство при паузе и попытки отыграть проигрыш — повод остановиться и переоценить ситуацию.'] },
+        { h2: 'Сделайте паузу', p: ['Используйте лимиты депозита и самоисключение, которые предоставляют операторы, и прекращайте пользоваться {brand} когда нужно — данные аккаунта остаются под Политикой конфиденциальности.'] },
+        { h2: 'Где получить помощь', p: ['Бесплатную конфиденциальную помощь можно получить у BeGambleAware (begambleaware.org) и GamCare (gamcare.org.uk) — они предлагают информацию и живой чат для всех, кого затронула проблемная игра.'] },
+        { h2: 'Как это влияет на наш контент', p: ['Мы не публикуем гарантий победы, а наши гайды охватывают риск и управление банкроллом. Практические шаги — в гайде по ответственной игре.'] },
+      ],
+    },
+    fr: {
+      title: 'Jeu responsable — 18+, limites et aide | {brand}',
+      desc: 'Comment {brand} aborde le jeu responsable : 18+ uniquement, considérer les paris comme un divertissement, fixer d’abord ses limites, reconnaître les signaux d’alerte et où trouver une aide gratuite et confidentielle.',
+      h1: 'Jeu responsable',
+      intro: 'Les paris comportent un risque réel de perte. Cette page énonce nos règles et des conseils pratiques pour garder le contrôle.',
+      secs: [
+        { h2: '18+ et lieux légaux uniquement', p: ['Le service est réservé aux personnes de 18 ans et plus, et uniquement là où les paris sportifs sont légaux selon votre législation locale. En utilisant {brand}, vous confirmez remplir ces conditions.'] },
+        { h2: 'Un divertissement, pas un revenu', p: ['Aucune stratégie de paris ne garantit de gain. Considérez les mises comme un coût de divertissement, jamais comme un investissement ni un moyen de récupérer vos pertes.'] },
+        { h2: 'Fixez d’abord vos limites', p: ['Déterminez un budget que vous pouvez perdre sans problème avant de commencer, gardez les mises faibles par rapport à ce budget, et n’empruntez jamais ni n’augmentez vos mises pour récupérer une perte.'] },
+        { h2: 'Signaux d’alerte', p: ['Parier plus que prévu, le cacher à vos proches, ressentir de l’agitation à l’arrêt ou tenter de récupérer vos pertes sont des signes pour faire une pause et réévaluer.'] },
+        { h2: 'Faites une pause', p: ['Utilisez les limites de dépôt et l’auto-exclusion proposées par les opérateurs que vous utilisez, et cessez d’utiliser {brand} si besoin — les données de votre compte restent couvertes par la Politique de confidentialité.'] },
+        { h2: 'Où trouver de l’aide', p: ['Une aide gratuite et confidentielle est disponible internationalement via BeGambleAware (begambleaware.org) et GamCare (gamcare.org.uk), qui proposent informations et chat en direct pour toute personne concernée par le jeu problématique.'] },
+        { h2: 'Impact sur notre contenu', p: ['Nous ne publions aucune garantie de gain et nos guides couvrent le risque et la gestion du bankroll. Pour des étapes pratiques, consultez le guide Jeu responsable.'] },
+      ],
+    },
+    de: {
+      title: 'Verantwortungsvolles Spielen — 18+, Limits & Hilfe | {brand}',
+      desc: 'Wie {brand} verantwortungsvolles Spielen behandelt: nur 18+, Wetten als Unterhaltung, zuerst Limits setzen, Warnzeichen erkennen und wo Sie kostenlose, vertrauliche Hilfe bekommen.',
+      h1: 'Verantwortungsvolles Spielen',
+      intro: 'Wetten bergen ein reales Verlustrisiko. Diese Seite nennt unsere Regeln und praktische Tipps zur Selbstkontrolle.',
+      secs: [
+        { h2: 'Nur 18+ und legale Orte', p: ['Der Dienst ist nur für Personen ab 18 Jahren und nur dort bestimmt, wo Sportwetten nach lokalem Recht legal sind. Mit der Nutzung von {brand} bestätigen Sie, dass Sie diese Bedingungen erfüllen.'] },
+        { h2: 'Unterhaltung, kein Einkommen', p: ['Keine Wettstrategie garantiert Gewinn. Betrachten Sie Einsätze als Unterhaltungskosten, nie als Investment oder Weg, Verluste zurückzugewinnen.'] },
+        { h2: 'Zuerst Ihre Limits setzen', p: ['Legen Sie vor dem Start ein Budget fest, dessen Verlust Sie verkraften, halten Sie Einsätze dazu klein und borgen Sie nie Geld oder erhöhen Sie Einsätze, um Verluste zurückzuholen.'] },
+        { h2: 'Warnzeichen', p: ['Mehr zu wetten als geplant, es vor Nahestehenden zu verbergen, Unruhe beim Stoppen oder der Versuch, Verluste zurückzugewinnen — das sind Zeichen, innezuhalten und neu zu bewerten.'] },
+        { h2: 'Pause machen', p: ['Nutzen Sie die Einzahlungslimits und Selbstsperren der von Ihnen genutzten Anbieter und beenden Sie die Nutzung von {brand} wann immer nötig — Kontodaten bleiben unter der Datenschutzerklärung.'] },
+        { h2: 'Wo Sie Hilfe bekommen', p: ['Kostenlose und vertrauliche Hilfe bieten weltweit BeGambleAware (begambleaware.org) und GamCare (gamcare.org.uk) mit Informationen und Live-Chat für Betroffene.'] },
+        { h2: 'Auswirkung auf unsere Inhalte', p: ['Wir veröffentlichen keine Gewinnversprechen, und unsere Guides behandeln Risiko und Bankroll-Management. Praktische Schritte finden Sie im Guide zum verantwortungsvollen Spielen.'] },
+      ],
+    },
+    tr: {
+      title: 'Sorumlu Oyun — 18+, limitler ve yardım | {brand}',
+      desc: '{brand} sorumlu oyunu nasıl ele alır: yalnızca 18+, bahsi eğlence olarak görmek, önce limitleri koyma, uyarı işaretlerini tanıma ve ücretsiz, gizli yardımın adresi.',
+      h1: 'Sorumlu Oyun',
+      intro: 'Bahis gerçek kayıp riski taşır. Bu sayfa kurallarımızı ve kontrolü elde tutmak için pratik önerilerimizi sunar.',
+      secs: [
+        { h2: 'Yalnızca 18+ ve yasal yerler', p: ['Hizmet yalnızca 18 yaş ve üzeri kişiler içindir ve yalnızca spor bahislerinin yerel yasalara göre yasal olduğu yerlerde geçerlidir. {brand} kullanarak bu koşulları karşıladığınızı onaylarsınız.'] },
+        { h2: 'Eğlence, gelir değil', p: ['Hiçbir bahis stratejisi kazanç garanti etmez. Bahisleri yatırım olarak değil, eğlence bedeli olarak görün; kaybınızı geri kazanmak için asla kullanmayın.'] },
+        { h2: 'Önce limitlerinizi koyun', p: ['Başlamadan önce kaybetmeyi göze alabileceğiniz bir bütçe belirleyin, bahisleri bütçeye oranla küçük tutun ve asla borç almayın ya da kayıpları telafi için bahisleri yükseltmeyin.'] },
+        { h2: 'Uyarı işaretleri', p: ['Plandan fazla bahis, yakınlarınızdan gizleme, durduğunda huzursuzluk ve kayıpları geri kazanma çabası — durup değerlendirmeniz gereken işaretlerdir.'] },
+        { h2: 'Mola verin', p: ['Kullandığınız operatörlerin sunduğu para yatırma limitlerini ve kendi kendini dışlama araçlarını kullanın ve ihtiyaç duyduğunuzda {brand} kullanmayı bırakın — hesap verileriniz Gizlilik Politikası kapsamında kalır.'] },
+        { h2: 'Yardım nereden alınır', p: ['Uluslararası ücretsiz ve gizli destek, problemli kumarla etkilenen herkese bilgi ve canlı sohbet sunan BeGambleAware (begambleaware.org) ve GamCare (gamcare.org.uk) tarafından sağlanır.'] },
+        { h2: 'İçeriğimize etkisi', p: ['Kazanç garantisi yayınlamayız ve rehberlerimiz riski ve bankroll yönetimini kapsar. Pratik adımlar için Sorumlu Oyun rehberimize bakın.'] },
+      ],
+    },
+    pt: {
+      title: 'Jogo responsável — 18+, limites e ajuda | {brand}',
+      desc: 'Como a {brand} aborda o jogo responsável: apenas 18+, tratar apostas como entretenimento, definir primeiro os limites, reconhecer sinais de alerta e onde obter ajuda gratuita e confidencial.',
+      h1: 'Jogo responsável',
+      intro: 'Apostas envolvem risco real de perda. Esta página declara nossas regras e orientações práticas para manter o controle.',
+      secs: [
+        { h2: 'Apenas 18+ e locais legais', p: ['O serviço é apenas para maiores de 18 anos e onde as apostas esportivas forem legais segundo a legislação local. Ao usar a {brand}, você confirma atender a essas condições.'] },
+        { h2: 'Entretenimento, não renda', p: ['Nenhuma estratégia de apostas garante lucro. Trate as fichas como custo de entretenimento, nunca como investimento nem forma de recuperar o que perdeu.'] },
+        { h2: 'Defina primeiro seus limites', p: ['Antes de começar, defina um orçamento que você possa perder sem problemas, mantenha as apostas pequenas em relação a ele e nunca pegue emprestado nem aumente as apostas para recuperar perdas.'] },
+        { h2: 'Sinais de alerta', p: ['Apostar mais do que o planejado, esconder das pessoas próximas, sentir inquietação ao parar ou tentar recuperar perdas são sinais para parar e reavaliar.'] },
+        { h2: 'Faça uma pausa', p: ['Use os limites de depósito e a autoexclusão oferecidos pelos operadores que você utiliza e pare de usar a {brand} quando precisar — os dados da conta continuam sob a Política de privacidade.'] },
+        { h2: 'Onde obter ajuda', p: ['Apoio gratuito e confidencial está disponível internacionalmente pela BeGambleAware (begambleaware.org) e GamCare (gamcare.org.uk), com informações e chat ao vivo para pessoas afetadas pelo jogo problemático.'] },
+        { h2: 'Como afeta nosso conteúdo', p: ['Não publicamos garantias de vitória e nossos guias cobrem risco e gerenciamento de bankroll. Para passos práticos, veja o Guia de jogo responsável.'] },
+      ],
+    },
+  },
 };
 
 // Footer/header nav mapping: slug -> i18n key
 export const TRUST_NAV: { slug: string; key: string }[] = [
   { slug: 'about', key: 'trust.about' },
   { slug: 'contact', key: 'trust.contact' },
-  { slug: 'editorial-policy', key: 'trust.editorial' },
-  { slug: 'affiliate-disclosure', key: 'trust.affiliate' },
+  { slug: 'security', key: 'trust.security' },
   { slug: 'privacy', key: 'trust.privacy' },
   { slug: 'terms', key: 'trust.terms' },
+  { slug: 'responsible-gambling', key: 'trust.responsible' },
+  { slug: 'editorial-policy', key: 'trust.editorial' },
+  { slug: 'affiliate-disclosure', key: 'trust.affiliate' },
 ];

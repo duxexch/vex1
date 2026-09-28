@@ -3283,6 +3283,8 @@ ${cmpList}
 - ${url}/affiliate-disclosure - How affiliate commissions work and why rankings stay independent
 - ${url}/privacy - Privacy policy: data collected, browser storage and third-party services
 - ${url}/terms - Terms of use: eligibility, service scope and disclaimers
+- ${url}/security - Security: HTTPS/HSTS, security headers, rate limiting, OTP verification, PIN lock
+- ${url}/responsible-gambling - Responsible gambling: 18+ rule, limits, warning signs and help resources
 - ${url}/contact - Contact and support (support@vex.deals)
 
 ## Key Topics
@@ -3367,13 +3369,15 @@ It helps users:
 - ${url}/affiliate-disclosure - Affiliate disclosure: how commissions work, why they cost users nothing, how rankings stay independent
 - ${url}/privacy - Privacy policy: data provided, browser storage, third-party services (Firebase, Google Fonts), how to request deletion
 - ${url}/terms - Terms of use: eligibility (18+), nature of the service, compensation conditions, disclaimers
+- ${url}/security - Security: HTTPS/HSTS, strict security headers, 120 req/min rate limiting, 6-digit OTP verification, PIN lock, SHA-256 provably fair lottery
+- ${url}/responsible-gambling - Responsible gambling: 18+ rule, entertainment-not-income guidance, limits, warning signs, break options and help resources
 - ${url}/contact - Contact: support@vex.deals for support, corrections, privacy and partnership enquiries
 
 ## Platform Statistics
 - Supported Companies: ${companies.length}
 - Languages: 8 (Arabic, English, Spanish, Russian, French, German, Turkish, Portuguese)
 - Lottery Tiers: 5 (Jackpot to Tier 5)
-- AI Engine: Google Gemini 3.8 Flash
+- AI Engine: Gemini 3.8 Flash when a GEMINI_API_KEY is configured, with a rule-based and heuristic tactical model fallback otherwise
 
 ## All Betting Companies
 ${companies.map(c => `### ${c.name}
