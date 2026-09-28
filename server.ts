@@ -15,6 +15,7 @@ import { agentEngine, calculateNotificationTiming } from './server/agentEngine';
 import { LANGS, isLang, tt, type Lang } from './server/i18nUi';
 import { getProfileText, type ProfileText } from './server/i18nProfiles';
 import { GUIDES, getGuide } from './server/i18nGuides';
+import { STATIC_PAGES, STATIC_PAGE_SLUGS, TRUST_NAV } from './server/staticPages';
 
 const currentFilename = '';
 const currentDirname = process.cwd();
@@ -60,6 +61,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Permissions-Policy', 'geolocation=(), camera=(), microphone=(), payment=(), usb=()');
   res.setHeader(
     'Content-Security-Policy',
     "default-src 'self' https: data: blob: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https: wss: data: blob: *; img-src 'self' https: data: blob:; font-src 'self' https: data:; frame-ancestors *;"
@@ -3130,18 +3132,39 @@ async function setupServer() {
     };
     const getLang = (req: { query: Record<string, unknown> }): Lang => isLang(req.query.lang) ? req.query.lang : 'ar';
 
+    // Date of the last full content re-verification (editorial policy: shown dates reflect real reviews,
+    // never auto-generated daily)
+    const CONTENT_VERIFIED = '2026-09-27';
+
+    // Inline links to trust & policy pages (E-E-A-T) — used in seoBlock and page footers
+    const trustLinks = (lang: Lang): string =>
+      TRUST_NAV.map(n => `<a href="/${n.slug}${langQ(lang)}" style="color:#94a3b8;text-decoration:none;margin:0 8px;white-space:nowrap;">${tt(n.key, lang)}</a>`).join('');
+
     // Proper 404 (status code matters for SEO — no soft-404 redirects)
-    const send404 = (res: import('express').Response, profile: { brand: string; tagline: string; dir: string; lang: string }, notFound: string) => {
+    const send404 = (res: import('express').Response, profile: { brand: string; tagline: string; dir: string; lang: string }, notFound?: string) => {
+      const lang = profile.lang as Lang;
       res.status(404).set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html>
-<html lang="${profile.lang}" dir="${profile.dir}">
+<html lang="${lang}" dir="${profile.dir}">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>404 — ${profile.brand}</title>
 <meta name="robots" content="noindex">
 <style>body{font-family:sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center}
-.box{max-width:520px;padding:30px}h1{color:#10b981;font-size:3.5rem;margin:0}p{color:#94a3b8}
-a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border-radius:12px;text-decoration:none;font-weight:bold;margin-top:14px}</style>
+.box{max-width:560px;padding:30px}h1{color:#10b981;font-size:3.5rem;margin:0}p{color:#94a3b8}
+.btn{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border-radius:12px;text-decoration:none;font-weight:bold;margin-top:14px}
+.lnk{display:inline-block;color:#34d399;text-decoration:none;margin:5px 8px;font-size:0.92rem}</style>
 </head>
-<body><div class="box"><h1>404</h1><p>${notFound}</p><p>${profile.brand} — ${profile.tagline}</p><a href="/">${tt('guides.cta_home', profile.lang as Lang)}</a></div></body></html>`);
+<body><div class="box"><h1>404</h1>${notFound ? `<p>${notFound}</p>` : ''}<p>${tt('e404.msg', lang)}</p><p>${profile.brand} — ${profile.tagline}</p>
+<a class="btn" href="/${langQ(lang)}">${tt('nav.home', lang)}</a>
+<p style="margin-top:20px;color:#e2e8f0;font-weight:bold;">${tt('e404.popular', lang)}</p>
+<div>
+<a class="lnk" href="/companies${langQ(lang)}">${tt('hub.companies_h1', lang)}</a>
+<a class="lnk" href="/guides${langQ(lang)}">${tt('hub.guides_h1', lang)}</a>
+<a class="lnk" href="/best-betting-sites${langQ(lang)}">${tt('link.best', lang)}</a>
+<a class="lnk" href="/compare${langQ(lang)}">${tt('link.compare', lang)}</a>
+<a class="lnk" href="/predictions${langQ(lang)}">${tt('nav.predictions', lang)}</a>
+</div>
+<div style="margin-top:14px;font-size:0.85rem;">${trustLinks(lang)}</div>
+</div></body></html>`);
     };
 
 
@@ -3154,14 +3177,14 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
 
     // Open Graph image + Twitter card for SSR pages (social previews + image search)
     const socialMeta = (domainUrl: string, title: string, desc: string): string => `
-  <meta property="og:image" content="${domainUrl}/share-icon-512.png" />
+  <meta property="og:image" content="${domainUrl}/share-icon-512.jpg" />
   <meta property="og:image:width" content="512" />
   <meta property="og:image:height" content="512" />
   <meta property="og:image:alt" content="${title}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${title}" />
   <meta name="twitter:description" content="${desc}" />
-  <meta name="twitter:image" content="${domainUrl}/share-icon-512.png" />`;
+  <meta name="twitter:image" content="${domainUrl}/share-icon-512.jpg" />`;
 
     // Organization + WebSite entity schema shared by every SSR page (consistent entity for Google & AI)
     const siteSchema = (domainUrl: string, profile: Profile): string => JSON.stringify({
@@ -3172,7 +3195,7 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
           '@id': `${domainUrl}/#organization`,
           name: profile.brand,
           url: `${domainUrl}/`,
-          logo: { '@type': 'ImageObject', url: `${domainUrl}/share-icon-512.png`, width: 512, height: 512 },
+          logo: { '@type': 'ImageObject', url: `${domainUrl}/share-icon-512.jpg`, width: 512, height: 512 },
           description: profile.description,
           slogan: profile.tagline,
           inLanguage: profile.lang,
@@ -3214,12 +3237,12 @@ a{display:inline-block;background:#10b981;color:#0f172a;padding:12px 26px;border
 - Primary topic: ${profile.focus}
 
 ## Core Features
-- Wallet Tracking: Monitor balances across 12+ licensed betting companies
+- Wallet Tracking: Monitor balances across supported betting companies
 - Loss Compensation: Claim real percentage-based refunds on betting losses
 - Referral Unfreezing: Unlock frozen referral balances through social sharing
 - AI Sports Predictions: Gemini-powered match analysis with win probabilities and tactical insights
 - Lottery System: Provably fair 5-tier lottery with SHA-256 verification
-- Money Transfers: Move funds between accounts with instant settlement
+- Money Transfers: Move funds between accounts
 - Multi-Language: Full support for 8 languages with regional content
 
 ## Guides
@@ -3254,6 +3277,14 @@ ${companyList}
 - ${url}/compare - Index of all bookmaker comparison pages
 ${cmpList}
 
+## About & Trust Pages
+- ${url}/about - About the platform: how content is created and verified
+- ${url}/editorial-policy - Editorial policy: research, verification, AI use and corrections
+- ${url}/affiliate-disclosure - How affiliate commissions work and why rankings stay independent
+- ${url}/privacy - Privacy policy: data collected, browser storage and third-party services
+- ${url}/terms - Terms of use: eligibility, service scope and disclaimers
+- ${url}/contact - Contact and support (support@vex.deals)
+
 ## Key Topics
 - Betting compensation and loss recovery
 - Digital wallet tracking and management
@@ -3273,7 +3304,7 @@ ${cmpList}
 - Website: ${url}
 - Support: support@vex.deals
 
-Last updated: ${new Date().toISOString().split('T')[0]}
+Last updated: ${CONTENT_VERIFIED}
 `;
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -3293,7 +3324,7 @@ ${profile.description}
 ${profile.intro}
 
 It helps users:
-1. Track wallet balances across multiple licensed betting companies
+1. Track wallet balances across multiple supported betting companies
 2. Claim loss compensation (refund percentages) on betting losses
 3. Unfreeze referral balances through social sharing
 4. Get AI-powered sports match predictions
@@ -3329,6 +3360,14 @@ It helps users:
 - ${url}/best-betting-sites - Ranked list of every supported bookmaker with bonuses, promo codes and a neutral FAQ
 - ${url}/compare - Hub with side-by-side comparisons of all supported bookmakers
 - Pair pages live at /compare/<bookmaker>-vs-<bookmaker> (for example /compare/1xbet-vs-melbet) and cover welcome bonus, promo code, mobile app and a neutral verdict
+
+## About & Trust Pages (E-E-A-T)
+- ${url}/about - About the platform: what it does, how guides and company data are verified, how compensation works
+- ${url}/editorial-policy - Editorial policy: sources, verification dates, AI assistance, corrections process, editorial independence
+- ${url}/affiliate-disclosure - Affiliate disclosure: how commissions work, why they cost users nothing, how rankings stay independent
+- ${url}/privacy - Privacy policy: data provided, browser storage, third-party services (Firebase, Google Fonts), how to request deletion
+- ${url}/terms - Terms of use: eligibility (18+), nature of the service, compensation conditions, disclaimers
+- ${url}/contact - Contact: support@vex.deals for support, corrections, privacy and partnership enquiries
 
 ## Platform Statistics
 - Supported Companies: ${companies.length}
@@ -3378,7 +3417,7 @@ ${companies.map(c => `### ${c.name}
 - Mobile: Capacitor Android (deals.vex.app) + PWA
 - Security: Rate limiting, CSP headers, SHA-256 hashing, OTP verification
 
-Last updated: ${new Date().toISOString().split('T')[0]}
+Last updated: ${CONTENT_VERIFIED}
 `;
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -3662,6 +3701,33 @@ Sitemap: https://${domain}/sitemap.xml
         }
       }
 
+      // Trust / E-E-A-T static pages (about, privacy, terms, contact, policies) — base + 7 language variants
+      for (const slug of STATIC_PAGE_SLUGS) {
+        urls += `  <url>
+    <loc>https://${domain}/${slug}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.6</priority>
+`;
+        for (const l of langs) {
+          urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}/${slug}${langQ(l)}"/>
+`;
+        }
+        urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}/${slug}"/>
+  </url>
+`;
+        for (const l of langs) {
+          if (l === 'ar') continue;
+          urls += `  <url>
+    <loc>https://${domain}/${slug}?lang=${l}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+`;
+        }
+      }
+
       // Prediction pages (daily fresh content)
       urls += `  <url>
     <loc>https://${domain}/predictions</loc>
@@ -3913,7 +3979,6 @@ ${urls}</urlset>`;
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${name} - ${T_('company.subtitle')} | ${profile.brand}</title>
   <meta name="description" content="${T_('company.meta_desc')} ${details.substring(0, 120)}" />
-  <meta name="keywords" content="${name} ${profile.focus}" />
   <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
   <link rel="canonical" href="${canonicalUrl(domainUrl, pagePath, lang)}" />
 ${hreflangs(domainUrl, pagePath)}
@@ -3934,7 +3999,7 @@ ${socialMeta(domainUrl, escAttr(`${name} - ${profile.brand}`), escAttr(T_('compa
     "inLanguage": "${lang}",
     "author": {"@type": "Organization", "name": "${jstr(profile.brand)}", "url": "${domainUrl}"},
     "publisher": {"@type": "Organization", "name": "${jstr(profile.brand)}", "url": "${domainUrl}", "logo": {"@type": "ImageObject", "url": "${domainUrl}/icon-192.svg"}},
-    "dateModified": "${new Date().toISOString()}"
+    "dateModified": "${CONTENT_VERIFIED}"
   }
   </script>
   <script type="application/ld+json">
@@ -4068,7 +4133,8 @@ ${socialMeta(domainUrl, escAttr(`${name} - ${profile.brand}`), escAttr(T_('compa
   </div>
   <footer>
     <p>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></p>
-    <p>${T_('company.footer_page')} ${new Date().toISOString().split('T')[0]}</p>
+    <p>${T_('company.footer_page')} ${CONTENT_VERIFIED}</p>
+    <p style="font-size:0.8rem;">${trustLinks(lang)}</p>
   </footer>
 </body>
 </html>`;
@@ -4118,6 +4184,8 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
   {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[${guide.faq.map(f => `{"@type":"Question","name":"${jstr(f.q)}","acceptedAnswer":{"@type":"Answer","text":"${jstr(f.a)}"}}`).join(',')}]}</script>
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"${jstr(tt('nav.home', lang))}","item":"${domainUrl}/"},{"@type":"ListItem","position":2,"name":"${jstr(tt('hub.guides_h1', lang))}","item":"${domainUrl}/guides"},{"@type":"ListItem","position":3,"name":"${jstr(guide.title)}","item":"${domainUrl}${pagePath}"}]}</script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebPage","@id":"${domainUrl}${pagePath}#webpage","url":"${canonicalUrl(domainUrl, pagePath, lang)}","name":"${jstr(guide.title)}","inLanguage":"${lang}","isPartOf":{"@id":"${domainUrl}/#website"},"about":{"@id":"${domainUrl}/#organization"},"dateModified":"${CONTENT_VERIFIED}"}</script>
 
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
@@ -4144,6 +4212,7 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
     </nav>
     <h1>${guide.title}</h1>
     <p style="font-size:1.1rem;color:#e2e8f0;">${guide.desc}</p>
+    <p style="font-size:0.85rem;color:#94a3b8;">${tt('best.updated', lang)} ${CONTENT_VERIFIED}</p>
     <p style="color:#10b981;">${tt('guides.brand_line', lang, { brand: profile.brand, tagline: profile.tagline, intro: profile.intro })}</p>
 
     <h2>📋 ${tt('guides.steps_title', lang)}</h2>
@@ -4161,7 +4230,10 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
       <a href="/predictions${langQ(lang)}" class="cta">⚽ ${tt('cta.ai', lang)}</a>
     </div>
   </div>
-  <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+  <footer>
+    <p>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></p>
+    <p style="font-size:0.8rem;">${trustLinks(lang)}</p>
+  </footer>
 </body>
 </html>`;
 
@@ -4441,7 +4513,10 @@ ${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
       <a href="/#ai-sports" class="cta">🤖 ${tt('cta.ai', lang)}</a>
     </div>
   </div>
-  <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+  <footer>
+    <p>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></p>
+    <p style="font-size:0.8rem;">${trustLinks(lang)}</p>
+  </footer>
 </body>
 </html>`;
 
@@ -4583,7 +4658,10 @@ ${socialMeta(domainUrl, escAttr(`${title} | ${profile.brand}`), escAttr(ogDesc))
       <a href="/guides/ai-predictions-guide${langQ(lang)}" class="cta">📖 ${tt('pred.cta_guide', lang)}</a>
     </div>
   </div>
-  <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+  <footer>
+    <p>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></p>
+    <p style="font-size:0.8rem;">${trustLinks(lang)}</p>
+  </footer>
 </body>
 </html>`;
 
@@ -4699,7 +4777,10 @@ ${socialMeta(domainUrl, escA(pageTitle), escA(desc))}
       <a href="/download/apk" class="cta">📱 ${tt('cta.download', lang)}</a>
     </div>
   </div>
-  <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+  <footer>
+    <p>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></p>
+    <p style="font-size:0.8rem;">${trustLinks(lang)}</p>
+  </footer>
 </body>
 </html>`;
 
@@ -4765,7 +4846,10 @@ ${socialMeta(domainUrl, esc(title), esc(desc))}
         ${cards}
     </div>
   </div>
-  <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+  <footer>
+    <p>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></p>
+    <p style="font-size:0.8rem;">${trustLinks(lang)}</p>
+  </footer>
 </body>
 </html>`;
 
@@ -4877,7 +4961,10 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
       ${morePairs.map(p => `<a class="card" href="/compare/${p.slug}${langQ(lang)}">${esc(p.a.name)} <b>VS</b> ${esc(p.b.name)}</a>`).join('\n      ')}
     </div>` : ''}
   </div>
-  <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+  <footer>
+    <p>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></p>
+    <p style="font-size:0.8rem;">${trustLinks(lang)}</p>
+  </footer>
 </body>
 </html>`;
 
@@ -4979,7 +5066,10 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
     <h2>❓ FAQ</h2>
     ${faq.map(f => `<div class="faq"><strong>${tt('faq.q_prefix', lang)} ${esc(f.q)}</strong>${esc(f.a)}</div>`).join('\n    ')}
   </div>
-  <footer>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></footer>
+  <footer>
+    <p>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></p>
+    <p style="font-size:0.8rem;">${trustLinks(lang)}</p>
+  </footer>
 </body>
 </html>`;
 
@@ -4990,6 +5080,112 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
 
     app.get('/companies', (req, res) => renderHub('companies', req, res));
     app.get('/guides', (req, res) => renderHub('guides', req, res));
+
+    // ==================== TRUST / E-E-A-T STATIC PAGES (SSR standalone HTML, 8 languages) ====================
+    for (const slug of STATIC_PAGE_SLUGS) {
+      app.get(`/${slug}`, (req, res) => {
+        const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+        const domainUrl = `https://${domain}`;
+        const lang = getLang(req);
+        const profile = getProfile(domain, lang);
+        const text = STATIC_PAGES[slug][lang];
+        const pagePath = `/${slug}`;
+        const fill = (s: string) => s.split('{brand}').join(profile.brand);
+        const escA = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const title = fill(text.title);
+        const desc = fill(text.desc);
+        const h1 = fill(text.h1);
+        const intro = fill(text.intro);
+        const secsHtml = text.secs.map(s =>
+          `<h2>${escA(s.h2)}</h2>\n` + s.p.map(p => `<p>${escA(fill(p))}</p>`).join('\n')
+        ).join('\n');
+
+        const ld = JSON.stringify({
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'WebPage',
+              '@id': `${domainUrl}${pagePath}#webpage`,
+              url: canonicalUrl(domainUrl, pagePath, lang),
+              name: title,
+              description: desc,
+              inLanguage: lang,
+              isPartOf: { '@id': `${domainUrl}/#website` },
+              about: { '@id': `${domainUrl}/#organization` },
+              dateModified: CONTENT_VERIFIED,
+              breadcrumb: { '@id': `${domainUrl}${pagePath}#breadcrumb` },
+            },
+            {
+              '@type': 'BreadcrumbList',
+              '@id': `${domainUrl}${pagePath}#breadcrumb`,
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: tt('nav.home', lang), item: `${domainUrl}/` },
+                { '@type': 'ListItem', position: 2, name: h1, item: `${domainUrl}${pagePath}${langQ(lang)}` },
+              ],
+            },
+          ],
+        });
+
+        const html = `<!doctype html>
+<html lang="${lang}" dir="${profile.dir}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escA(title)} | ${profile.brand}</title>
+  <meta name="description" content="${escA(desc)}" />
+  <meta name="robots" content="index, follow, max-snippet:-1" />
+  <link rel="canonical" href="${canonicalUrl(domainUrl, pagePath, lang)}" />
+${hreflangs(domainUrl, pagePath)}
+  <meta property="og:title" content="${escA(title)}" />
+  <meta property="og:description" content="${escA(desc)}" />
+  <meta property="og:url" content="${domainUrl}${pagePath}${langQ(lang)}" />
+  <meta property="og:type" content="website" />
+${socialMeta(domainUrl, escA(title), escA(desc))}
+  <script type="application/ld+json">${ld}</script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.9}
+    .container{max-width:800px;margin:0 auto;padding:40px 20px}
+    h1{font-size:2rem;color:#10b981;margin-bottom:15px}
+    h2{font-size:1.4rem;color:#34d399;margin:30px 0 15px;border-bottom:2px solid #1e293b;padding-bottom:8px}
+    p{margin-bottom:15px;color:#94a3b8}
+    .topnav{background:#1e293b;padding:10px 20px;display:flex;gap:15px;flex-wrap:wrap}
+    .topnav a{color:#94a3b8;text-decoration:none;font-size:0.9rem}
+    .topnav a:hover{color:#10b981}
+    .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
+    .langbar a{color:#94a3b8;text-decoration:none}
+    .langbar a.active,.langbar a:hover{color:#10b981}
+    footer{text-align:center;padding:30px;color:#94a3b8;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+  </style>
+  ${siteSchemaTag(domainUrl, profile)}</head>
+<body>
+  <nav class="topnav">
+    <a href="/${langQ(lang)}">${tt('nav.home', lang)}</a>
+    <a href="/companies${langQ(lang)}">${tt('nav.companies', lang)}</a>
+    <a href="/guides${langQ(lang)}">${tt('hub.guides_h1', lang)}</a>
+    <a href="/best-betting-sites${langQ(lang)}">${tt('link.best', lang)}</a>
+  </nav>
+  <div class="container">
+    <nav class="langbar">
+      ${LANGS.map(l => `<a href="${pagePath}${langQ(l)}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
+    </nav>
+    <h1>${escA(h1)}</h1>
+    <p style="font-size:1.05rem;color:#e2e8f0;">${escA(intro)}</p>
+${secsHtml}
+    <p style="margin-top:25px;">${trustLinks(lang)}</p>
+  </div>
+  <footer>
+    <p>© 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></p>
+    <p style="font-size:0.8rem;">${trustLinks(lang)}</p>
+  </footer>
+</body>
+</html>`;
+
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('X-Robots-Tag', 'index, follow, max-snippet:-1');
+        res.send(html);
+      });
+    }
 
     // Domain-specific index.html with dynamic SEO tags - MUST be after express.static
     app.get('*', (req, res) => {
@@ -5004,6 +5200,11 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
         res.setHeader('X-Robots-Tag', 'noindex');
         res.setHeader('Cache-Control', 'public, max-age=300');
         return res.type('text/plain').send('404 Not Found');
+      }
+      // Real 404 for unknown paths (soft-404s hurt SEO): only the homepage and the
+      // SPA admin panel serve index.html — every other unknown URL gets a proper 404
+      if (req.path !== '/' && req.path !== '/admin' && !req.path.startsWith('/admin/')) {
+        return send404(res, profile);
       }
       const filePath = path.join(distPath, 'index.html');
       let html = fs.readFileSync(filePath, 'utf8');
@@ -5047,8 +5248,10 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
         <li>${tt('home.b4', lang)}</li>
         <li>${tt('home.b5', lang)}</li>
       </ul>
+      <h2 style="color:#34d399;font-size:1.2rem;margin-top:25px;">${tt('home.faq_title', lang)}</h2>
+      ${[1, 2, 3, 4].map(i => `<p style="margin-top:14px;line-height:1.8;"><strong style="color:#e2e8f0;">${tt(`home.faq${i}q`, lang)}</strong><br /><span style="color:#94a3b8;">${tt(`home.faq${i}a`, lang)}</span></p>`).join('\n      ')}
       <p style="color:#94a3b8;font-size:0.9rem;margin-top:15px;">
-        ${tt('home.keywords_label', lang)}: ${profile.focus} — <a href="${domainUrl}/guides/claim-compensation${langQ(lang)}" style="color:#10b981;">${tt('link.guide_comp', lang)}</a> |
+        ${tt('home.keywords_label', lang)}: <a href="${domainUrl}/guides/claim-compensation${langQ(lang)}" style="color:#10b981;">${tt('link.guide_comp', lang)}</a> |
         <a href="${domainUrl}/guides/ai-predictions-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_ai', lang)}</a> |
         <a href="${domainUrl}/guides/provably-fair-lottery${langQ(lang)}" style="color:#10b981;">${tt('link.guide_lottery', lang)}</a> |
         <a href="${domainUrl}/guides/1xbet-bonus-promo-guide${langQ(lang)}" style="color:#10b981;">${tt('link.guide_1xbet', lang)}</a> |
@@ -5065,6 +5268,7 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
       <nav style="margin-top:12px;font-size:0.9rem;">
         ${LANGS.map(l => `<a href="${domainUrl}/${langQ(l)}" hreflang="${l}" style="color:${l === lang ? '#10b981' : '#94a3b8'};text-decoration:none;display:inline-block;padding:6px 8px;margin:0 4px;min-width:24px;min-height:24px;text-align:center;">${l.toUpperCase()}</a>`).join('')}
       </nav>
+      <p style="margin-top:6px;font-size:0.85rem;">${trustLinks(lang)}</p>
     </section>`;
       // Inject inside #root so React's initial render replaces it in place
       // (avoids pushing the section down = CLS 1.0 layout shift)
@@ -5126,29 +5330,13 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
       "isPartOf": {"@id": "${domainUrl}/#website"},
       "about": {"@id": "${domainUrl}/#organization"},
       "primaryImageOfPage": "${domainUrl}/icon-512.svg",
-      "dateModified": "${new Date().toISOString()}"
-    }
-    </script>
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      "@id": "${domainUrl}/#faq-extended",
-      "mainEntity": [
-        {"@type": "Question", "name": "What is ${profile.brand}?", "acceptedAnswer": {"@type": "Answer", "text": "${profile.brand} is a loyalty rewards and betting compensation platform (${profile.focus}) that helps users track wallet balances across 12+ betting companies, claim loss compensation percentages, unfreeze referral balances, and get AI-powered football match predictions using Google Gemini."}},
-        {"@type": "Question", "name": "How does betting loss compensation work?", "acceptedAnswer": {"@type": "Answer", "text": "Users register betting company accounts through ${profile.brand}. The platform tracks betting activity and calculates losses. Users submit compensation requests with proof. Approved compensation percentages are added to their wallet for withdrawal or transfer."}},
-        {"@type": "Question", "name": "Is the ${profile.brand} lottery provably fair?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. ${profile.brand} uses SHA-256 server seed hashing with client seed and nonce for provably fair lottery draws. Users select 5 numbers from 1-30. Draws happen hourly, daily, and weekly with 5 prize tiers. All draws are publicly verifiable."}},
-        {"@type": "Question", "name": "How accurate are the AI sports predictions?", "acceptedAnswer": {"@type": "Answer", "text": "${profile.brand} uses Google Gemini 3.8 Flash to analyze team statistics, form, odds, and tactical data. Predictions include predicted scores, win probabilities, tactical summaries, risk levels, and confidence scores based on historical accuracy."}},
-        {"@type": "Question", "name": "What languages does ${profile.brand} support?", "acceptedAnswer": {"@type": "Answer", "text": "${profile.brand} supports 8 languages: Arabic, English, Spanish, Russian, French, German, Turkish, and Portuguese. Content is localized for each region including the Middle East, North Africa, Europe, and CIS countries."}},
-        {"@type": "Question", "name": "Is ${profile.brand} safe and secure?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. ${profile.brand} uses banking-grade security including rate limiting, CSP headers, SHA-256 PIN hashing, OTP two-factor authentication, and protection against circular transfers and balance draining attacks."}}
-      ]
+      "dateModified": "${CONTENT_VERIFIED}"
     }
     </script>`;
       html = html.replace('</head>', `${orgSchema}\n  </head>`);
 
       // Performance: preload critical resources
       const perf = `
-    <link rel="preconnect" href="https://www.googletagmanager.com">
     <link rel="dns-prefetch" href="https://fonts.googleapis.com">
     <meta http-equiv="x-dns-prefetch-control" content="on">`;
       html = html.replace('</head>', `${perf}\n  </head>`);

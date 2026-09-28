@@ -444,8 +444,11 @@ export function applyBrandingToDocument(branding: AppBranding): void {
   const tagline = branding.tagline || 'منصة الولاء والتعويضات والتحليلات الرياضية الذكية';
   const fullTitle = `${appName} - ${tagline}`;
 
-  // 1. Update document title
-  document.title = fullTitle;
+  // 1. Update document title — only for the default Arabic locale; for every other
+  // language keep the server-rendered localized title (clobbering hurts per-lang SEO)
+  if (!document.documentElement.lang || document.documentElement.lang.startsWith('ar')) {
+    document.title = fullTitle;
+  }
 
   // 2. Resolve primary icon source
   let primaryIconUrl = '/icon-192.svg';
