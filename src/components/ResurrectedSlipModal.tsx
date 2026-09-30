@@ -21,13 +21,13 @@ export const ResurrectedSlipModal: React.FC<ResurrectedSlipModalProps> = ({
     // In a real app with html2canvas, we'd render the element to canvas.
     // For now, we'll use native web share if available, or just fallback to text
     const text = lang === 'ar' 
-      ? `خسرت رهاني في ${request.company_name} ولكن VEX Deals عوضوني بـ $${request.amount}! سجل واستفد من التأمين 100%.`
-      : `Lost my bet on ${request.company_name} but VEX Deals compensated me $${request.amount}! Get 100% insurance.`;
+      ? `خسرت رهاني في ${request.company_name} ولكن VEX Deals عوضوني بـ $${request.amount}! سجل واستفد من تأمين الخسائر.`
+      : `Lost my bet on ${request.company_name} but VEX Deals compensated me $${request.amount}! Get loss insurance.`;
     
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'VEX Deals - 100% Compensation',
+          title: 'VEX Deals - Loss Compensation',
           text,
           url: window.location.origin
         });
@@ -114,7 +114,7 @@ export const ResurrectedSlipModal: React.FC<ResurrectedSlipModalProps> = ({
                   <CheckCircle className="w-6 h-6 text-emerald-400" />
                   <div>
                     <p className="text-emerald-400 font-black text-sm uppercase">
-                      {lang === 'ar' ? 'تم التعويض 100%' : '100% COMPENSATED'}
+                      {lang === 'ar' ? 'تم التعويض' : 'COMPENSATED'}
                     </p>
                     <p className="text-emerald-500/70 text-[9px] font-bold">
                       {lang === 'ar' ? 'بواسطة تأمين VEX Deals' : 'By VEX Deals Insurance'}

@@ -199,7 +199,7 @@ export const WalletQrCodeModal: React.FC<WalletQrCodeModalProps> = ({
                 </span>
               </h3>
               <p className="text-[11px] text-slate-500 font-medium">
-                {isAr ? 'شارك عنوان محفظتك مع الأصدقاء لاستقبال التحويلات فوراً' : 'Share your wallet address to receive transfers instantly'}
+                {isAr ? 'شارك عنوان محفظتك مع الأصدقاء لاستقبال التحويلات' : 'Share your wallet address to receive transfers'}
               </p>
             </div>
           </div>
@@ -398,7 +398,7 @@ export const WalletQrCodeModal: React.FC<WalletQrCodeModalProps> = ({
             <ShieldCheck className="w-4 h-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
             <span>
               {isAr
-                ? 'يمكن لصديقك مسح رمز الـ QR أو لصق هذا العنوان مباشرة في خانة "حساب الصديق" في صفحة التحويلات لإرسال الرصيد إليك فوراً.'
+                ? 'يمكن لصديقك مسح رمز الـ QR أو لصق هذا العنوان مباشرة في خانة "حساب الصديق" في صفحة التحويلات لإرسال الرصيد إليك.'
                 : 'Your friend can scan this QR or paste the address into the Transfers tab to send funds directly to your wallet.'}
             </span>
           </div>

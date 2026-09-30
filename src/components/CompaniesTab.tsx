@@ -157,7 +157,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                 </span>
 
                 <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-black/30 border border-white/15 text-white/90">
-                  {isAr ? 'وضع الشريك الحصري 100%' : '100% Exclusive Mode'}
+                  {isAr ? 'وضع الشريك الحصري' : 'Exclusive Mode'}
                 </span>
               </div>
 

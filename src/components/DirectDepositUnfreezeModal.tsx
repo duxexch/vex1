@@ -171,7 +171,7 @@ export const DirectDepositUnfreezeModal: React.FC<DirectDepositUnfreezeModalProp
       setSuccess(
         getLocalizedText(
           'success_msg',
-          'تم إرسال طلب إيداع فك التجميد بنجاح! سيتم مراجعته واعتماده فوراً.',
+          'تم إرسال طلب إيداع فك التجميد بنجاح! سيتم مراجعته من قبل الإدارة.',
           'Deposit unfreeze request submitted successfully!',
           '¡Solicitud de descongelación enviada con éxito!',
           'Запрос на разморозку депозита успешно отправлен!'
@@ -221,10 +221,10 @@ export const DirectDepositUnfreezeModal: React.FC<DirectDepositUnfreezeModalProp
               <p className="text-[11px] text-slate-500">
                 {getLocalizedText(
                   'subtitle',
-                  'فك تجميد رصيدك فوراً وبدون دعوة أصدقاء',
-                  'Unfreeze balance instantly via matching deposit',
-                  'Descongelar saldo al instante mediante nuevo depósito',
-                  'Мгновенная разморозка баланса через новый депозит'
+                  'فك تجميد رصيدك عبر إيداع مماثل وبدون دعوة أصدقاء',
+                  'Unfreeze balance via matching deposit',
+                  'Descongelar saldo mediante un nuevo depósito',
+                  'Разморозка баланса через новый депозит'
                 )}
               </p>
             </div>
@@ -269,7 +269,7 @@ export const DirectDepositUnfreezeModal: React.FC<DirectDepositUnfreezeModalProp
             <p className="text-[11px] text-emerald-800 leading-relaxed">
               {getLocalizedText(
                 'terms_desc',
-                'عند قيامك بإيداع مبلغ جديد في المنصة، سيتم فك تجميد نفس القيمة من رصيدك المجمد فوراً بنسبة 100% (1 مقابل 1) بعد مراجعة إيصال الإيداع ورقم الهاتف من قبل الإدارة.',
+                'عند قيامك بإيداع مبلغ جديد في المنصة، سيتم فك تجميد نفس القيمة من رصيدك المجمد بنسبة 1:1 بعد مراجعة إيصال الإيداع ورقم الهاتف من قبل الإدارة.',
                 'When you make a new deposit, the exact matching amount will be unfrozen 1:1 from your frozen balance upon admin verification.',
                 'Al realizar un nuevo depósito en la plataforma, se descongelará exactamente el mismo monto 1:1 de su saldo congelado tras la verificación.',
                 'При внесении нового депозита точно такая же сумма будет разморожена 1:1 с вашего замороженного баланса после проверки администрацией.'

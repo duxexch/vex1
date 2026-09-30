@@ -404,7 +404,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
               </span>
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                {isAr ? 'شفافية ونزاهة مشفرة 100%' : '100% Provably Fair'}
+                {isAr ? 'شفافية ونزاهة مشفرة' : 'Provably Fair'}
               </span>
             </div>
 
@@ -864,7 +864,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
                   </div>
                 </div>
                 <span className="text-xs font-black px-2 py-0.5 rounded bg-amber-200 text-amber-900">
-                  {isAr ? 'مجاناً 100%' : 'FREE'}
+                  {isAr ? 'مجاناً' : 'FREE'}
                 </span>
               </button>
 
@@ -1223,7 +1223,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
           <div className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-800 space-y-3">
             <h3 className="text-sm font-black text-emerald-400 flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              {isAr ? 'كيف تضمن نزاهة السحب عبر تقنية Provably Fair التشفيرية؟' : 'How Provably Fair Cryptography Guarantees 100% Fairness'}
+              {isAr ? 'كيف تضمن نزاهة السحب عبر تقنية Provably Fair التشفيرية؟' : 'How Provably Fair Cryptography Guarantees Fairness'}
             </h3>
 
             <div className="text-xs text-slate-300 space-y-2 leading-relaxed">
@@ -1279,7 +1279,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
                 <div>
                   <span className="block font-black">
                     {verificationResult.isValid 
-                      ? (isAr ? 'تم التحقق بنجاح: السحب نزيه ومطابق 100%' : 'Verified: 100% Cryptographically Untampered')
+                      ? (isAr ? 'تم التحقق بنجاح: السحب نزيه ومطابق' : 'Verified: Cryptographically Untampered')
                       : (isAr ? 'فشل التحقق' : 'Verification Mismatch')}
                   </span>
                   <span className="text-[11px] opacity-80">
