@@ -205,12 +205,17 @@ def run_cycle(args, cfg: dict, sources: list[dict], hist: dd.NewsHistory, state:
         if c['fromNotification']:
             notif_titles.add(c['title'][:80])
 
-    added, total = pub.publish(NEWS_PATH, final, log, dry_run=args.dry_run)
+    added_entries, total = pub.publish(NEWS_PATH, final, log, dry_run=args.dry_run)
+    added = len(added_entries)
     if not args.dry_run:
-        for e in final:
+        for e in added_entries:
             hist.remember_url(e.get('url', ''))
             hist.remember_title(e.get('title', ''))
             hist.remember_story_key(e.get('story_key', ''))
+        for e in final:
+            if e not in added_entries:  # already present in the store -> still a published story
+                hist.remember_url(e.get('url', ''))
+                hist.remember_title(e.get('title', ''))
         for e in rejected:
             hist.remember_url(e.get('url', ''))
             hist.remember_title(e.get('title', ''), rejected=True)

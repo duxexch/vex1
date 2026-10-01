@@ -67,15 +67,15 @@ def to_item(e: dict) -> dict:
     }
 
 
-def publish(path, enriched: list[dict], log, dry_run: bool = False) -> tuple[int, int]:
-    """Merge enriched candidates into the news store. Returns (added, total)."""
+def publish(path, enriched: list[dict], log, dry_run: bool = False) -> tuple[list[dict], int]:
+    """Merge enriched candidates into the news store. Returns (actually_added_entries, total)."""
     path = str(path)
     store = load_news(path)
     items = store.get('items', [])
     keys = existing_keys(store)
     seen_slugs = set(k for k in keys)
 
-    added = 0
+    added_entries: list[dict] = []
     for e in enriched:
         _ensure_identity(e)
         if not e.get('id') or e['id'] in keys or e.get('slug') in seen_slugs:
@@ -91,7 +91,7 @@ def publish(path, enriched: list[dict], log, dry_run: bool = False) -> tuple[int
         items.append(item)
         keys.add(item['id'])
         seen_slugs.add(slug)
-        added += 1
+        added_entries.append(e)
 
     def sort_key(it: dict) -> str:
         v = it.get('publishedAt') or ''
@@ -105,12 +105,12 @@ def publish(path, enriched: list[dict], log, dry_run: bool = False) -> tuple[int
     store = {'items': items, 'updatedAt': datetime.now(timezone.utc).isoformat()}
 
     if dry_run:
-        log(f'[publish] dry-run: would add {added}, store would hold {len(items)}')
-        return added, len(items)
+        log(f'[publish] dry-run: would add {len(added_entries)}, store would hold {len(items)}')
+        return [], len(items)
 
     os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
     tmp = path + '.tmp'
     with open(tmp, 'w', encoding='utf-8') as f:
         json.dump(store, f, ensure_ascii=False, indent=None, separators=(',', ':'))
     os.replace(tmp, path)
-    return added, len(items)
+    return added_entries, len(items)
