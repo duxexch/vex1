@@ -12,3 +12,11 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 );
 
+// Unified service worker (caching + FCM push) — production builds only, so the
+// Vite dev server is never intercepted by a cache-first/asset strategy.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+

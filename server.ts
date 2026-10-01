@@ -50,9 +50,13 @@ app.use(express.json({ limit: '5mb' }));
 // Gzip compression — faster TTFB & smaller payloads for crawlers/users (SEO/Core Web Vitals)
 app.use(compression({ threshold: 1024 }));
 
-// HTML/JSON must revalidate after every deploy (hashed assets re-set immutable headers below)
+// HTML/JSON must revalidate after every deploy (hashed assets re-set immutable headers below).
+// NOTE: /assets/* is excluded — express.static/send only applies max-age/immutable when
+// Cache-Control is still unset, so pre-setting no-cache here would strip asset caching.
 app.use((req, res, next) => {
-  res.setHeader('Cache-Control', 'no-cache');
+  if (!req.path.startsWith('/assets/')) {
+    res.setHeader('Cache-Control', 'no-cache');
+  }
   next();
 });
 
@@ -258,6 +262,8 @@ app.get('/api/health', (req, res) => {
 // Companies Directory Management Endpoints (Replica-Synced)
 app.get('/api/companies', (req, res) => {
   const companies = storage.getCompanies();
+  // Public global data → instant repeat views with background revalidate
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=600');
   res.json({
     success: true,
     companies,
@@ -350,6 +356,7 @@ app.post('/api/admin/data-reset', (req, res) => {
 // App Branding (Name & Icon)
 app.get('/api/app-branding', (req, res) => {
   currentBranding = storage.getAppBranding();
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=600');
   res.json(currentBranding);
 });
 
@@ -424,6 +431,7 @@ app.post('/api/app-branding', (req, res) => {
 // Payment Methods Management
 app.get('/api/payment-methods', (req, res) => {
   const branding = storage.getAppBranding();
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=600');
   res.json({ paymentMethods: branding.paymentMethods || [] });
 });
 
@@ -506,6 +514,7 @@ app.get('/api/manifest.json', (req, res) => {
 
 // Sports Fixtures
 app.get('/api/sports/fixtures', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=120, stale-while-revalidate=600');
   res.json({
     fixtures: SPORTS_FIXTURES,
     total: SPORTS_FIXTURES.length,
@@ -515,6 +524,7 @@ app.get('/api/sports/fixtures', (req, res) => {
 
 // Sports News
 app.get('/api/sports/news', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=120, stale-while-revalidate=600');
   res.json({
     news: SPORTS_NEWS,
     updatedAt: new Date().toISOString(),
@@ -4045,10 +4055,33 @@ ${urls}</urlset>`;
       res.send(sitemap);
     });
 
+    // Never serve the Node server bundle or its sourcemap (full source disclosure)
+    app.use((req, res, next) => {
+      if (/\.(cjs|map)$/.test(req.path)) {
+        res.status(404).type('text/plain').send('404 Not Found');
+        return;
+      }
+      next();
+    });
+
     // Serve static files (after dynamic routes) - index: false so catch-all handles index.html
-    // Hashed build assets get immutable caching; everything else revalidates
+    // Hashed build assets get immutable caching; everything else revalidates.
+    // HTML + service-worker scripts must always revalidate (stale HTML after a
+    // deploy references deleted hashed chunks → blank app; stale SW delays updates).
     app.use('/assets', express.static(path.join(distPath, 'assets'), { index: false, maxAge: '365d', immutable: true }));
-    app.use(express.static(distPath, { index: false, maxAge: '1h', etag: true, lastModified: true }));
+    app.use(
+      express.static(distPath, {
+        index: false,
+        maxAge: '1h',
+        etag: true,
+        lastModified: true,
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.html') || /(^|[\\/])(sw\.js|firebase-messaging-sw\.js)$/.test(filePath)) {
+            res.setHeader('Cache-Control', 'no-cache');
+          }
+        },
+      })
+    );
 
     // APK Download Endpoint - serves the Android APK for all domains
     app.get('/download/apk', (req, res) => {

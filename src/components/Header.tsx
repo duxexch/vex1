@@ -71,6 +71,19 @@ export const Header: React.FC<HeaderProps> = ({
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const langMenuRef = useRef<HTMLDivElement>(null);
 
+  // Ring animation when a new unread notification arrives
+  const [bellPulse, setBellPulse] = useState(false);
+  const prevUnreadRef = useRef(unreadNotificationsCount);
+  useEffect(() => {
+    if (unreadNotificationsCount > prevUnreadRef.current) {
+      setBellPulse(true);
+      const id = window.setTimeout(() => setBellPulse(false), 2000);
+      prevUnreadRef.current = unreadNotificationsCount;
+      return () => window.clearTimeout(id);
+    }
+    prevUnreadRef.current = unreadNotificationsCount;
+  }, [unreadNotificationsCount]);
+
   const t = TRANSLATIONS[lang] || TRANSLATIONS['ar'];
   const isVerified = userProfile?.is_phone_verified;
 
@@ -214,12 +227,12 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Notification Bell */}
           <button
             onClick={onOpenNotifications}
-            className="relative w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 transition-all active:scale-95 border border-slate-200 flex items-center justify-center cursor-pointer"
+            className={`relative w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 transition-all active:scale-95 border border-slate-200 flex items-center justify-center cursor-pointer ${bellPulse ? 'animate-bell-ring ring-2 ring-emerald-400/70' : ''}`}
             title={lang === 'ar' ? 'الإشعارات' : 'Notifications'}
           >
             <Bell className="w-3.5 h-3.5" />
             {unreadNotificationsCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-rose-600 text-white font-mono text-[9px] font-bold flex items-center justify-center shadow-xs">
+              <span className={`absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-rose-600 text-white font-mono text-[9px] font-bold flex items-center justify-center shadow-xs ${bellPulse ? 'animate-pulse bg-rose-500' : ''}`}>
                 {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
               </span>
             )}

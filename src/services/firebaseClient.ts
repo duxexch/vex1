@@ -70,7 +70,7 @@ export async function requestFCMToken(): Promise<string | null> {
       console.warn('Notification permission not granted');
       return null;
     }
-    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    const registration = await navigator.serviceWorker.register('/sw.js');
     const token = await getToken(messaging, {
       serviceWorkerRegistration: registration,
     });

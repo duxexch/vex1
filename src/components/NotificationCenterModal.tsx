@@ -10,7 +10,14 @@ import {
   Trash2,
   ExternalLink,
   Sparkles,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
+import {
+  isNotificationSoundEnabled,
+  setNotificationSoundEnabled,
+  playNotificationSound,
+} from '../services/notificationSound';
 
 interface NotificationCenterModalProps {
   isOpen: boolean;
@@ -36,6 +43,14 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   const isAr = lang === 'ar';
   const [selectedFilter, setSelectedFilter] = useState<NotificationCategory | 'all'>('all');
   const [pushStatus, setPushStatus] = useState<string>('default');
+  const [soundOn, setSoundOn] = useState<boolean>(() => isNotificationSoundEnabled());
+
+  const handleToggleSound = () => {
+    const next = !soundOn;
+    setNotificationSoundEnabled(next);
+    setSoundOn(next);
+    if (next) playNotificationSound('default');
+  };
 
   const filteredNotifications = notifications.filter((item) => {
     if (selectedFilter === 'all') return true;
@@ -297,19 +312,34 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
             </div>
 
             {/* Push Notification Banner */}
-            <div className="p-3 bg-slate-100 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="p-3 bg-slate-100 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
                 <Bell className="w-4 h-4 text-emerald-600" />
                 <span>{isAr ? 'تنبيهات على المتصفح والهاتف' : 'Push notifications'}</span>
               </div>
-              <button
-                onClick={handleRequestPushPermission}
-                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs"
-              >
-                {pushStatus === 'granted'
-                  ? (isAr ? '✓ مفعلة' : '✓ Active')
-                  : (isAr ? 'تفعيل الإشعارات' : 'Enable Push')}
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={handleToggleSound}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                    soundOn
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                      : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                  }`}
+                  title={isAr ? 'صوت الإشعارات' : 'Notification sound'}
+                  aria-pressed={soundOn}
+                >
+                  {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                  <span className="hidden sm:inline">{soundOn ? (isAr ? 'الصوت' : 'Sound') : (isAr ? 'صامت' : 'Muted')}</span>
+                </button>
+                <button
+                  onClick={handleRequestPushPermission}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs"
+                >
+                  {pushStatus === 'granted'
+                    ? (isAr ? '✓ مفعلة' : '✓ Active')
+                    : (isAr ? 'تفعيل الإشعارات' : 'Enable Push')}
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>

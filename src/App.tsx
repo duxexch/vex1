@@ -74,6 +74,8 @@ const DirectDepositUnfreezeModal = lazy(() =>
   import('./components/DirectDepositUnfreezeModal').then(m => ({ default: m.DirectDepositUnfreezeModal })),
 );
 import { Toast } from './components/Toast';
+import { NotificationToast } from './components/NotificationToast';
+import { playNotificationSound, vibrateNotificationPattern } from './services/notificationSound';
 const IosInstallModal = lazy(() => import('./components/IosInstallModal').then(m => ({ default: m.IosInstallModal })));
 import { GoldenHourBanner } from './components/GoldenHourBanner';
 
@@ -167,6 +169,58 @@ export default function App() {
 
   // Notifications State
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notifToast, setNotifToast] = useState<AppNotification | null>(null);
+
+  // OS-level notification when the tab is hidden/backgrounded (SW-first for Android Chrome).
+  // FCM-originated messages are skipped — the service worker already displays those.
+  const showNativeNotification = useCallback(async (notif: AppNotification) => {
+    if (typeof document !== 'undefined' && !document.hidden) return;
+    if (notif.data?.source === 'fcm') return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    const title = (notif.translations && notif.translations[lang]?.title) || notif.title;
+    const body = (notif.translations && notif.translations[lang]?.message) || notif.message;
+    try {
+      const reg = await navigator.serviceWorker?.getRegistration?.();
+      if (reg && 'showNotification' in reg) {
+        await reg.showNotification(title, {
+          body,
+          icon: '/icon-192.svg',
+          badge: '/icon-192.svg',
+          tag: notif.id,
+          lang,
+          dir: lang === 'ar' ? 'rtl' : 'ltr',
+        });
+        return;
+      }
+    } catch {
+      /* fall through to page-level Notification */
+    }
+    try {
+      new Notification(title, { body, icon: '/icon-192.svg', tag: notif.id });
+    } catch {
+      /* unsupported (e.g. Android Chrome requires SW) */
+    }
+  }, [lang]);
+
+  // Single pipeline for every incoming notification: dedupe → list → rich toast →
+  // sound → vibration → OS notification when tab is hidden.
+  const presentNotification = useCallback(
+    (notif: AppNotification) => {
+      if (!notif || !notif.id) return;
+      setNotifications((prev) =>
+        prev.some((n) => n.id === notif.id) ? prev : [notif, ...prev]
+      );
+      setNotifToast(notif);
+      const urgent =
+        notif.category === 'security' ||
+        notif.category === 'compensation' ||
+        notif.category === 'lottery';
+      playNotificationSound(urgent ? 'urgent' : 'default');
+      vibrateNotificationPattern();
+      void showNativeNotification(notif);
+    },
+    [showNativeNotification]
+  );
 
   // Core Data states
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -303,7 +357,15 @@ export default function App() {
             console.log('Foreground push notification received:', payload);
             const title = payload.notification?.title || (lang === 'ar' ? 'تحديث طلب التعويض' : 'Compensation Status Update');
             const body = payload.notification?.body || '';
-            showToast(`${title}: ${body}`);
+            presentNotification({
+              id: `fcm-${Date.now()}`,
+              title,
+              message: body,
+              category: (payload.data?.category as NotificationCategory) || 'compensation',
+              timestamp: new Date().toISOString(),
+              read: false,
+              data: { ...(payload.data || {}), source: 'fcm' },
+            });
           });
         })
         .catch(() => {});
@@ -324,7 +386,7 @@ export default function App() {
       if (timerId !== undefined) window.clearTimeout(timerId);
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [lang]);
+  }, [lang, presentNotification]);
 
   const handleCloseAdmin = () => {
     setAdminDashboardOpen(false);
@@ -434,8 +496,7 @@ export default function App() {
           });
 
           socket.on('notification', (newNotif: AppNotification) => {
-            setNotifications((prev) => [newNotif, ...prev]);
-            showToast(lang === 'ar' ? 'إشعار جديد في الوقت الحقيقي!' : 'New real-time alert!');
+            presentNotification(newNotif);
           });
 
           // Heartbeat ping interval to keep Nginx reverse proxy connection alive (every 25 seconds)
@@ -454,7 +515,7 @@ export default function App() {
       if (heartbeatInterval) clearInterval(heartbeatInterval);
       socket?.disconnect();
     };
-  }, [lang]);
+  }, [lang, presentNotification]);
 
   // Toggle Language
   const handleToggleLang = () => {
@@ -540,12 +601,12 @@ export default function App() {
     category: NotificationCategory
   ) => {
     const notif = await vexApi.broadcastNotification(title, message, category);
-    setNotifications((prev) => [notif, ...prev]);
+    presentNotification(notif);
   };
 
   const handleTriggerAiPrediction = async () => {
     const notif = await vexApi.triggerAiAgentBroadcast();
-    setNotifications((prev) => [notif, ...prev]);
+    presentNotification(notif);
   };
 
   const handleMarkNotificationRead = async (id: string) => {
@@ -561,6 +622,14 @@ export default function App() {
 
   const pendingRequestsCount = requests.filter((r) => r.status === 'pending').length;
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
+
+  // Unread badge in the browser tab title — restores the plain title at zero
+  useEffect(() => {
+    const stripped = document.title.replace(/^\(\d+\)\s*/, '');
+    document.title = unreadNotificationsCount > 0
+      ? `(${Math.min(unreadNotificationsCount, 99)}) ${stripped}`
+      : stripped;
+  }, [unreadNotificationsCount]);
 
   return (
     <div
@@ -1160,6 +1229,17 @@ export default function App() {
 
       {/* Global Copy Success Toast Notification */}
       <Toast message={toastMessage} lang={lang} />
+
+      {/* Rich real-time notification banner (top) */}
+      <NotificationToast
+        notification={notifToast}
+        lang={lang}
+        onOpen={(n) => {
+          if (!n.read) void handleMarkNotificationRead(n.id);
+          setNotifCenterOpen(true);
+        }}
+        onClose={() => setNotifToast(null)}
+      />
 
       {/* WhatsApp Floating Button */}
       {appBranding.whatsappEnabled && appBranding.whatsappNumber && (
