@@ -458,6 +458,14 @@ export default function App() {
     vexApi.logUserInteraction('session_start');
   }, [loadData, loadBrandingAndNotifs]);
 
+  // Refresh news when the user opens the news sub-tab (server updates every few minutes)
+  const refreshNews = useCallback(() => {
+    vexApi
+      .getSportsNews()
+      .then(setSportsNews)
+      .catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     if (activeTab) {
       vexApi.logUserInteraction(`tab_${activeTab}`);
@@ -908,6 +916,7 @@ export default function App() {
                 loadingFixtures={loadingFixtures}
                 onAnalyzeMatch={(fixture) => setSelectedFixtureForAi(fixture)}
                 onTriggerAgentBroadcast={handleTriggerAiPrediction}
+                onRefreshNews={refreshNews}
                 lang={lang}
                 userId={userId}
               />

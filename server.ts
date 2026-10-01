@@ -9,7 +9,7 @@ import { Server } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { storage } from './server/storage';
-import type { Company } from './src/types';
+import type { Company, SportsNewsItem } from './src/types';
 import { ServerCompensationRequest } from './server/seedData';
 import { agentEngine, calculateNotificationTiming } from './server/agentEngine';
 import { LANGS, isLang, tt, type Lang } from './server/i18nUi';
@@ -246,6 +246,43 @@ const SPORTS_NEWS = [
     imageUrl: 'https://images.unsplash.com/photo-1489944440615-453fc2b6a9a9?w=600&auto=format&fit=crop&q=80',
   },
 ];
+
+// ==================== Live sports news store ====================
+// data/sports_news.json is written atomically by news_watcher/ (aggregator).
+// Falls back to the static seed above when the file is missing/empty.
+const NEWS_FILE = path.join(process.cwd(), 'data', 'sports_news.json');
+let newsCache: { mtimeMs: number; items: SportsNewsItem[]; updatedAt: string } | null = null;
+
+const getNewsItems = (): SportsNewsItem[] => {
+  try {
+    const st = fs.statSync(NEWS_FILE);
+    if (newsCache && newsCache.mtimeMs === st.mtimeMs) return newsCache.items;
+    const parsed = JSON.parse(fs.readFileSync(NEWS_FILE, 'utf8')) as { items?: SportsNewsItem[]; updatedAt?: string } | SportsNewsItem[];
+    const raw = Array.isArray(parsed) ? parsed : Array.isArray(parsed.items) ? parsed.items : [];
+    const items = raw.filter((n): n is SportsNewsItem => !!n && typeof n.title === 'string' && !!n.source);
+    newsCache = {
+      mtimeMs: st.mtimeMs,
+      items,
+      updatedAt: (!Array.isArray(parsed) && typeof parsed.updatedAt === 'string') ? parsed.updatedAt : new Date(st.mtimeMs).toISOString(),
+    };
+    return items;
+  } catch {
+    return SPORTS_NEWS;
+  }
+};
+
+const getNewsUpdatedAt = (): string => {
+  try {
+    const st = fs.statSync(NEWS_FILE);
+    if (newsCache && newsCache.mtimeMs === st.mtimeMs) return newsCache.updatedAt;
+    return new Date(st.mtimeMs).toISOString();
+  } catch {
+    return new Date().toISOString();
+  }
+};
+
+// Stable slug for an item (watcher stores `slug`; static seed falls back to id)
+const newsSlug = (n: SportsNewsItem): string => n.slug || n.id;
 
 // ==========================================
 // API ROUTES FIRST
@@ -522,12 +559,14 @@ app.get('/api/sports/fixtures', (req, res) => {
   });
 });
 
-// Sports News
+// Sports News (data/sports_news.json via news_watcher; static seed as fallback)
 app.get('/api/sports/news', (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=120, stale-while-revalidate=600');
+  const items = getNewsItems();
   res.json({
-    news: SPORTS_NEWS,
-    updatedAt: new Date().toISOString(),
+    news: items,
+    total: items.length,
+    updatedAt: getNewsUpdatedAt(),
   });
 });
 
@@ -4045,6 +4084,62 @@ Sitemap: https://${domain}/sitemap.xml
         }
       }
 
+      // News hub + latest articles (fresh crawlable content — data/sports_news.json via news_watcher)
+      {
+        const newsHub = '/news';
+        urls += `  <url>
+    <loc>https://${domain}${newsHub}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>0.9</priority>
+`;
+        for (const l of langs) {
+          urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}${newsHub}${langQ(l)}"/>
+`;
+        }
+        urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}${newsHub}"/>
+  </url>
+`;
+        for (const l of langs) {
+          if (l === 'ar') continue;
+          urls += `  <url>
+    <loc>https://${domain}${newsHub}?lang=${l}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>0.8</priority>
+  </url>
+`;
+        }
+
+        for (const n of getNewsItems().slice(0, 300)) {
+          const npage = `/news/${newsSlug(n)}`;
+          const nlast = n.publishedAt && !isNaN(Date.parse(n.publishedAt)) ? n.publishedAt.slice(0, 10) : now;
+          urls += `  <url>
+    <loc>https://${domain}${npage}</loc>
+    <lastmod>${nlast}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+`;
+          for (const l of langs) {
+            urls += `    <xhtml:link rel="alternate" hreflang="${l}" href="https://${domain}${npage}${langQ(l)}"/>
+`;
+          }
+          urls += `    <xhtml:link rel="alternate" hreflang="x-default" href="https://${domain}${npage}"/>
+  </url>
+`;
+          for (const l of langs) {
+            if (l === 'ar') continue;
+            urls += `  <url>
+    <loc>https://${domain}${npage}?lang=${l}</loc>
+    <lastmod>${nlast}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+`;
+          }
+        }
+      }
+
       const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xhtml="http://www.w3.org/1999/xhtml">
@@ -5282,6 +5377,316 @@ ${socialMeta(domainUrl, escAttr(title), escAttr(desc))}
 
     app.get('/companies', (req, res) => renderHub('companies', req, res));
     app.get('/guides', (req, res) => renderHub('guides', req, res));
+
+    // ==================== NEWS HUB + ARTICLE PAGES (SSR, auto-fed by news_watcher) ====================
+    const newsEsc = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const newsTitleOf = (n: SportsNewsItem, lang: Lang) => lang === 'ar' ? n.title : (n.titleEn || n.title);
+    const newsSummaryOf = (n: SportsNewsItem, lang: Lang) => lang === 'ar' ? n.summary : (n.summaryEn || n.summary);
+    const newsBodyOf = (n: SportsNewsItem, lang: Lang): string[] => {
+      const body = lang === 'ar' ? n.body : (n.bodyEn || n.body);
+      return Array.isArray(body) && body.length ? body : [];
+    };
+    const newsDate = (iso: string, lang: Lang): string => {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return iso; // static seed stores human relative strings
+      try {
+        return d.toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+      } catch {
+        return iso;
+      }
+    };
+    const newsTopNav = (lang: Lang): string => `<nav class="topnav">
+    <a href="/${langQ(lang)}">${tt('nav.home', lang)}</a>
+    <a href="/companies${langQ(lang)}">${tt('nav.companies', lang)}</a>
+    <a href="/guides${langQ(lang)}">${tt('hub.guides_h1', lang)}</a>
+    <a href="/news${langQ(lang)}">${tt('news.h1', lang)}</a>
+    <a href="/best-betting-sites${langQ(lang)}">${tt('link.best', lang)}</a>
+  </nav>`;
+    const newsLangBar = (pagePath: string, lang: Lang): string => `<nav class="langbar">
+      ${LANGS.map(l => `<a href="${pagePath}${langQ(l)}" hreflang="${l}" class="${l === lang ? 'active' : ''}">${l.toUpperCase()}</a>`).join('      ')}
+    </nav>`;
+    const newsFooter = (domainUrl: string, domain: string, profile: Profile, lang: Lang): string => `<footer>
+    <p>&copy; 2026 ${profile.brand} — ${profile.tagline} | <a href="${domainUrl}" style="color:#10b981;">${domain}</a></p>
+    <div style="margin-top:8px;font-size:0.8rem;">${trustLinks(lang)}</div>
+  </footer>`;
+
+    app.get('/news', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const domainUrl = `https://${domain}`;
+      const lang = getLang(req);
+      const profile = getProfile(domain, lang);
+      const pagePath = '/news';
+      const all = getNewsItems();
+      const perPage = 24;
+      const totalPages = Math.max(1, Math.ceil(all.length / perPage));
+      const page = Math.min(Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1), totalPages);
+      const items = all.slice((page - 1) * perPage, page * perPage);
+      const pageQ = (p: number): string => {
+        const parts: string[] = [];
+        if (p > 1) parts.push(`page=${p}`);
+        if (lang !== 'ar') parts.push(`lang=${lang}`);
+        return parts.length ? `?${parts.join('&')}` : '';
+      };
+
+      const h1 = tt('news.h1', lang);
+      const desc = tt('news.desc', lang);
+      const pageTitle = `${h1} | ${profile.brand}`;
+      const note = tt('news.updated', lang, { date: newsDate(getNewsUpdatedAt(), lang) });
+      const robots = page > 1 ? 'noindex,follow' : 'index, follow, max-snippet:-1, max-image-preview:large';
+
+      const cards = items.map(n => `<a class="card" href="/news/${newsSlug(n)}${langQ(lang)}">
+      <div class="thumb">${n.imageUrl ? `<img src="${newsEsc(n.imageUrl)}" alt="${newsEsc(newsTitleOf(n, lang))}" loading="lazy" referrerpolicy="no-referrer" />` : ''}<span class="cat">${newsEsc(n.category)}</span></div>
+      <div class="body">
+        <div class="meta"><span class="src">${newsEsc(n.source)}</span><span class="date">${newsEsc(newsDate(n.publishedAt, lang))}</span></div>
+        <h2>${newsEsc(newsTitleOf(n, lang))}</h2>
+        <p>${newsEsc(newsSummaryOf(n, lang))}</p>
+      </div>
+    </a>`).join('\n');
+
+      const pager = totalPages > 1 ? `<div class="pager">
+      ${page > 1 ? `<a href="/news${pageQ(page - 1)}">${tt('news.prev', lang)}</a>` : '<span></span>'}
+      <span class="pginfo">${page} / ${totalPages}</span>
+      ${page < totalPages ? `<a href="/news${pageQ(page + 1)}">${tt('news.next', lang)}</a>` : '<span></span>'}
+    </div>` : '';
+
+      const empty = all.length === 0 ? `<p class="empty">${tt('news.empty', lang)}</p>` : '';
+      const ld = JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'CollectionPage',
+        name: pageTitle,
+        description: desc,
+        url: `${domainUrl}${pagePath}`,
+        inLanguage: lang,
+        isPartOf: { '@id': `${domainUrl}/#website` },
+        publisher: { '@id': `${domainUrl}/#organization` },
+        dateModified: getNewsUpdatedAt(),
+        mainEntity: {
+          '@type': 'ItemList',
+          itemListElement: all.slice(0, 30).map((n, i) => ({
+            '@type': 'ListItem',
+            position: i + 1,
+            url: `${domainUrl}/news/${newsSlug(n)}`,
+            name: newsTitleOf(n, lang),
+          })),
+        },
+      });
+      const breadcrumbLd = JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: tt('nav.home', lang), item: `${domainUrl}/` },
+          { '@type': 'ListItem', position: 2, name: h1, item: `${domainUrl}${pagePath}` },
+        ],
+      });
+
+      const html = `<!doctype html>
+<html lang="${lang}" dir="${profile.dir}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${newsEsc(pageTitle)}</title>
+  <meta name="description" content="${newsEsc(desc)}" />
+  <meta name="robots" content="${robots}" />
+  <link rel="canonical" href="${canonicalUrl(domainUrl, pagePath, lang)}" />
+${page === 1 ? hreflangs(domainUrl, pagePath) : ''}
+  <meta property="og:title" content="${newsEsc(pageTitle)}" />
+  <meta property="og:description" content="${newsEsc(desc)}" />
+  <meta property="og:url" content="${domainUrl}${pagePath}${langQ(lang)}" />
+  <meta property="og:type" content="website" />
+${socialMeta(domainUrl, newsEsc(pageTitle), newsEsc(desc))}
+  <script type="application/ld+json">${ld}</script>
+  <script type="application/ld+json">${breadcrumbLd}</script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.8}
+    .container{max-width:1000px;margin:0 auto;padding:36px 20px}
+    .topnav{background:#1e293b;padding:10px 20px;display:flex;gap:15px;flex-wrap:wrap}
+    .topnav a{color:#94a3b8;text-decoration:none;font-size:0.9rem}
+    .topnav a:hover{color:#10b981}
+    h1{font-size:1.9rem;color:#10b981;margin-bottom:8px}
+    .desc{color:#94a3b8;margin-bottom:6px}
+    .note{color:#64748b;font-size:0.85rem;margin-bottom:22px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+    .card{display:flex;flex-direction:column;background:#1e293b;border:1px solid #334155;border-radius:14px;overflow:hidden;text-decoration:none;color:#e2e8f0;transition:border-color .15s}
+    .card:hover{border-color:#10b981}
+    .thumb{position:relative;height:170px;background:#0f172a;overflow:hidden}
+    .thumb img{width:100%;height:100%;object-fit:cover}
+    .thumb .cat{position:absolute;top:10px;right:10px;background:rgba(16,185,129,.92);color:#042f1e;font-size:0.7rem;font-weight:700;padding:3px 9px;border-radius:8px}
+    [dir="rtl"] .thumb .cat{right:auto;left:10px}
+    .body{padding:14px 16px 16px}
+    .meta{display:flex;justify-content:space-between;gap:8px;font-size:0.75rem;color:#94a3b8;margin-bottom:8px}
+    .meta .src{color:#34d399;font-weight:700}
+    .card h2{font-size:1rem;line-height:1.5;margin-bottom:8px}
+    .card p{font-size:0.85rem;color:#94a3b8;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+    .pager{display:flex;justify-content:space-between;align-items:center;margin-top:26px;gap:10px}
+    .pager a{background:#1e293b;border:1px solid #334155;color:#10b981;padding:10px 22px;border-radius:10px;text-decoration:none;font-weight:700}
+    .pager a:hover{border-color:#10b981}
+    .pginfo{color:#64748b;font-size:0.9rem}
+    .empty{color:#94a3b8;background:#1e293b;padding:26px;border-radius:12px;text-align:center}
+    .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:13px 26px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:8px 5px 8px 0}
+    .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
+    .langbar a{color:#94a3b8;text-decoration:none}
+    .langbar a.active,.langbar a:hover{color:#10b981}
+    footer{text-align:center;padding:30px;color:#94a3b8;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+    footer a{color:#94a3b8;text-decoration:none;margin:0 8px}
+  </style>
+  ${siteSchemaTag(domainUrl, profile)}</head>
+<body>
+  ${newsTopNav(lang)}
+  <div class="container">
+    ${newsLangBar(pagePath, lang)}
+    <h1>${h1}</h1>
+    <p class="desc">${desc}</p>
+    <p class="note">${newsEsc(note)}</p>
+    ${empty}
+    <div class="grid">
+    ${cards}
+    </div>
+    ${pager}
+    <div style="margin-top:30px;text-align:center;">
+      <a href="/${langQ(lang)}" class="cta">${tt('nav.home', lang)}</a>
+      <a href="/predictions${langQ(lang)}" class="cta">${tt('nav.predictions', lang)}</a>
+      <a href="/download/apk" class="cta">${tt('cta.download', lang)}</a>
+    </div>
+  </div>
+  ${newsFooter(domainUrl, domain, profile, lang)}
+</body>
+</html>`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Robots-Tag', page > 1 ? 'noindex, follow' : 'index, follow, max-snippet:-1, max-image-preview:large');
+      res.send(html);
+    });
+
+    app.get('/news/:slug', (req, res) => {
+      const domain = req.headers.host?.replace(/^www\./, '') || 'vex.deals';
+      const domainUrl = `https://${domain}`;
+      const lang = getLang(req);
+      const profile = getProfile(domain, lang);
+      const item = getNewsItems().find(n => newsSlug(n) === req.params.slug);
+      if (!item) return send404(res, profile, tt('news.not_found', lang));
+      const pagePath = `/news/${newsSlug(item)}`;
+
+      const title = newsTitleOf(item, lang);
+      const summary = newsSummaryOf(item, lang);
+      const paras = newsBodyOf(item, lang);
+      const srcUrl = item.sourceUrl || item.url || '';
+      const pageTitle = `${title} | ${profile.brand}`;
+      const desc = summary.length > 155 ? summary.slice(0, 152).trimEnd() + '…' : summary;
+      const pubIso = item.publishedAt && !isNaN(Date.parse(item.publishedAt)) ? item.publishedAt : '';
+      const ogImage = item.imageUrl || `${domainUrl}/share-icon-512.jpg`;
+
+      const newsLd = JSON.stringify({
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'NewsArticle',
+            headline: title,
+            description: desc,
+            image: item.imageUrl ? [item.imageUrl] : [`${domainUrl}/share-icon-512.jpg`],
+            ...(pubIso ? { datePublished: pubIso, dateModified: pubIso || undefined } : {}),
+            inLanguage: lang,
+            articleSection: item.category,
+            mainEntityOfPage: `${domainUrl}${pagePath}${langQ(lang)}`,
+            author: { '@type': 'Organization', name: profile.brand },
+            publisher: { '@id': `${domainUrl}/#organization` },
+            ...(srcUrl ? { isBasedOn: srcUrl } : {}),
+          },
+          {
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+              { '@type': 'ListItem', position: 1, name: tt('nav.home', lang), item: `${domainUrl}/` },
+              { '@type': 'ListItem', position: 2, name: tt('news.h1', lang), item: `${domainUrl}/news` },
+              { '@type': 'ListItem', position: 3, name: title, item: `${domainUrl}${pagePath}${langQ(lang)}` },
+            ],
+          },
+        ],
+      });
+
+      const bodyHtml = paras.length
+        ? paras.filter(p => p !== summary).map(p => `<p>${newsEsc(p)}</p>`).join('\n    ')
+        : `<p>${newsEsc(summary)}</p>`;
+
+      const related = getNewsItems().filter(n => newsSlug(n) !== newsSlug(item)).slice(0, 3);
+      const relatedHtml = related.length ? `
+    <h2>${tt('news.related', lang)}</h2>
+    <div class="related">
+      ${related.map(n => `<a href="/news/${newsSlug(n)}${langQ(lang)}">${newsEsc(newsTitleOf(n, lang))}</a>`).join('      ')}
+    </div>` : '';
+
+      const html = `<!doctype html>
+<html lang="${lang}" dir="${profile.dir}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${newsEsc(pageTitle)}</title>
+  <meta name="description" content="${newsEsc(desc)}" />
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
+  <link rel="canonical" href="${canonicalUrl(domainUrl, pagePath, lang)}" />
+${hreflangs(domainUrl, pagePath)}
+  <meta property="og:title" content="${newsEsc(pageTitle)}" />
+  <meta property="og:description" content="${newsEsc(desc)}" />
+  <meta property="og:url" content="${domainUrl}${pagePath}${langQ(lang)}" />
+  <meta property="og:type" content="article" />
+  <meta property="og:image" content="${newsEsc(ogImage)}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${newsEsc(pageTitle)}" />
+  <meta name="twitter:description" content="${newsEsc(desc)}" />
+  <meta name="twitter:image" content="${newsEsc(ogImage)}" />
+  <script type="application/ld+json">${newsLd}</script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.9}
+    .container{max-width:800px;margin:0 auto;padding:36px 20px}
+    .topnav{background:#1e293b;padding:10px 20px;display:flex;gap:15px;flex-wrap:wrap}
+    .topnav a{color:#94a3b8;text-decoration:none;font-size:0.9rem}
+    .topnav a:hover{color:#10b981}
+    h1{font-size:1.75rem;color:#10b981;margin:14px 0 12px;line-height:1.5}
+    h2{font-size:1.25rem;color:#34d399;margin:30px 0 12px;border-bottom:1px solid #1e293b;padding-bottom:8px}
+    .crumbs{font-size:0.85rem;color:#64748b;margin-bottom:6px}
+    .crumbs a{color:#34d399;text-decoration:none}
+    .meta{color:#94a3b8;font-size:0.88rem;margin-bottom:18px}
+    .meta .src{color:#34d399;font-weight:700}
+    .meta .cat{background:#1e293b;border:1px solid #334155;padding:2px 10px;border-radius:8px;margin-inline-start:6px}
+    .hero{width:100%;max-height:380px;object-fit:cover;border-radius:14px;margin-bottom:18px;border:1px solid #1e293b}
+    .lead{font-size:1.08rem;color:#e2e8f0;font-weight:600;margin-bottom:14px}
+    p{color:#94a3b8;margin-bottom:14px}
+    .cta{background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:13px 26px;border-radius:12px;text-decoration:none;display:inline-block;font-weight:bold;margin:10px 0}
+    .related{display:flex;flex-direction:column;gap:8px}
+    .related a{background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:13px 16px;border-radius:10px;text-decoration:none;font-size:0.92rem}
+    .related a:hover{border-color:#10b981;color:#10b981}
+    .langbar{display:flex;gap:10px;flex-wrap:wrap;font-size:0.85rem;margin-bottom:20px}
+    .langbar a{color:#94a3b8;text-decoration:none}
+    .langbar a.active,.langbar a:hover{color:#10b981}
+    footer{text-align:center;padding:30px;color:#94a3b8;font-size:0.85rem;border-top:1px solid #1e293b;margin-top:40px}
+    footer a{color:#94a3b8;text-decoration:none;margin:0 8px}
+  </style>
+  ${siteSchemaTag(domainUrl, profile)}</head>
+<body>
+  ${newsTopNav(lang)}
+  <div class="container">
+    ${newsLangBar(pagePath, lang)}
+    <p class="crumbs"><a href="/${langQ(lang)}">${tt('nav.home', lang)}</a> › <a href="/news${langQ(lang)}">${tt('news.h1', lang)}</a></p>
+    <h1>${newsEsc(title)}</h1>
+    <div class="meta"><span class="src">${newsEsc(item.source)}</span> · ${newsEsc(newsDate(item.publishedAt, lang))}${item.category ? `<span class="cat">${newsEsc(item.category)}</span>` : ''}</div>
+    ${item.imageUrl ? `<img class="hero" src="${newsEsc(item.imageUrl)}" alt="${newsEsc(title)}" referrerpolicy="no-referrer" />` : ''}
+    <p class="lead">${newsEsc(summary)}</p>
+    <p class="label" style="color:#34d399;font-size:0.85rem;font-weight:700;">${tt('news.summary', lang)}</p>
+    ${bodyHtml}
+    ${srcUrl ? `<a class="cta" href="${newsEsc(srcUrl)}" rel="nofollow noopener noreferrer" target="_blank">${tt('news.read_source', lang, { source: item.source })} ↗</a>` : ''}
+    ${relatedHtml}
+    <div style="margin-top:30px;text-align:center;">
+      <a href="/news${langQ(lang)}" class="cta" style="background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid #334155;">${tt('news.all', lang)}</a>
+    </div>
+  </div>
+  ${newsFooter(domainUrl, domain, profile, lang)}
+</body>
+</html>`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Robots-Tag', 'index, follow, max-snippet:-1, max-image-preview:large');
+      res.send(html);
+    });
 
     // ==================== TRUST / E-E-A-T STATIC PAGES (SSR standalone HTML, 8 languages) ====================
     for (const slug of STATIC_PAGE_SLUGS) {

@@ -102,12 +102,60 @@ const DEFAULT_SPORTS_CATEGORIES: SportsCategory[] = [
   },
 ];
 
+const NEWS_CAT_LABELS: Record<string, { ar: string; en: string }> = {
+  all: { ar: 'الكل', en: 'All' },
+  football: { ar: 'كرة قدم', en: 'Football' },
+  basketball: { ar: 'كرة سلة', en: 'Basketball' },
+  tennis: { ar: 'تنس', en: 'Tennis' },
+  motorsport: { ar: 'سباقات', en: 'Motorsport' },
+  combat: { ar: 'ملاكمة وفنون قتالية', en: 'Boxing & MMA' },
+  cricket: { ar: 'كريكت', en: 'Cricket' },
+  rugby: { ar: 'رغبي', en: 'Rugby' },
+  volleyball: { ar: 'كرة طائرة', en: 'Volleyball' },
+  athletics: { ar: 'ألعاب القوى', en: 'Athletics' },
+  golf: { ar: 'غولف', en: 'Golf' },
+  other: { ar: 'أخرى', en: 'Other' },
+};
+
+const newsCatKey = (item: SportsNewsItem): string => {
+  if (item.categoryKey) return item.categoryKey;
+  const c = item.category || '';
+  if (/كرة القدم|كرة قدم|football|soccer|دوري الأبطال|الدوري الإنجليزي|لا ليغا|الكلاسيكو/i.test(c)) return 'football';
+  if (/سلة|basket/i.test(c)) return 'basketball';
+  if (/تنس|tennis/i.test(c)) return 'tennis';
+  if (/فورمولا|f1|سباق|formula|racing/i.test(c)) return 'motorsport';
+  if (/ملاكمة|boxing|ufc|mma|فنون قتالية/i.test(c)) return 'combat';
+  if (/كريكت|cricket/i.test(c)) return 'cricket';
+  if (/رغبي|rugby/i.test(c)) return 'rugby';
+  if (/طائرة|volley/i.test(c)) return 'volleyball';
+  if (/إحصاء|تحليل|stats/i.test(c)) return 'other';
+  return 'other';
+};
+
+const newsRelTime = (raw: string, isAr: boolean): string => {
+  const t = Date.parse(raw);
+  if (isNaN(t)) return raw; // static seed stores human strings like "منذ 25 دقيقة"
+  const diff = Math.round((t - Date.now()) / 1000);
+  const abs = Math.abs(diff);
+  try {
+    const rtf = new Intl.RelativeTimeFormat(isAr ? 'ar' : 'en', { numeric: 'auto' });
+    if (abs < 60) return rtf.format(diff, 'second');
+    if (abs < 3600) return rtf.format(Math.round(diff / 60), 'minute');
+    if (abs < 86400) return rtf.format(Math.round(diff / 3600), 'hour');
+    if (abs < 86400 * 30) return rtf.format(Math.round(diff / 86400), 'day');
+    return new Date(t).toLocaleDateString(isAr ? 'ar-EG' : 'en-GB', { dateStyle: 'medium' });
+  } catch {
+    return raw;
+  }
+};
+
 interface AiSportsHubTabProps {
   fixtures?: SportsMatchFixture[];
   news?: SportsNewsItem[];
   loadingFixtures?: boolean;
   onAnalyzeMatch: (fixture: SportsMatchFixture) => void;
   onTriggerAgentBroadcast?: () => void;
+  onRefreshNews?: () => void;
   lang: Language;
   userId?: string;
 }
@@ -118,6 +166,7 @@ export const AiSportsHubTab: React.FC<AiSportsHubTabProps> = ({
   loadingFixtures = false,
   onAnalyzeMatch,
   onTriggerAgentBroadcast,
+  onRefreshNews,
   lang,
   userId,
 }) => {
@@ -127,6 +176,7 @@ export const AiSportsHubTab: React.FC<AiSportsHubTabProps> = ({
   const [broadcastLoading, setBroadcastLoading] = useState(false);
   const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
   const [targetCategoryIdForAlerts, setTargetCategoryIdForAlerts] = useState<string | null>(null);
+  const [newsCat, setNewsCat] = useState<string>('all');
 
   const effectiveUserId = userId || vexApi.getUserId();
   const [isSyncingWithFirestore, setIsSyncingWithFirestore] = useState(false);
@@ -416,7 +466,10 @@ END:VCALENDAR`;
         </button>
 
         <button
-          onClick={() => setActiveSubTab('news')}
+          onClick={() => {
+            setActiveSubTab('news');
+            onRefreshNews?.();
+          }}
           className={`flex-1 h-8 flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition-all ${
             activeSubTab === 'news'
               ? 'bg-white text-slate-900 shadow-2xs'
@@ -956,42 +1009,96 @@ END:VCALENDAR`;
 
       {/* Sports News Feed */}
       {activeSubTab === 'news' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-          {news.map((item) => (
-            <div
-              key={item.id}
-              className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors"
-            >
-              <div>
-                <div className="h-40 w-full relative overflow-hidden bg-slate-100">
-                  <img
-                    src={item.imageUrl}
-                    alt={item.title}
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
-                  />
-                  <span className="absolute top-2.5 right-2.5 px-2.5 py-0.5 rounded-md bg-white/90 backdrop-blur-xs text-emerald-700 text-[10px] font-bold border border-slate-200">
-                    {item.category}
-                  </span>
-                </div>
+        <div className="space-y-3.5">
+          {/* Category filter chips (all sports types) */}
+          <div className="flex flex-wrap gap-2">
+            {['all', ...Array.from(new Set(news.map(newsCatKey)))].map((ck) => (
+              <button
+                key={ck}
+                onClick={() => setNewsCat(ck)}
+                className={`px-3 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+                  newsCat === ck
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-400'
+                }`}
+              >
+                {NEWS_CAT_LABELS[ck]?.[isAr ? 'ar' : 'en'] || ck}
+              </button>
+            ))}
+          </div>
 
-                <div className="p-3.5 space-y-1.5">
-                  <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span className="font-bold text-slate-700">{item.source}</span>
-                    <span>{item.publishedAt}</span>
-                  </div>
-
-                  <h3 className="text-xs font-bold text-slate-900 leading-snug line-clamp-2">
-                    {item.title}
-                  </h3>
-
-                  <p className="text-xs text-slate-600 leading-relaxed line-clamp-3">
-                    {item.summary}
-                  </p>
-                </div>
-              </div>
+          {news.filter((n) => newsCat === 'all' || newsCatKey(n) === newsCat).length === 0 && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm text-slate-500">
+              {isAr ? 'لا توجد أخبار في هذا التصنيف حالياً.' : 'No news in this category right now.'}
             </div>
-          ))}
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {news
+              .filter((n) => newsCat === 'all' || newsCatKey(n) === newsCat)
+              .map((item) => {
+                const title = isAr ? item.title : item.titleEn || item.title;
+                const summary = isAr ? item.summary : item.summaryEn || item.summary;
+                const href = `/news/${item.slug || item.id}${lang === 'ar' ? '' : `?lang=${lang}`}`;
+                const srcLink = item.sourceUrl || item.url;
+                const catLabel = NEWS_CAT_LABELS[newsCatKey(item)]?.[isAr ? 'ar' : 'en'] || item.category;
+                return (
+                  <div
+                    key={item.id}
+                    className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors group"
+                  >
+                    <div>
+                      <a href={href} className="block">
+                        <div className="h-40 w-full relative overflow-hidden bg-slate-100">
+                          {item.imageUrl ? (
+                            <img
+                              src={item.imageUrl}
+                              alt={title}
+                              referrerPolicy="no-referrer"
+                              loading="lazy"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gradient-to-br from-emerald-50 to-slate-100" />
+                          )}
+                          <span className="absolute top-2.5 right-2.5 px-2.5 py-0.5 rounded-md bg-white/90 backdrop-blur-xs text-emerald-700 text-[10px] font-bold border border-slate-200">
+                            {catLabel}
+                          </span>
+                        </div>
+
+                        <div className="p-3.5 space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] text-slate-500">
+                            <span className="font-bold text-slate-700">{item.source}</span>
+                            <span>{newsRelTime(item.publishedAt, isAr)}</span>
+                          </div>
+
+                          <h3 className="text-xs font-bold text-slate-900 leading-snug line-clamp-2 group-hover:text-emerald-700 transition-colors">
+                            {title}
+                          </h3>
+
+                          <p className="text-xs text-slate-600 leading-relaxed line-clamp-3">
+                            {summary}
+                          </p>
+                        </div>
+                      </a>
+
+                      {srcLink && (
+                        <div className="px-3.5 pb-3">
+                          <a
+                            href={srcLink}
+                            target="_blank"
+                            rel="noopener noreferrer nofollow"
+                            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800"
+                          >
+                            {isAr ? `المصدر: ${item.source} ↗` : `Source: ${item.source} ↗`}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
         </div>
       )}
 

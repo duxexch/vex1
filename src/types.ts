@@ -566,6 +566,14 @@ export interface SportsNewsItem {
   category: string;
   imageUrl: string;
   url?: string;
+  slug?: string;
+  sourceUrl?: string;
+  titleEn?: string;
+  summaryEn?: string;
+  body?: string[];
+  bodyEn?: string[];
+  score?: number;
+  categoryKey?: string;
 }
 
 export type TabType = 'companies' | 'wallets' | 'transfers' | 'referrals' | 'activity' | 'ai-sports' | 'unlucky-wall' | 'lottery';
