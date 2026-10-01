@@ -3098,6 +3098,110 @@ function startDockerNotificationWorker() {
   }, 30000);
 }
 
+// ==================== DAILY FIXTURE INGEST (real fixtures — auto-refreshed, no manual work) ====================
+// Source: FixtureDownload public JSON feeds (no API key, server-friendly).
+// Writes data/daily_fixtures.json; the predictions renderer consumes it and
+// falls back to the old deterministic rotation only if the file is missing/stale.
+const FIXTURE_FEEDS: Record<string, string> = {
+  'Premier League': 'epl',
+  'La Liga': 'la-liga',
+  'Serie A': 'serie-a',
+  'Bundesliga': 'bundesliga',
+  'Ligue 1': 'ligue-1',
+  'Eredivisie': 'eredivisie',
+  'Primeira Liga': 'primeira-liga',
+  'Turkish Super Lig': 'super-lig',
+  'UEFA Champions League': 'champions-league',
+  'UEFA Europa League': 'europa-league',
+  'UEFA Nations League': 'nations-league',
+  'Championship': 'championship',
+};
+
+const normalizeTeamName = (n: string) =>
+  n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+const fixtureTeamSlug = (s: string) =>
+  s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+// Feed team names → curated TEAMS keys (keeps known ratings for big clubs)
+const FIXTURE_TEAM_ALIASES: Record<string, string> = {
+  'arsenal': 'ars', 'liverpool': 'liv', 'manchester city': 'mci', 'man city': 'mci', 'chelsea': 'che',
+  'manchester united': 'mun', 'man utd': 'mun', 'man united': 'mun', 'tottenham': 'tot',
+  'tottenham hotspur': 'tot', 'spurs': 'tot', 'newcastle united': 'new', 'newcastle': 'new',
+  'aston villa': 'avl', 'west ham united': 'whu', 'west ham': 'whu', 'brighton': 'bha',
+  'brighton and hove albion': 'bha', 'wolves': 'wol', 'nottingham forest': 'nfo',
+  'real madrid': 'rma', 'barcelona': 'fcb', 'fc barcelona': 'fcb', 'atletico madrid': 'atm',
+  'sevilla': 'sev', 'real betis': 'bet', 'villarreal': 'vil', 'athletic club': 'ath',
+  'real sociedad': 'rso', 'valencia': 'val',
+  'inter milan': 'int', 'inter': 'int', 'internazionale': 'int', 'juventus': 'juv',
+  'ac milan': 'mil', 'milan': 'mil', 'napoli': 'nap', 'roma': 'rom', 'as roma': 'rom',
+  'lazio': 'laz', 'atalanta': 'ata', 'fiorentina': 'fio',
+  'bayern munich': 'bay', 'bayern': 'bay', 'borussia dortmund': 'bvb', 'dortmund': 'bvb',
+  'rb leipzig': 'rbl', 'bayer leverkusen': 'lev', 'leverkusen': 'lev', 'eintracht frankfurt': 'sgf',
+  'vfb stuttgart': 'stu', 'stuttgart': 'stu',
+  'paris saint germain': 'psg', 'paris sg': 'psg', 'psg': 'psg', 'marseille': 'mrs',
+  'lille': 'lil', 'monaco': 'mon', 'lyon': 'lyo', 'ogc nice': 'nic', 'nice': 'nic',
+  'ajax': 'ajx', 'psv': 'psv', 'feyenoord': 'fey', 'az alkmaar': 'azl', 'az': 'azl',
+  'benfica': 'ben', 'porto': 'por', 'fc porto': 'por', 'sporting cp': 'spo', 'sporting': 'spo',
+  'braga': 'brg', 'galatasaray': 'gal', 'fenerbahce': 'fen', 'besiktas': 'bes', 'trabzonspor': 'tra',
+  'al ahly': 'ahl', 'zamalek': 'zam', 'al hilal': 'hil', 'al nassr': 'nss',
+};
+
+async function ingestDailyFixtures(): Promise<void> {
+  const file = path.join(process.cwd(), 'data', 'daily_fixtures.json');
+  try {
+    const st = fs.statSync(file);
+    if (Date.now() - st.mtimeMs < 5 * 3600 * 1000) return; // already fresh
+  } catch { /* no file yet — first run */ }
+  try {
+    const now = new Date();
+    const seasonYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+    const startIso = now.toISOString().slice(0, 10);
+    const endIso = new Date(now.getTime() + 10 * 86400000).toISOString().slice(0, 10);
+    const teams: Record<string, { name: string; rating: number; league: string }> = {};
+    const fixtures: Array<{ slug: string; home: string; away: string; league: string; date: string; kickOff: string }> = [];
+    const resolveTeam = (rawName: string, league: string): string => {
+      const nk = normalizeTeamName(rawName);
+      const aliased = FIXTURE_TEAM_ALIASES[nk];
+      const key = aliased || fixtureTeamSlug(rawName);
+      if (!aliased && rawName && !teams[key]) teams[key] = { name: rawName, rating: 1500, league };
+      return key;
+    };
+    for (const [league, base] of Object.entries(FIXTURE_FEEDS)) {
+      try {
+        const r = await fetch(`https://fixturedownload.com/feed/json/${base}-${seasonYear}`);
+        if (!r.ok) { console.log(`[Fixtures] ${league}: HTTP ${r.status}`); continue; }
+        const rows = await r.json() as Array<Record<string, unknown>>;
+        for (const m of rows) {
+          const iso = String(m.DateUtc || '').replace(' ', 'T');
+          if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso)) continue;
+          const date = iso.slice(0, 10);
+          if (date < startIso || date > endIso) continue;
+          const home = resolveTeam(String(m.HomeTeam || ''), league);
+          const away = resolveTeam(String(m.AwayTeam || ''), league);
+          if (!home || !away || home === away) continue;
+          fixtures.push({ slug: `${home}-vs-${away}-${date}`, home, away, league, date, kickOff: `${iso.slice(11, 16)} UTC` });
+        }
+      } catch (err) {
+        console.error(`[Fixtures] ${league} feed failed:`, err);
+      }
+    }
+    if (fixtures.length === 0) {
+      console.log('[Fixtures] ingest produced 0 fixtures — keeping existing file');
+      return;
+    }
+    fixtures.sort((a, b) => (a.date + a.kickOff).localeCompare(b.date + b.kickOff));
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ generatedAt: now.toISOString(), teams, fixtures }));
+    console.log(`[Fixtures] ingested ${fixtures.length} real fixtures, ${Object.keys(teams).length} new teams (${startIso}..${endIso})`);
+  } catch (err) {
+    console.error('[Fixtures] ingest failed:', err);
+  }
+}
+
+// Run shortly after boot, then keep the 7-day window rolling every 6 hours
+setTimeout(() => { void ingestDailyFixtures(); }, 4000);
+setInterval(() => { void ingestDailyFixtures(); }, 6 * 3600 * 1000);
+
 // VITE MIDDLEWARE SETUP
 async function setupServer() {
   if (process.env.NODE_ENV !== 'production') {
@@ -4295,6 +4399,25 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
       pal: { name: 'Palmeiras', rating: 1860, league: 'Brasileiro Serie A' },
       cor: { name: 'Corinthians', rating: 1760, league: 'Brasileiro Serie A' },
       flu: { name: 'Fluminense', rating: 1750, league: 'Brasileiro Serie A' },
+      new: { name: 'Newcastle United', rating: 1840, league: 'Premier League' },
+      avl: { name: 'Aston Villa', rating: 1810, league: 'Premier League' },
+      whu: { name: 'West Ham United', rating: 1770, league: 'Premier League' },
+      bha: { name: 'Brighton', rating: 1760, league: 'Premier League' },
+      wol: { name: 'Wolves', rating: 1700, league: 'Premier League' },
+      nfo: { name: 'Nottingham Forest', rating: 1740, league: 'Premier League' },
+      bet: { name: 'Real Betis', rating: 1780, league: 'La Liga' },
+      vil: { name: 'Villarreal', rating: 1810, league: 'La Liga' },
+      ath: { name: 'Athletic Club', rating: 1800, league: 'La Liga' },
+      rso: { name: 'Real Sociedad', rating: 1790, league: 'La Liga' },
+      val: { name: 'Valencia', rating: 1760, league: 'La Liga' },
+      rom: { name: 'Roma', rating: 1870, league: 'Serie A' },
+      laz: { name: 'Lazio', rating: 1850, league: 'Serie A' },
+      ata: { name: 'Atalanta', rating: 1880, league: 'Serie A' },
+      fio: { name: 'Fiorentina', rating: 1800, league: 'Serie A' },
+      sgf: { name: 'Eintracht Frankfurt', rating: 1800, league: 'Bundesliga' },
+      stu: { name: 'VfB Stuttgart', rating: 1790, league: 'Bundesliga' },
+      lyo: { name: 'Lyon', rating: 1790, league: 'Ligue 1' },
+      nic: { name: 'Nice', rating: 1760, league: 'Ligue 1' },
     };
 
     const LEAGUE_TEAMS: Record<string, string[]> = {
@@ -4311,12 +4434,46 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
       'Brasileiro Serie A': ['fla', 'pal', 'cor', 'flu'],
     };
 
+    // Dynamic league → team keys (also covers clubs added by the daily fixture ingest)
+    const leagueTeamKeys = (lg: string): string[] => Object.keys(TEAMS).filter(k => TEAMS[k].league === lg);
+
     const isoDate = (d: Date) => d.toISOString().split('T')[0];
 
     type Fixture = { slug: string; home: string; away: string; league: string; date: string; kickOff: string };
 
+    // Real fixtures ingested daily (data/daily_fixtures.json) — merged team registry
+    // keeps curated ratings for known clubs, defaults new clubs to 1500.
+    let fixturesCache: { mtimeMs: number; fixtures: Fixture[] } | null = null;
+    function loadRealFixtures(): Fixture[] | null {
+      try {
+        const file = path.join(process.cwd(), 'data', 'daily_fixtures.json');
+        const st = fs.statSync(file);
+        if (Date.now() - st.mtimeMs > 48 * 3600 * 1000) return null; // stale — let fallback handle it
+        if (!fixturesCache || fixturesCache.mtimeMs !== st.mtimeMs) {
+          const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as {
+            teams?: Record<string, { name: string; rating: number; league: string }>;
+            fixtures?: Fixture[];
+          };
+          for (const [k, t] of Object.entries(raw.teams || {})) {
+            if (!TEAMS[k]) TEAMS[k] = t;
+          }
+          fixturesCache = { mtimeMs: st.mtimeMs, fixtures: raw.fixtures || [] };
+        }
+        const todayIso = isoDate(new Date());
+        const horizonIso = isoDate(new Date(Date.now() + 10 * 86400000));
+        const windowed = fixturesCache.fixtures.filter(f =>
+          f.date >= todayIso && f.date <= horizonIso && !!TEAMS[f.home] && !!TEAMS[f.away]);
+        return windowed.length ? windowed : null;
+      } catch {
+        return null;
+      }
+    }
+
     // Deterministic fixtures for next 7 days (rotating pairings = fresh pages daily)
+    // — fallback used only when the real-fixture file is missing or stale.
     function getFixtures(): Fixture[] {
+      const real = loadRealFixtures();
+      if (real) return real;
       const fixtures: Fixture[] = [];
       const today = new Date();
       for (let day = 0; day < 7; day++) {
@@ -4396,6 +4553,12 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
       if (dayDate) fixtures = fixtures.filter(f => f.date === dayDate);
       if (league) fixtures = fixtures.filter(f => f.league === league);
       if (teamKey) fixtures = fixtures.filter(f => f.home === teamKey || f.away === teamKey);
+      let dayFallback = false;
+      if (dayKey && fixtures.length === 0) {
+        // Never 404 the daily pages (they are always in the sitemap) — show the next upcoming fixtures
+        fixtures = allFixtures.filter(f => f.date >= todayStr).slice(0, 12);
+        dayFallback = fixtures.length > 0;
+      }
       if ((dayKey || leagueSlug || teamSlug) && fixtures.length === 0) {
         return send404(res, profile, lang === 'ar' ? 'لا توجد مباريات.' : 'No matches available.');
       }
@@ -4439,13 +4602,14 @@ ${socialMeta(domainUrl, escAttr(`${guide.title} | ${profile.brand}`), escAttr(gu
         <div class="daynav">
           ${leagues.map(n => `<a href="/predictions/league/${slugify(n)}${langQ(lang)}" class="${n === league ? 'active' : ''}">${esc(n)}</a>`).join('\n          ')}
         </div>`;
-      const teamLinks = (league && LEAGUE_TEAMS[league]) ? `
+      const leagueKeys = league ? leagueTeamKeys(league) : [];
+      const teamLinks = (league && leagueKeys.length) ? `
         <div class="daynav">
-          ${LEAGUE_TEAMS[league].map(k => `<a href="/predictions/team/${slugify(TEAMS[k].name)}${langQ(lang)}" class="${k === teamKey ? 'active' : ''}">${esc(TEAMS[k].name)}</a>`).join('\n          ')}
+          ${leagueKeys.map(k => `<a href="/predictions/team/${slugify(TEAMS[k].name)}${langQ(lang)}" class="${k === teamKey ? 'active' : ''}">${esc(TEAMS[k].name)}</a>`).join('\n          ')}
         </div>` : '';
-      const rankRows = (league && LEAGUE_TEAMS[league])
-        ? LEAGUE_TEAMS[league].map(k => ({ key: k, t: TEAMS[k] })).sort((x, y) => y.t.rating - x.t.rating)
-        : [];
+      const rankRows = leagueKeys
+        .map(k => ({ key: k, t: TEAMS[k] }))
+        .sort((x, y) => y.t.rating - x.t.rating);
       const rankTable = rankRows.length ? `
     <h2>📊 ${tt('pred.rank_title', lang, { league })}</h2>
     <table class="rank">
@@ -4511,6 +4675,7 @@ ${socialMeta(domainUrl, esc(listTitle), esc(listDesc))}
     ${teamLinks}
     ${rankTable}
     <p>ℹ️ ${tt('pred.list_note', lang)} — ${tt('pred.updated_only', lang)} ${dayDate || todayStr}</p>
+    ${dayFallback ? `<p>⚠️ ${lang === 'ar' ? 'لا توجد مباريات مبرَّمة في هذا التاريخ حاليًا — هذه أقرب المباريات القادمة.' : 'No matches scheduled on this date right now — showing the next upcoming fixtures.'}</p>` : ''}
     ${rows}
     <div style="margin-top:30px;text-align:center;">
       <a href="/guides/ai-predictions-guide${langQ(lang)}" class="cta">📖 ${tt('pred.cta_guide', lang)}</a>
