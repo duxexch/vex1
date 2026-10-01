@@ -5278,11 +5278,8 @@ ${secsHtml}
       // (avoids pushing the section down = CLS 1.0 layout shift)
       html = html.replace('<div id="root"></div>', `<div id="root">${seoBlock}</div>`);
 
-      // Inject Google Search Console verification meta tags
+      // Inject GEO engine verification metas
       const gscMeta = `
-    <!-- Google Search Console Verification -->
-    <meta name="google-site-verification" content="vex_deals_${domain.replace(/\./g, '_')}" />
-    <meta name="msvalidate.01" content="vex_deals_${domain.replace(/\./g, '_')}" />
     <!-- GEO: AI Engine Verification -->
     <meta name="bot" content="index, follow, ai-answer-engine-optimized" />
     <meta name="ai-content-declaration" content="VEX Deals loyalty compensation platform" />`;
