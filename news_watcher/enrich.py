@@ -48,10 +48,25 @@ _KW_MAP = [
 
 
 _AD_RE = re.compile(
-    r'\b(bonus|promo\s*code|free\s*bet|casino|jackpot\s*winner|download\s*the\s*app|sponsored|advert)\b'
-    r'|كازينو|كود خصم|لعبة الروليت|إعلان ممول|عرض ترويجي',
+    r'\b(bonus|promo\s*code|free\s*bet|casino|jackpot\s*winner|download\s*the\s*app|sponsored|advert'
+    r'|betting\s+sites?|betting\s+guide|sports\s*betting|sportsbook|where\s+to\s+bet|best\s+\S+\s+sites'
+    r'|quiz|quizzes|gallery|photo\s+essay)\b'
+    r'|كازينو|كود خصم|لعبة الروليت|إعلان ممول|عرض ترويجي|التخمين|مسابقة|معرض صور',
     re.IGNORECASE,
 )
+
+# Clearly-not-sports news (war, politics, weather, health, flights...) that slips
+# through general-interest feeds. Only used as a fallback when the AI is offline.
+_NONSPORT_RE = re.compile(
+    r'\b(war|military|minister|government|election|parliament|museum|flight[sd]?\b|airport'
+    r'|earthquake|storm\b|flood|virus|vaccine|refugee|court\s+ruling|inflation|strike[sd]?\b'
+    r'|obituary|funeral)\b'
+    r'|حرب|قتلى|هجوم|انفجار|متحف|رحلات جوية|مطار|رئيس الوزراء|الحكومة|وزارة|انتخابات|برلمان'
+    r'|زلزال|عاصفة|فيروس|لقاح|إضراب|جنازة|نصائح صحية|نزلات البرد|علاج',
+    re.IGNORECASE,
+)
+
+_MIN_WORDS = 3   # titles shorter than this (e.g. "Photos") are nav/page junk
 
 
 def guess_category_key(text: str) -> str:
@@ -196,10 +211,18 @@ def enrich_batch(batch: list[dict], api_key: str, log) -> list[dict]:
             except (TypeError, ValueError):
                 score = 60 if is_sports else 20
         else:
-            # AI unavailable: every configured source is a sports outlet, so default to
-            # accepting real-looking stories and reject only obvious promo/ad spam.
-            is_sports = not _AD_RE.search(f"{cand.get('title', '')} {cand.get('snippet', '')}")
-            score = 65 if is_sports else 10
+            # AI unavailable: accept real-looking stories from sports outlets, but
+            # reject promos/ads, nav junk ("Photos") and general-news leaks.
+            text = f"{cand.get('title', '')} {cand.get('snippet', '')}"
+            words = re.findall(r'\S+', cand.get('title', ''))
+            if _AD_RE.search(text):
+                is_sports, score = False, 10
+            elif len(words) < _MIN_WORDS and len(cand.get('title', '')) < 30:
+                is_sports, score = False, 5   # page/nav junk
+            elif guess_category_key(text) == 'other' and _NONSPORT_RE.search(text):
+                is_sports, score = False, 15  # general-news leak from a mixed feed
+            else:
+                is_sports, score = True, 65
         title_en = (entry.get('title_en') or '').strip() or cand.get('title', '')
         title_ar = (entry.get('title_ar') or '').strip() or cand.get('title', '')
         out.append({

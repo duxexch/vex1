@@ -23,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import dedupe as dd          # noqa: E402
+import embedder as emb       # noqa: E402
 import enrich as en          # noqa: E402
 import publish as pub        # noqa: E402
 from fetchers import BrowserPool, fetch_article, fetch_browser, fetch_html, fetch_rss  # noqa: E402
@@ -97,6 +98,8 @@ def run_cycle(args, cfg: dict, sources: list[dict], hist: dd.NewsHistory, state:
     seen_cycle_urls: set[str] = set()
     notif_titles: set[str] = set()
     in_cycle_dups: list[dict] = []
+    embed_drops: list[dict] = []
+    estore = emb.EmbedStore(DATA / 'news_embs.json')
 
     try:
         for src in sources:
@@ -158,6 +161,22 @@ def run_cycle(args, cfg: dict, sources: list[dict], hist: dd.NewsHistory, state:
                 continue
             cluster_norms.append(norm)
             clustered.append(c)
+
+        # Layer 6: semantic (embedding) dedupe — same event with a totally different
+        # phrasing collapses against the published store and across cluster reps.
+        if clustered:
+            try:
+                pub_store = pub.load_news(NEWS_PATH)
+                emb.backfill(estore, pub_store.get('items', []), log)
+                stored_pairs = []
+                for it in pub_store.get('items', [])[:150]:
+                    v = estore.data.get(it.get('id') or '')
+                    if v:
+                        stored_pairs.append((it.get('title', ''), v))
+                clustered, embed_drops = emb.partition_by_embedding(clustered, stored_pairs, log)
+                in_cycle_dups.extend(embed_drops)
+            except Exception as e:  # noqa: BLE001
+                log(f'[embed] layer skipped: {str(e)[:160]}')
 
         cap = int(cfg.get('max_per_cycle', 30))
         batch = clustered[:cap]
@@ -225,12 +244,21 @@ def run_cycle(args, cfg: dict, sources: list[dict], hist: dd.NewsHistory, state:
         for c in in_cycle_dups:  # cross-source duplicates: store url+title so later cycles skip fast
             hist.remember_url(c.get('url', ''))
             hist.remember_title(c.get('title', ''))
+        if added_entries:
+            try:
+                with_id = [e for e in added_entries if e.get('id')]
+                vecs = emb.embed_texts([e.get('title', '') or '' for e in with_id], log)
+                if estore.put_many([e['id'] for e in with_id], vecs):
+                    estore.save()
+            except Exception as e:  # noqa: BLE001
+                log(f'[embed] save skipped: {str(e)[:160]}')
         hist.save()
         save_json(STATE_PATH, state)
 
     dt = time.time() - t0
     summary = (f"[cycle] fetched={fetched} errors={fetch_errors} new={len(candidates)} "
-               f"clustered={len(batch)} dropped={dropped} storyDups={story_dups} published={added} "
+               f"clustered={len(batch)} dropped={dropped} storyDups={story_dups} "
+               f"embedDups={len(embed_drops)} published={added} "
                f"rejected={len(rejected)} store={total} "
                f"notif={len(notif_titles)} "
                f"time={dt:.1f}s")

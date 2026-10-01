@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 import time
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import feedparser
 import requests
@@ -181,10 +181,18 @@ def _parse_html_fragment(html: str, source: dict, base_url: str) -> list[dict]:
     return out
 
 
+def _resp_text(resp) -> str:
+    # requests falls back to ISO-8859-1 when the server sends no charset -> mojibake
+    # for UTF-8 pages (Arabic sites like filgoal). Detect the real encoding.
+    if resp.encoding in (None, 'ISO-8859-1'):
+        resp.encoding = resp.apparent_encoding or 'utf-8'
+    return resp.text
+
+
 def fetch_html(source: dict) -> list[dict]:
     resp = requests.get(source['list_url'], headers=HEADERS, timeout=TIMEOUT)
     resp.raise_for_status()
-    return _parse_html_fragment(resp.text, source, source['list_url'])
+    return _parse_html_fragment(_resp_text(resp), source, source['list_url'])
 
 
 class BrowserPool:
@@ -217,10 +225,6 @@ class BrowserPool:
             locale='en-US',
             viewport={'width': 1366, 'height': 900},
         )
-        try:
-            self._ctx.grant_permissions(['notifications'], origin='*')
-        except Exception as e:  # noqa: BLE001
-            self.log(f'[browser] grant_permissions note: {e}')
 
     def page_with_hooks(self):
         self._ensure()
@@ -254,6 +258,12 @@ class BrowserPool:
 def fetch_browser(source: dict, pool: BrowserPool) -> list[dict]:
     page = pool.page_with_hooks()
     try:
+        parts = urlsplit(source['list_url'])
+        origin = f'{parts.scheme}://{parts.netloc}'
+        try:
+            pool._ctx.grant_permissions(['notifications'], origin=origin)
+        except Exception as e:  # noqa: BLE001
+            pool.log(f'[browser] grant_permissions note: {e}')
         page.goto(source['list_url'], wait_until='domcontentloaded', timeout=30000)
         sel = source.get('wait_selector')
         if sel:
@@ -291,7 +301,7 @@ def fetch_article(url: str) -> tuple[str, str]:
         resp.raise_for_status()
     except Exception:  # noqa: BLE001
         return '', ''
-    soup = BeautifulSoup(resp.text, 'lxml')
+    soup = BeautifulSoup(_resp_text(resp), 'lxml')
     img = ''
     og = soup.find('meta', attrs={'property': 'og:image'})
     if og and og.get('content'):
