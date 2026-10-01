@@ -312,8 +312,9 @@ export function computeLotteryStats(draws: LotteryDraw[], freeTicketsAwarded = 0
 
   const hotNumbers = ranked.slice(0, 5);
   const coldNumbers = ranked.slice(-5).reverse();
-  // Very cold numbers that never appeared yet (only when history is thin)
-  if (hotNumbers.length < 5) {
+  // Placeholder fill only once real history exists — an empty platform
+  // must not present invented numbers as "hot".
+  if (completed.length > 0 && hotNumbers.length < 5) {
     for (let n = 1; n <= 50 && hotNumbers.length < 5; n++) {
       if (!freq.has(n)) hotNumbers.push({ number: n, frequency: 0 });
     }
