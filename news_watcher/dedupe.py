@@ -167,9 +167,12 @@ class NewsHistory:
             for t in (meta.get('s') or '').split():
                 self._index.setdefault(t, set()).add(fp)
 
-    def _prune(self, max_age_days: int = 30, max_entries: int = 50000) -> None:
+    def _prune(self, max_age_days: int = 30, max_entries: int = 50000, max_urls: int = 150000) -> None:
         cutoff = time.time() - max_age_days * 86400
         self.urls = {k: v for k, v in self.urls.items() if v >= cutoff}
+        if len(self.urls) > max_urls:
+            newest = sorted(self.urls.items(), key=lambda kv: -kv[1])[:max_urls]
+            self.urls = dict(newest)
         self.fps = {k: v for k, v in self.fps.items() if float(v.get('t', 0)) >= cutoff}
         self.story_keys = {k: v for k, v in self.story_keys.items() if v >= cutoff}
         if len(self.fps) > max_entries:

@@ -149,20 +149,34 @@ Items:
 {json.dumps(items, ensure_ascii=False)}"""
 
 
+# When Gemini fails with quota/demand errors we stop hammering it for a while.
+_COOLDOWN_UNTIL = 0.0
+_COOLDOWN_FAIL = 900.0   # after a failed batch, wait 15 min before trying Gemini again
+
+
 def enrich_batch(batch: list[dict], api_key: str, log) -> list[dict]:
     """Returns enriched items aligned with `batch` (fallback fills whatever is missing)."""
+    global _COOLDOWN_UNTIL
     results: dict[int, dict] = {}
     if api_key and batch:
-        try:
-            raw = _gemini_json(api_key, _build_prompt(batch), log)
-            if isinstance(raw, dict):
-                raw = raw.get('items') or raw.get('results') or []
-            for entry in raw if isinstance(raw, list) else []:
-                i = entry.get('i')
-                if isinstance(i, int) and 0 <= i < len(batch):
-                    results[i] = entry
-        except Exception as e:  # noqa: BLE001
-            log(f'[enrich] gemini batch failed, using fallback for {len(batch)} items: {e}')
+        now = time.time()
+        if now < _COOLDOWN_UNTIL:
+            log(f'[enrich] gemini in cooldown for {int(_COOLDOWN_UNTIL - now)}s more; using fallback for {len(batch)} items')
+        else:
+            try:
+                raw = _gemini_json(api_key, _build_prompt(batch), log)
+                if isinstance(raw, dict):
+                    raw = raw.get('items') or raw.get('results') or []
+                for entry in raw if isinstance(raw, list) else []:
+                    i = entry.get('i')
+                    if isinstance(i, int) and 0 <= i < len(batch):
+                        results[i] = entry
+                if results:
+                    _COOLDOWN_UNTIL = 0.0
+            except Exception as e:  # noqa: BLE001
+                _COOLDOWN_UNTIL = time.time() + _COOLDOWN_FAIL
+                log(f'[enrich] gemini batch failed, using fallback for {len(batch)} items; '
+                    f'cooling down {int(_COOLDOWN_FAIL // 60)} min: {e}')
 
     out: list[dict] = []
     for i, cand in enumerate(batch):

@@ -96,6 +96,7 @@ def run_cycle(args, cfg: dict, sources: list[dict], hist: dd.NewsHistory, state:
     candidates: list[dict] = []
     seen_cycle_urls: set[str] = set()
     notif_titles: set[str] = set()
+    in_cycle_dups: list[dict] = []
 
     try:
         for src in sources:
@@ -144,6 +145,7 @@ def run_cycle(args, cfg: dict, sources: list[dict], hist: dd.NewsHistory, state:
         # in-cycle cross-source clustering: same story from N sources -> one entry
         clustered: list[dict] = []
         cluster_norms: list[str] = []
+        in_cycle_dups: list[dict] = []
         for c in sorted(candidates, key=lambda x: (not x['fromNotification'], x.get('publishedAt') or '9')):
             norm = dd.normalize_title(c['title'])
             dup_in_cycle = False
@@ -152,6 +154,7 @@ def run_cycle(args, cfg: dict, sources: list[dict], hist: dd.NewsHistory, state:
                     dup_in_cycle = True
                     break
             if dup_in_cycle:
+                in_cycle_dups.append(c)  # remember its url+title so next cycle skips it entirely
                 continue
             cluster_norms.append(norm)
             clustered.append(c)
@@ -219,6 +222,9 @@ def run_cycle(args, cfg: dict, sources: list[dict], hist: dd.NewsHistory, state:
         for e in rejected:
             hist.remember_url(e.get('url', ''))
             hist.remember_title(e.get('title', ''), rejected=True)
+        for c in in_cycle_dups:  # cross-source duplicates: store url+title so later cycles skip fast
+            hist.remember_url(c.get('url', ''))
+            hist.remember_title(c.get('title', ''))
         hist.save()
         save_json(STATE_PATH, state)
 
