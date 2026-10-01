@@ -132,10 +132,6 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
       const current = draws.find((d) => d.status === 'open' || d.status === 'drawing') || draws[0] || null;
       setActiveDraw(current);
 
-      if (current) {
-        lotteryService.syncDrawWithServer(current);
-      }
-
       const tickets = await lotteryService.getUserTickets(userId);
       setUserTickets(tickets);
 
@@ -516,10 +512,10 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
             <button
               onClick={() => setIsTierAlertsModalOpen(true)}
               className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black transition-all flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
-              title={isAr ? 'تخصيص تنبيهات كل جائزة قبل 30 دقيقة عبر FCM' : 'Customize 30-min FCM alerts per prize tier'}
+              title={isAr ? 'تخصيص تنبيهات كل جائزة قبل 30 دقيقة عبر الإشعارات' : 'Customize 30-min alerts per prize tier'}
             >
               <BellRing className="w-3.5 h-3.5 animate-pulse" />
-              <span>{isAr ? 'تنبيه السحب (30 دقيقة FCM)' : 'Tier Alerts (30m FCM)'}</span>
+              <span>{isAr ? 'تنبيه السحب (30 دقيقة)' : 'Tier Alerts (30m)'}</span>
             </button>
 
             <button

@@ -16,6 +16,8 @@ import { LANGS, isLang, tt, type Lang } from './server/i18nUi';
 import { getProfileText, type ProfileText } from './server/i18nProfiles';
 import { GUIDES, getGuide } from './server/i18nGuides';
 import { STATIC_PAGES, STATIC_PAGE_SLUGS, TRUST_NAV } from './server/staticPages';
+import * as lotteryEngine from './server/lotteryEngine';
+import { LOTTERY_ADMIN_KEY, type LotteryDraw } from './shared/lotteryConfig';
 
 const currentFilename = '';
 const currentDirname = process.cwd();
@@ -2889,22 +2891,41 @@ interface ServerLotteryState {
   tierAlertSubscriptions: Record<string, boolean>;
 }
 
-let serverLotteryState: ServerLotteryState = {
-  activeDrawId: 'DRAW-2026-088',
-  titleAr: 'سحب VEX التكافلي الذهبي الأسبوعي #88',
-  titleEn: 'VEX Weekly Solidarity Gold Draw #88',
-  closeAt: new Date(Date.now() + 4 * 3600 * 1000).toISOString(),
-  jackpotAmount: 18450.0,
-  oneHourReminderSent: false,
-  thirtyMinReminderSent: false,
-  tierAlertSubscriptions: {
-    tier1_jackpot: true,
-    tier2_match5: true,
-    tier3_match4_2: true,
-    tier4_match3: true,
-    tier5_match2: true,
-  },
-};
+function currentLotteryState(): ServerLotteryState | null {
+  return lotteryEngine.getLegacyReminderState();
+}
+
+function lotteryStateOf(draw: LotteryDraw): ServerLotteryState {
+  return {
+    activeDrawId: draw.id,
+    titleAr: draw.titleAr,
+    titleEn: draw.titleEn,
+    closeAt: draw.closeAt,
+    jackpotAmount: draw.jackpotAmount,
+    oneHourReminderSent: !!draw.reminded60,
+    thirtyMinReminderSent: !!draw.reminded30,
+    tierAlertSubscriptions: lotteryEngine.getStateStore().tierAlertSubscriptions,
+  };
+}
+
+function requireLotteryAdmin(req: any, res: any): boolean {
+  if (req.header('x-vex-admin') === LOTTERY_ADMIN_KEY) return true;
+  res.status(403).json({ success: false, error: 'Admin key required' });
+  return false;
+}
+
+async function sendLotteryTelegram(text: string) {
+  try {
+    const cfg = lotteryEngine.getConfig();
+    if (!cfg.notifyTelegram) return;
+    if (!telegramConfig.bot_token || !telegramConfig.is_active) return;
+    const chat = process.env.TELEGRAM_NOTIFY_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '';
+    if (!chat) return;
+    await sendTelegramMessage(chat, text);
+  } catch (err) {
+    console.warn('[Lottery] Telegram notify skipped:', err);
+  }
+}
 
 function dispatchLotteryOneHourNotification(drawState: ServerLotteryState, isManualTest = false) {
   const notifId = `NOTIF-LOTTERY-1HR-${drawState.activeDrawId}-${Date.now()}`;
@@ -2989,18 +3010,18 @@ function dispatchLotteryThirtyMinTierNotification(
   const newNotif = {
     id: notifId,
     title: `🔔 تنبيه السحب: 30 دقيقة متبقية لبدء سحب [${tierInfo.ar}]`,
-    message: `تنبيه سحب مخصص عبر Firebase Cloud Messaging (FCM): باقي 30 دقيقة فقط على انطلاق ${drawState.titleAr}. الجائزة المرتقبة: ${tierInfo.highlight}! ثبت تذكرتك الآن قبل إغلاق القفل التشفيري.`,
+    message: `باقي 30 دقيقة فقط على انطلاق ${drawState.titleAr}. الجائزة المرتقبة: ${tierInfo.highlight}! ثبت تذكرتك الآن قبل إغلاق البيع.`,
     category: 'lottery',
     timestamp: new Date().toISOString(),
     read: false,
     translations: {
       ar: {
         title: `🔔 تنبيه السحب: 30 دقيقة متبقية لبدء سحب [${tierInfo.ar}]`,
-        message: `تنبيه سحب مخصص عبر Firebase Cloud Messaging (FCM): باقي 30 دقيقة فقط على انطلاق ${drawState.titleAr}. الجائزة المرتقبة: ${tierInfo.highlight}! ثبت تذكرتك الآن قبل إغلاق القفل التشفيري.`,
+        message: `باقي 30 دقيقة فقط على انطلاق ${drawState.titleAr}. الجائزة المرتقبة: ${tierInfo.highlight}! ثبت تذكرتك الآن قبل إغلاق البيع.`,
       },
       en: {
         title: `🔔 Draw Alert: 30 Mins Until [${tierInfo.en}] Starts`,
-        message: `Customized Draw Alert via Firebase Cloud Messaging (FCM): Only 30 minutes left before ${drawState.titleEn} locks in. Target prize: ${tierInfo.highlight}! Lock in your lucky numbers now.`,
+        message: `Only 30 minutes left before ${drawState.titleEn} locks in. Target prize: ${tierInfo.highlight}! Lock in your lucky numbers now.`,
       },
       ru: {
         title: `🔔 Оповещение: 30 минут до розыгрыша [${tierInfo.en}]`,
@@ -3018,7 +3039,7 @@ function dispatchLotteryThirtyMinTierNotification(
       actionUrl: '/#lottery',
       jackpotAmount: drawState.jackpotAmount,
       isThirtyMinReminder: true,
-      fcmProvider: 'Firebase Cloud Messaging (FCM)',
+      fcmProvider: 'VEX Notification Engine',
       manualTest: isManualTest,
     },
   };
@@ -3029,64 +3050,267 @@ function dispatchLotteryThirtyMinTierNotification(
   return newNotif;
 }
 
-function checkAndDispatchLotteryReminders() {
-  if (!serverLotteryState) return;
+function dispatchLotteryClosedNotification(draw: LotteryDraw) {
+  const newNotif = {
+    id: `NOTIF-LOTTERY-CLOSED-${draw.id}-${Date.now()}`,
+    title: `🔒 اُغلق بيع تذاكر سحب [${draw.titleAr}]`,
+    message: `انتهت فترة شراء التذاكر وسيتم سحب الأرقام خلال دقيقة. الجائزة المتراكمة: $${draw.jackpotAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} — نتائج السحب ستظهر فوراً في قسم اليانصيب.`,
+    category: 'lottery',
+    timestamp: new Date().toISOString(),
+    read: false,
+    translations: {
+      ar: {
+        title: `🔒 اُغلق بيع تذاكر سحب [${draw.titleAr}]`,
+        message: `انتهت فترة شراء التذاكر وسيتم سحب الأرقام خلال دقيقة. الجائزة المتراكمة: $${draw.jackpotAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} — نتائج السحب ستظهر فوراً في قسم اليانصيب.`,
+      },
+      en: {
+        title: `🔒 Ticket sales closed for ${draw.titleEn}`,
+        message: `Sales are closed — winning balls are drawn within a minute. Jackpot: $${draw.jackpotAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}. Results appear in the Lottery tab.`,
+      },
+    },
+    data: { drawId: draw.id, targetTab: 'lottery', actionUrl: '/#lottery', jackpotAmount: draw.jackpotAmount },
+  };
+  storage.addNotification(newNotif);
+  io.emit('notification', newNotif);
+  console.log(`🎟️ [Lottery Engine] Sales closed for ${draw.id}`);
+  return newNotif;
+}
 
-  const closeTime = new Date(serverLotteryState.closeAt).getTime();
-  const now = Date.now();
-  const diffMs = closeTime - now;
-  const diffMinutes = diffMs / (1000 * 60);
+function dispatchLotteryResultsNotification(draw: LotteryDraw) {
+  const winners = draw.winnersCount || {};
+  const totalWinners = Object.values(winners).reduce((a, b) => a + b, 0);
+  const mainStr = (draw.winningMainNumbers || []).join(' - ');
+  const luckyStr = (draw.winningLuckyNumbers || []).join(' - ');
+  const newNotif = {
+    id: `NOTIF-LOTTERY-RESULTS-${draw.id}-${Date.now()}`,
+    title: `🎉 نتائج سحب [${draw.titleAr}] جاهزة`,
+    message: `الأرقام الفائزة: ${mainStr} + ★${luckyStr} | الفائزون: ${totalWinners} | إجمالي الجوائز الموزعة: $${(draw.totalPaidOut || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+    category: 'lottery',
+    timestamp: new Date().toISOString(),
+    read: false,
+    translations: {
+      ar: {
+        title: `🎉 نتائج سحب [${draw.titleAr}] جاهزة`,
+        message: `الأرقام الفائزة: ${mainStr} + ★${luckyStr} | الفائزون: ${totalWinners} | إجمالي الجوائز الموزعة: $${(draw.totalPaidOut || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      },
+      en: {
+        title: `🎉 Results for ${draw.titleEn} are ready`,
+        message: `Winning balls: ${mainStr} + ★${luckyStr} | Winners: ${totalWinners} | Total paid: $${(draw.totalPaidOut || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      },
+    },
+    data: {
+      drawId: draw.id,
+      targetTab: 'lottery',
+      actionUrl: '/#lottery',
+      winningMainNumbers: draw.winningMainNumbers,
+      winningLuckyNumbers: draw.winningLuckyNumbers,
+    },
+  };
+  storage.addNotification(newNotif);
+  io.emit('notification', newNotif);
+  console.log(`🎟️ [Lottery Engine] Results published for ${draw.id}`);
+  return newNotif;
+}
 
-  // 1. If time left is 60 minutes or less: trigger 1-hour general alert
-  if (diffMinutes > 0 && diffMinutes <= 60 && !serverLotteryState.oneHourReminderSent) {
-    serverLotteryState.oneHourReminderSent = true;
-    dispatchLotteryOneHourNotification(serverLotteryState);
-  }
+function dispatchLotteryNewDrawNotification(draw: LotteryDraw) {
+  const newNotif = {
+    id: `NOTIF-LOTTERY-NEW-${draw.id}-${Date.now()}`,
+    title: `✨ سحب جديد مفتوح: [${draw.titleAr}]`,
+    message: `فُتح بيع تذاكر السحب الجديد بسعر $${draw.ticketPrice.toFixed(2)} للتذكرة، والجائزة المتراكمة: $${draw.jackpotAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}. اختر أرقامك المفضّلة الآن!`,
+    category: 'lottery',
+    timestamp: new Date().toISOString(),
+    read: false,
+    translations: {
+      ar: {
+        title: `✨ سحب جديد مفتوح: [${draw.titleAr}]`,
+        message: `فُتح بيع تذاكر السحب الجديد بسعر $${draw.ticketPrice.toFixed(2)} للتذكرة، والجائزة المتراكمة: $${draw.jackpotAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}. اختر أرقامك المفضّلة الآن!`,
+      },
+      en: {
+        title: `✨ New draw open: ${draw.titleEn}`,
+        message: `Tickets are on sale at $${draw.ticketPrice.toFixed(2)} each. Jackpot: $${draw.jackpotAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}. Pick your numbers now!`,
+      },
+    },
+    data: { drawId: draw.id, targetTab: 'lottery', actionUrl: '/#lottery', jackpotAmount: draw.jackpotAmount },
+  };
+  storage.addNotification(newNotif);
+  io.emit('notification', newNotif);
+  console.log(`🎟️ [Lottery Engine] New draw open: ${draw.id}`);
+  return newNotif;
+}
 
-  // 2. If time left is 30 minutes or less: trigger 30-min per-tier draw alert
-  if (diffMinutes > 0 && diffMinutes <= 30 && !serverLotteryState.thirtyMinReminderSent) {
-    serverLotteryState.thirtyMinReminderSent = true;
-    Object.keys(serverLotteryState.tierAlertSubscriptions).forEach((tId) => {
-      if (serverLotteryState.tierAlertSubscriptions[tId]) {
-        dispatchLotteryThirtyMinTierNotification(serverLotteryState, tId);
+// Background scheduler: closes draws, runs them, fires reminders and
+// auto-creates the next draw. Called from the 30s notification worker.
+function runLotterySchedulerTick() {
+  try {
+    const events = lotteryEngine.schedulerTick();
+    for (const ev of events) {
+      switch (ev.type) {
+        case 'reminder60': {
+          dispatchLotteryOneHourNotification(lotteryStateOf(ev.draw));
+          void sendLotteryTelegram(
+            `تذكير: يغلق سحب ${ev.draw.titleAr} خلال ساعة واحدة. الجائزة المتراكمة: $${ev.draw.jackpotAmount.toLocaleString('en-US')} — vex.deals/#lottery`
+          );
+          break;
+        }
+        case 'reminder30': {
+          ev.tierIds.forEach((tId) => dispatchLotteryThirtyMinTierNotification(lotteryStateOf(ev.draw), tId));
+          void sendLotteryTelegram(
+            `باقي 30 دقيقة على سحب ${ev.draw.titleAr}. الجائزة المتراكمة: $${ev.draw.jackpotAmount.toLocaleString('en-US')} — vex.deals/#lottery`
+          );
+          break;
+        }
+        case 'closed': {
+          dispatchLotteryClosedNotification(ev.draw);
+          void sendLotteryTelegram(`اُغلق سحب ${ev.draw.titleAr} — السحب يجري خلال دقيقة. الجائزة: $${ev.draw.jackpotAmount.toLocaleString('en-US')}`);
+          break;
+        }
+        case 'results': {
+          dispatchLotteryResultsNotification(ev.draw);
+          const mainStr = (ev.draw.winningMainNumbers || []).join('-');
+          const luckyStr = (ev.draw.winningLuckyNumbers || []).join('-');
+          void sendLotteryTelegram(
+            `نتائج ${ev.draw.titleEn}: ${mainStr} + *${luckyStr} | جوائز مدفوعة: $${(ev.draw.totalPaidOut || 0).toLocaleString('en-US')}`
+          );
+          break;
+        }
+        case 'newDraw': {
+          dispatchLotteryNewDrawNotification(ev.draw);
+          void sendLotteryTelegram(
+            `سحب جديد مفتوح: ${ev.draw.titleEn} — الجائزة المتراكمة: $${ev.draw.jackpotAmount.toLocaleString('en-US')} — vex.deals/#lottery`
+          );
+          break;
+        }
       }
-    });
+    }
+  } catch (err) {
+    console.error('[Lottery] Scheduler tick failed:', err);
   }
 }
 
-// Lottery Push Endpoints
+// ===================== Lottery API (server-authoritative engine) =====================
+
+// Full lottery state for clients: public draws (serverSeed hidden until
+// completed), real stats, and (when userId given) that user's tickets +
+// free solidarity ticket balance.
+app.get('/api/lottery/state', (req, res) => {
+  try {
+    const userId = typeof req.query.userId === 'string' && req.query.userId ? req.query.userId : undefined;
+    const isAdmin = req.header('x-vex-admin') === LOTTERY_ADMIN_KEY;
+    if (req.query.allTickets === '1' && !isAdmin) {
+      return res.status(403).json({ success: false, error: 'Admin key required' });
+    }
+    const includeAll = isAdmin && req.query.allTickets === '1';
+    res.json({ success: true, ...lotteryEngine.getPublicState(userId, includeAll) });
+  } catch (err) {
+    console.error('[Lottery] state failed:', err);
+    res.status(500).json({ success: false, error: 'Failed to load lottery state' });
+  }
+});
+
+app.post('/api/lottery/purchase', (req, res) => {
+  const { userId, drawId, mainNumbers, luckyNumbers, paymentMethod, companyId, userPhoneMasked } = req.body || {};
+  if (!userId || !drawId) {
+    return res.status(400).json({ success: false, error: 'userId and drawId are required' });
+  }
+  const result = lotteryEngine.purchaseTicket({
+    userId: String(userId),
+    drawId: String(drawId),
+    mainNumbers: Array.isArray(mainNumbers) ? mainNumbers.map(Number) : [],
+    luckyNumbers: Array.isArray(luckyNumbers) ? luckyNumbers.map(Number) : [],
+    paymentMethod: paymentMethod === 'compassion_free_ticket' ? 'compassion_free_ticket' : 'wallet_balance',
+    companyId: companyId ? String(companyId) : undefined,
+    userPhoneMasked: userPhoneMasked ? String(userPhoneMasked) : undefined,
+  });
+  if (!result.success) return res.status(400).json(result);
+  res.json(result);
+});
+
+// Admin: run the draw now (optionally forcing specific balls).
+app.post('/api/lottery/draw', (req, res) => {
+  if (!requireLotteryAdmin(req, res)) return;
+  const { drawId, forceMain, forceLucky } = req.body || {};
+  const target = drawId || lotteryEngine.getActiveDraw()?.id;
+  if (!target) return res.status(400).json({ success: false, error: 'No active draw to run' });
+
+  const hasForced = Array.isArray(forceMain) && Array.isArray(forceLucky);
+  const result = lotteryEngine.runDraw(String(target), {
+    force: true,
+    forcedMain: hasForced ? forceMain.map(Number) : undefined,
+    forcedLucky: hasForced ? forceLucky.map(Number) : undefined,
+  });
+  if (!result.success) return res.status(400).json(result);
+
+  dispatchLotteryResultsNotification(result.draw);
+  res.json({
+    success: true,
+    winningMain: result.winningMain,
+    winningLucky: result.winningLucky,
+    totalWinners: result.totalWinners,
+    totalPayout: result.totalPayout,
+    draw: lotteryEngine.publicDraw(result.draw),
+  });
+});
+
+// Admin: schedule a new draw.
+app.post('/api/lottery/create', (req, res) => {
+  if (!requireLotteryAdmin(req, res)) return;
+  const { titleAr, titleEn, ticketPrice, initialJackpot, closeAt, closeDays } = req.body || {};
+  const closeAtIso = closeAt
+    ? String(closeAt)
+    : closeDays
+      ? new Date(Date.now() + Number(closeDays || 7) * 86400000).toISOString()
+      : undefined;
+  const draw = lotteryEngine.createDraw({
+    titleAr: titleAr ? String(titleAr) : undefined,
+    titleEn: titleEn ? String(titleEn) : undefined,
+    ticketPrice: Number.isFinite(Number(ticketPrice)) && ticketPrice !== undefined && ticketPrice !== null ? Number(ticketPrice) : undefined,
+    initialJackpot:
+      Number.isFinite(Number(initialJackpot)) && initialJackpot !== undefined && initialJackpot !== null ? Number(initialJackpot) : undefined,
+    closeAt: closeAtIso,
+  });
+  dispatchLotteryNewDrawNotification(draw);
+  res.json({ success: true, draw: lotteryEngine.publicDraw(draw) });
+});
+
+// Admin: airdrop free solidarity tickets to a user.
+app.post('/api/lottery/airdrop', (req, res) => {
+  if (!requireLotteryAdmin(req, res)) return;
+  const { userId, count } = req.body || {};
+  const result = lotteryEngine.airdropFreeTickets(String(userId || ''), Number(count));
+  if (!result.success) return res.status(400).json(result);
+  res.json(result);
+});
+
+// ---------------- Legacy endpoints (kept for older bundles) ----------------
+
 app.get('/api/lottery/status', (req, res) => {
   res.json({
     success: true,
-    lottery: serverLotteryState,
+    lottery: currentLotteryState(),
   });
 });
 
 app.post('/api/lottery/sync-draw', (req, res) => {
-  const { drawId, titleAr, titleEn, closeAt, jackpotAmount } = req.body;
-  const isNewDraw = drawId && drawId !== serverLotteryState.activeDrawId;
-  const isNewTime = closeAt && closeAt !== serverLotteryState.closeAt;
-
-  serverLotteryState = {
-    activeDrawId: drawId || serverLotteryState.activeDrawId,
-    titleAr: titleAr || serverLotteryState.titleAr,
-    titleEn: titleEn || serverLotteryState.titleEn,
-    closeAt: closeAt || serverLotteryState.closeAt,
-    jackpotAmount: Number(jackpotAmount) || serverLotteryState.jackpotAmount,
-    oneHourReminderSent: isNewDraw || isNewTime ? false : serverLotteryState.oneHourReminderSent,
-    thirtyMinReminderSent: isNewDraw || isNewTime ? false : serverLotteryState.thirtyMinReminderSent,
-    tierAlertSubscriptions: serverLotteryState.tierAlertSubscriptions,
-  };
-
+  if (!requireLotteryAdmin(req, res)) return;
+  const { drawId, titleAr, titleEn, closeAt, jackpotAmount } = req.body || {};
+  const updated = lotteryEngine.updateActiveDrawFields({
+    drawId: drawId ? String(drawId) : undefined,
+    titleAr: titleAr ? String(titleAr) : undefined,
+    titleEn: titleEn ? String(titleEn) : undefined,
+    closeAt: closeAt ? String(closeAt) : undefined,
+    jackpotAmount: jackpotAmount !== undefined && jackpotAmount !== null ? Number(jackpotAmount) : undefined,
+  });
   res.json({
     success: true,
-    lottery: serverLotteryState,
+    lottery: updated ? lotteryStateOf(updated) : currentLotteryState(),
     message: 'تمت مزامنة بيانات السحب بنجاح مع محرك التنبيهات!',
   });
 });
 
 app.post('/api/lottery/trigger-1hour-alert', (req, res) => {
-  const notif = dispatchLotteryOneHourNotification(serverLotteryState, true);
+  const st = currentLotteryState();
+  if (!st) return res.status(400).json({ success: false, error: 'No active draw' });
+  const notif = dispatchLotteryOneHourNotification(st, true);
   res.json({
     success: true,
     notification: notif,
@@ -3095,27 +3319,31 @@ app.post('/api/lottery/trigger-1hour-alert', (req, res) => {
 });
 
 app.post('/api/lottery/trigger-30min-tier-alert', (req, res) => {
-  const { tierId } = req.body;
+  const st = currentLotteryState();
+  if (!st) return res.status(400).json({ success: false, error: 'No active draw' });
+  const { tierId } = req.body || {};
   const targetTier = tierId || 'tier1_jackpot';
-  const notif = dispatchLotteryThirtyMinTierNotification(serverLotteryState, targetTier, true);
+  const notif = dispatchLotteryThirtyMinTierNotification(st, targetTier, true);
   res.json({
     success: true,
     notification: notif,
-    message: `تم إرسال تنبيه السحب المخصص (قبل 30 دقيقة) لمستوى [${targetTier}] عبر Firebase Cloud Messaging!`,
+    message: `تم إرسال تنبيه السحب المخصص (قبل 30 دقيقة) لمستوى [${targetTier}] عبر محرك الإشعارات!`,
   });
 });
 
 app.post('/api/lottery/update-tier-alert-settings', (req, res) => {
-  const { tierAlertSubscriptions } = req.body;
+  const { tierAlertSubscriptions } = req.body || {};
   if (tierAlertSubscriptions && typeof tierAlertSubscriptions === 'object') {
-    serverLotteryState.tierAlertSubscriptions = {
-      ...serverLotteryState.tierAlertSubscriptions,
+    const state = lotteryEngine.getStateStore();
+    state.tierAlertSubscriptions = {
+      ...state.tierAlertSubscriptions,
       ...tierAlertSubscriptions,
     };
+    lotteryEngine.saveStateStore(state);
   }
   res.json({
     success: true,
-    tierAlertSubscriptions: serverLotteryState.tierAlertSubscriptions,
+    tierAlertSubscriptions: lotteryEngine.getStateStore().tierAlertSubscriptions,
     message: 'تم تحديث اشتراكات تنبيهات جوائز السحب (30 دقيقة) بنجاح!',
   });
 });
@@ -3134,8 +3362,8 @@ function startDockerNotificationWorker() {
         });
       }
 
-      // 2. Check and dispatch 1-hour pre-draw lottery reminder if due
-      checkAndDispatchLotteryReminders();
+      // 2. Lottery scheduler: reminders, auto-close, auto-draw, auto-create
+      runLotterySchedulerTick();
 
       // 3. Pulse active notifications
       const notifs = storage.getNotifications();

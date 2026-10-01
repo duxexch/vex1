@@ -82,15 +82,9 @@ export const LotteryAdminManager: React.FC<LotteryAdminManagerProps> = ({
       const fetchedStats = lotteryService.getStats();
       setStats(fetchedStats);
 
-      // Collect all local tickets
-      if (typeof window !== 'undefined') {
-        const rawTickets = localStorage.getItem('vex_lottery_tickets_v1');
-        if (rawTickets) {
-          setAllTickets(JSON.parse(rawTickets));
-        } else {
-          setAllTickets([]);
-        }
-      }
+      // Server-side ticket registry (all users); falls back to local mirror when offline
+      const tickets = await lotteryService.getAllTickets();
+      setAllTickets(tickets);
     } catch (err) {
       console.error('Error loading lottery admin data:', err);
     } finally {
@@ -159,21 +153,23 @@ export const LotteryAdminManager: React.FC<LotteryAdminManagerProps> = ({
     }
   };
 
-  // Handle Airdrop Free Compassion Ticket
-  const handleAirdrop = () => {
+  // Handle Airdrop Free Compassion Ticket (server-authoritative)
+  const handleAirdrop = async () => {
     if (!airdropUserId.trim()) return;
-    const current = lotteryService.getFreeCompassionTicketsCount(airdropUserId.trim());
-    lotteryService.setFreeCompassionTicketsCount(airdropUserId.trim(), current + airdropCount);
-
-    if (onToast) {
-      onToast(
-        isAr 
-          ? `تم إهداء ${airdropCount} تذكرة مجانية للمستخدم ${airdropUserId}!` 
-          : `Awarded ${airdropCount} free ticket(s) to ${airdropUserId}!`
-      );
+    try {
+      await lotteryService.airdropFreeTickets(airdropUserId.trim(), airdropCount);
+      if (onToast) {
+        onToast(
+          isAr
+            ? `تم إهداء ${airdropCount} تذكرة مجانية للمستخدم ${airdropUserId}!`
+            : `Awarded ${airdropCount} free ticket(s) to ${airdropUserId}!`
+        );
+      }
+      setShowAirdropModal(false);
+      setAirdropUserId('');
+    } catch (err: any) {
+      alert(err.message || 'Failed to airdrop tickets');
     }
-    setShowAirdropModal(false);
-    setAirdropUserId('');
   };
 
   // Filtered tickets
@@ -263,14 +259,14 @@ export const LotteryAdminManager: React.FC<LotteryAdminManagerProps> = ({
         <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
           <span className="text-[11px] font-bold text-slate-400 block">{isAr ? 'إجمالي الجوائز الموزعة' : 'Total Payouts'}</span>
           <span className="text-base sm:text-lg font-black text-emerald-600 font-mono">
-            ${(stats?.totalPrizesPaid || 32500).toLocaleString()}
+            ${(stats?.totalPrizesPaid || 0).toLocaleString()}
           </span>
         </div>
 
         <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
           <span className="text-[11px] font-bold text-slate-400 block">{isAr ? 'تذاكر تكافل معوضة' : 'Solidarity Tickets'}</span>
           <span className="text-base sm:text-lg font-black text-purple-600 font-mono">
-            {stats?.compassionTicketsAwarded || 1420}
+            {stats?.compassionTicketsAwarded || 0}
           </span>
         </div>
       </div>

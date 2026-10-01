@@ -13,6 +13,14 @@ import {
 } from './seedData';
 import { Company, CompensationEmailTemplate, EmailDispatchLog } from '../src/types';
 import { DEFAULT_COMPENSATION_EMAIL_TEMPLATES } from '../src/data/compensationEmailTemplates';
+import {
+  LotteryDraw,
+  LotteryTicket,
+  LotteryConfig,
+  LotteryServerState,
+  DEFAULT_LOTTERY_CONFIG,
+  DEFAULT_LOTTERY_STATE,
+} from '../shared/lotteryConfig';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 
@@ -178,6 +186,66 @@ export const storage = {
   },
   saveTelegramConfig(config: any): void {
     writeJsonFile('telegram_config.json', config);
+  },
+
+  // 5b. Lottery (server-authoritative engine)
+  getLotteryDraws(): LotteryDraw[] {
+    return readJsonFile<LotteryDraw[]>('lottery_draws.json', []);
+  },
+  saveLotteryDraws(draws: LotteryDraw[]): void {
+    writeJsonFile('lottery_draws.json', draws);
+  },
+  getLotteryTickets(): LotteryTicket[] {
+    return readJsonFile<LotteryTicket[]>('lottery_tickets.json', []);
+  },
+  saveLotteryTickets(tickets: LotteryTicket[]): void {
+    writeJsonFile('lottery_tickets.json', tickets);
+  },
+  getLotteryCredits(): Record<string, number> {
+    return readJsonFile<Record<string, number>>('lottery_credits.json', {});
+  },
+  saveLotteryCredits(credits: Record<string, number>): void {
+    writeJsonFile('lottery_credits.json', credits);
+  },
+  // Legacy files (hourly/daily/weekly design from Sep 13) are backed up once
+  // and replaced with the current config/state schema.
+  getLotteryConfig(): LotteryConfig {
+    ensureDataDir();
+    const fp = path.join(DATA_DIR, 'lottery_config.json');
+    if (fs.existsSync(fp)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+        if (parsed && typeof parsed.autoCreateNext === 'boolean') return parsed as LotteryConfig;
+        fs.copyFileSync(fp, `${fp}.bak-legacy`);
+        console.warn('[Storage] Legacy lottery_config.json backed up to lottery_config.json.bak-legacy');
+      } catch (err) {
+        console.warn('[Storage] Corrupt lottery_config.json, rebuilding:', err);
+      }
+    }
+    writeJsonFile('lottery_config.json', DEFAULT_LOTTERY_CONFIG);
+    return DEFAULT_LOTTERY_CONFIG;
+  },
+  saveLotteryConfig(config: LotteryConfig): void {
+    writeJsonFile('lottery_config.json', config);
+  },
+  getLotteryState(): LotteryServerState {
+    ensureDataDir();
+    const fp = path.join(DATA_DIR, 'lottery_state.json');
+    if (fs.existsSync(fp)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+        if (parsed && parsed.version === 2) return parsed as LotteryServerState;
+        fs.copyFileSync(fp, `${fp}.bak-legacy`);
+        console.warn('[Storage] Legacy lottery_state.json backed up to lottery_state.json.bak-legacy');
+      } catch (err) {
+        console.warn('[Storage] Corrupt lottery_state.json, rebuilding:', err);
+      }
+    }
+    writeJsonFile('lottery_state.json', DEFAULT_LOTTERY_STATE);
+    return DEFAULT_LOTTERY_STATE;
+  },
+  saveLotteryState(state: LotteryServerState): void {
+    writeJsonFile('lottery_state.json', state);
   },
 
   // 6. Notifications
