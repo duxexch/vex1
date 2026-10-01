@@ -179,7 +179,7 @@ def run_cycle(args, cfg: dict, sources: list[dict], hist: dd.NewsHistory, state:
         chunk = batch[i:i + en.BATCH_SIZE]
         enriched.extend(en.enrich_batch(chunk, api_key, log))
         if i + en.BATCH_SIZE < len(batch):
-            time.sleep(1.0)
+            time.sleep(4.0)
 
     min_score = int(cfg.get('min_score', 60))
     accepted, rejected = [], []

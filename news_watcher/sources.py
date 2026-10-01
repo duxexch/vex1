@@ -67,7 +67,7 @@ DEFAULT_SOURCES = [
     {"id": "gazzetta-web", "name": "La Gazzetta dello Sport", "type": "browser", "lang": "it", "enabled": False,
      "list_url": "https://www.gazzetta.it/",
      "item_selector": "a[href*='/calcio/'], a[href*='/tennis/']", "min_title_len": 25, "max_items": 15},
-    {"id": "skysportarabic", "name": "سكاي سبورت عربي", "type": "browser", "lang": "ar", "enabled": True,
+    {"id": "skysportarabic", "name": "سكاي سبورت عربي", "type": "browser", "lang": "ar", "enabled": False,
      "list_url": "https://www.skysportarabic.com/",
      "link_regex": "href=\"([^\"]*(?:/football/|/news/)[^\"]*)\"", "max_items": 15},
 ]

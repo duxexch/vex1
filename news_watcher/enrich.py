@@ -87,7 +87,7 @@ def _gemini_json(api_key: str, payload_text: str, log) -> Any:
         },
     }
     last_err: Exception | None = None
-    for attempt in range(3):
+    for attempt, wait in enumerate((3, 8, 20, 45, 90)):
         try:
             r = requests.post(url, json=body, timeout=TIMEOUT)
             if r.status_code == 429 or r.status_code >= 500:
@@ -98,8 +98,9 @@ def _gemini_json(api_key: str, payload_text: str, log) -> Any:
             return json.loads(text)
         except Exception as e:  # noqa: BLE001 — any failure -> backoff retry
             last_err = e
-            wait = 2 ** (attempt + 1)
-            log(f'[enrich] gemini attempt {attempt + 1} failed: {e}; retry in {wait}s')
+            if attempt >= 4:
+                break
+            log(f'[enrich] gemini attempt {attempt + 1} failed: {str(e)[:160]}; retry in {wait}s')
             time.sleep(wait)
     raise RuntimeError(f'gemini failed after retries: {last_err}')
 

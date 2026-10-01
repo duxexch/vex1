@@ -9,7 +9,8 @@ from datetime import datetime, timezone
 MAX_ITEMS = 300
 
 
-def load_news(path: str) -> dict:
+def load_news(path) -> dict:
+    path = str(path)
     try:
         with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -54,8 +55,9 @@ def to_item(e: dict) -> dict:
     }
 
 
-def publish(path: str, enriched: list[dict], log, dry_run: bool = False) -> tuple[int, int]:
+def publish(path, enriched: list[dict], log, dry_run: bool = False) -> tuple[int, int]:
     """Merge enriched candidates into the news store. Returns (added, total)."""
+    path = str(path)
     store = load_news(path)
     items = store.get('items', [])
     keys = existing_keys(store)
