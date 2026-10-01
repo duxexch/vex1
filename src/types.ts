@@ -844,6 +844,8 @@ export type {
   LotteryDraw,
   LotteryTicket,
   LotteryStats,
+  LotteryIntervalId,
+  LotteryDrawType,
 } from '../shared/lotteryConfig';
 import type { LotteryTierId } from '../shared/lotteryConfig';
 

@@ -7,6 +7,7 @@ import {
 } from '../types';
 import {
   DEFAULT_PRIZE_TIERS,
+  DEFAULT_DRAW_TYPES,
   LOTTERY_ADMIN_KEY,
   evaluateMatches,
   countMatches,
@@ -14,6 +15,8 @@ import {
   computeTierTotal,
   computeLotteryStats,
   type LotteryTierId,
+  type LotteryIntervalId,
+  type LotteryDrawType,
 } from '../../shared/lotteryConfig';
 import { requestFCMToken } from './firebaseClient';
 import { vexApi } from './api';
@@ -56,6 +59,7 @@ interface LotteryStateResponse {
   serverTime: string;
   activeDrawId: string | null;
   draws: LotteryDraw[];
+  drawTypes?: LotteryDrawType[];
   stats: LotteryStats;
   user: { userId: string; freeTickets: number; tickets: LotteryTicket[] } | null;
   allTickets?: LotteryTicket[];
@@ -67,6 +71,7 @@ class LotteryService {
   private draws: LotteryDraw[] = [];
   private tickets: LotteryTicket[] = [];
   private freeByUser: Record<string, number> = {};
+  private drawTypes: LotteryDrawType[] = Object.values(DEFAULT_DRAW_TYPES);
   private stateCache = new Map<string, { at: number; data: LotteryStateResponse }>();
 
   constructor() {
@@ -135,6 +140,9 @@ class LotteryService {
 
       this.stateCache.set(key, { at: Date.now(), data });
       this.draws = data.draws;
+      if (Array.isArray(data.drawTypes) && data.drawTypes.length > 0) {
+        this.drawTypes = data.drawTypes;
+      }
       this.saveDraws();
       if (data.user) {
         this.tickets = data.user.tickets;
@@ -162,6 +170,53 @@ class LotteryService {
   public async getActiveDraw(): Promise<LotteryDraw | null> {
     const draws = await this.getDraws();
     return draws.find((d) => d.status === 'open' || d.status === 'drawing' || d.status === 'closed') || draws[0] || null;
+  }
+
+  public async getDrawTypes(): Promise<LotteryDrawType[]> {
+    const state = await this.fetchState();
+    if (state && Array.isArray(state.drawTypes) && state.drawTypes.length > 0) return state.drawTypes;
+    return this.drawTypes;
+  }
+
+  /** Open (or closing) draws across all cadence types, newest first. */
+  public async getOpenDraws(): Promise<LotteryDraw[]> {
+    const draws = await this.getDraws();
+    return draws.filter((d) => d.status === 'open' || d.status === 'closed' || d.status === 'drawing');
+  }
+
+  public async getActiveDrawForType(typeId: LotteryIntervalId): Promise<LotteryDraw | null> {
+    const draws = await this.getDraws();
+    return (
+      draws.find(
+        (d) => d.typeId === typeId && (d.status === 'open' || d.status === 'closed' || d.status === 'drawing')
+      ) || null
+    );
+  }
+
+  public async updateDrawTypes(
+    patch: Array<{ id: LotteryIntervalId; enabled?: boolean; ticketPrice?: number; baseJackpot?: number }>
+  ): Promise<{ success: boolean; drawTypes: LotteryDrawType[] }> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch('/api/lottery/types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.adminHeaders() },
+        signal: controller.signal,
+        body: JSON.stringify({ drawTypes: patch }),
+      });
+      clearTimeout(timer);
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || !data.success) {
+        throw new Error((data && data.error) || `Draw types update failed (${res.status})`);
+      }
+      this.drawTypes = data.drawTypes;
+      this.invalidateState();
+      return { success: true, drawTypes: data.drawTypes };
+    } catch (err) {
+      clearTimeout(timer);
+      throw err;
+    }
   }
 
   public async getUserTickets(userId: string): Promise<LotteryTicket[]> {
@@ -516,18 +571,18 @@ class LotteryService {
     (Object.keys(winnersCount) as LotteryTierId[]).forEach((tierId) => {
       const count = winnersCount[tierId];
       if (count <= 0) return;
-      const perWinner = computePerWinnerPrize(tierId, draw.totalPool, draw.jackpotAmount, count);
+      const perWinner = computePerWinnerPrize(tierId, draw.totalPool, draw.jackpotAmount, count, draw.tiers);
       this.tickets.forEach((t) => {
         if (t.drawId === drawId && t.matchedTier === tierId) t.prizeWon = perWinner;
       });
-      totalPayout += computeTierTotal(tierId, draw.totalPool, draw.jackpotAmount, count);
+      totalPayout += computeTierTotal(tierId, draw.totalPool, draw.jackpotAmount, count, draw.tiers);
     });
 
     draw.winnersCount = winnersCount;
     draw.totalPaidOut = Math.round(totalPayout * 100) / 100;
     draw.jackpotPaid =
       winnersCount.tier1_jackpot > 0
-        ? computeTierTotal('tier1_jackpot', draw.totalPool, draw.jackpotAmount, winnersCount.tier1_jackpot)
+        ? computeTierTotal('tier1_jackpot', draw.totalPool, draw.jackpotAmount, winnersCount.tier1_jackpot, draw.tiers)
         : 0;
 
     this.saveDraws();
@@ -537,11 +592,13 @@ class LotteryService {
   }
 
   public async createDraw(params: {
-    titleAr: string;
-    titleEn: string;
-    ticketPrice: number;
-    initialJackpot: number;
-    closeAt: string;
+    typeId?: LotteryIntervalId;
+    titleAr?: string;
+    titleEn?: string;
+    ticketPrice?: number;
+    initialJackpot?: number;
+    closeAt?: string;
+    closeDays?: number;
   }): Promise<LotteryDraw> {
     try {
       const controller = new AbortController();
@@ -568,33 +625,43 @@ class LotteryService {
   }
 
   private async createDrawLocal(params: {
-    titleAr: string;
-    titleEn: string;
-    ticketPrice: number;
-    initialJackpot: number;
-    closeAt: string;
+    typeId?: LotteryIntervalId;
+    titleAr?: string;
+    titleEn?: string;
+    ticketPrice?: number;
+    initialJackpot?: number;
+    closeAt?: string;
+    closeDays?: number;
   }): Promise<LotteryDraw> {
     this.initData();
+    const type = params.typeId ? DEFAULT_DRAW_TYPES[params.typeId] : undefined;
     const nextNumber = this.draws.reduce((max, d) => Math.max(max, d.drawNumber), 87) + 1;
     const serverSeed = `vex_seed_draw_${nextNumber}_${Date.now()}_${Math.random().toString(36).substring(2)}`;
     const serverSeedHash = await sha256(serverSeed);
+    const closeAtMs = params.closeAt
+      ? new Date(params.closeAt).getTime()
+      : params.closeDays
+        ? Date.now() + params.closeDays * 86400000
+        : Date.now() + (type ? type.intervalMinutes * 60000 : 7 * 86400000);
 
     const newDraw: LotteryDraw = {
       id: `DRAW-${new Date().getFullYear()}-${String(nextNumber).padStart(3, '0')}`,
       drawNumber: nextNumber,
-      titleAr: params.titleAr || `سحب VEX الأسبوعي الكبرى #${nextNumber}`,
-      titleEn: params.titleEn || `VEX Weekly Mega Draw #${nextNumber}`,
+      titleAr:
+        params.titleAr || (type ? `${type.nameAr} الكبرى #${nextNumber}` : `سحب VEX الأسبوعي الكبرى #${nextNumber}`),
+      titleEn:
+        params.titleEn || (type ? `VEX ${type.nameEn} Mega Draw #${nextNumber}` : `VEX Weekly Mega Draw #${nextNumber}`),
       status: 'open',
-      ticketPrice: params.ticketPrice || 1.0,
+      ticketPrice: params.ticketPrice ?? type?.ticketPrice ?? 1.0,
       currency: 'USD',
-      jackpotAmount: params.initialJackpot || 15000.0,
-      initialJackpot: params.initialJackpot || 15000.0,
-      totalPool: params.initialJackpot || 15000.0,
+      jackpotAmount: params.initialJackpot ?? type?.baseJackpot ?? 15000.0,
+      initialJackpot: params.initialJackpot ?? type?.baseJackpot ?? 15000.0,
+      totalPool: params.initialJackpot ?? type?.baseJackpot ?? 15000.0,
       ticketsSoldCount: 0,
       participantsCount: 0,
       openAt: new Date().toISOString(),
-      closeAt: params.closeAt || new Date(Date.now() + 7 * 86400000).toISOString(),
-      drawAt: new Date(new Date(params.closeAt || Date.now() + 7 * 86400000).getTime() + 60000).toISOString(),
+      closeAt: new Date(closeAtMs).toISOString(),
+      drawAt: new Date(closeAtMs + 60000).toISOString(),
       provablyFair: {
         serverSeed,
         serverSeedHash,
@@ -602,10 +669,11 @@ class LotteryService {
         nonce: nextNumber,
         verified: false,
       },
-      tiers: DEFAULT_PRIZE_TIERS,
+      tiers: type ? type.tiers : DEFAULT_PRIZE_TIERS,
       isRollover: false,
       reminded60: false,
       reminded30: false,
+      typeId: type?.id,
     };
 
     this.draws.unshift(newDraw);

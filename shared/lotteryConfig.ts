@@ -9,6 +9,8 @@ export type LotteryDrawStatus = 'upcoming' | 'open' | 'closed' | 'drawing' | 'co
 
 export type LotteryTierId = 'tier1_jackpot' | 'tier2_match5' | 'tier3_match4_2' | 'tier4_match3' | 'tier5_match2';
 
+export type LotteryIntervalId = 'hourly' | 'every_5h' | 'every_15h' | 'daily' | 'weekly' | 'monthly';
+
 export interface LotteryPrizeTier {
   id: LotteryTierId;
   nameAr: string;
@@ -62,6 +64,8 @@ export interface LotteryDraw {
   reminded30?: boolean;
   /** Demo-history draw seeded at first boot — excluded from platform statistics. */
   isSeedHistory?: boolean;
+  /** Cadence bucket this draw belongs to (hourly/5h/15h/daily/weekly/monthly). */
+  typeId?: LotteryIntervalId;
 }
 
 export interface LotteryTicket {
@@ -95,6 +99,17 @@ export interface LotteryStats {
   coldNumbers: { number: number; frequency: number }[];
 }
 
+export interface LotteryDrawType {
+  id: LotteryIntervalId;
+  nameAr: string;
+  nameEn: string;
+  intervalMinutes: number;
+  ticketPrice: number;
+  baseJackpot: number;
+  enabled: boolean;
+  tiers: LotteryPrizeTier[];
+}
+
 export interface LotteryConfig {
   enabled: boolean;
   autoCreateNext: boolean;
@@ -103,6 +118,8 @@ export interface LotteryConfig {
   ticketPrice: number;
   closeGraceSeconds: number;
   notifyTelegram: boolean;
+  /** Per-cadence draw types (v3). Absent only before first migration. */
+  drawTypes?: Record<LotteryIntervalId, LotteryDrawType>;
 }
 
 export interface LotteryServerState {
@@ -226,6 +243,169 @@ export const DEFAULT_PRIZE_TIERS: LotteryPrizeTier[] = [
 ];
 
 // ------------------------------------------------------------
+// Per-cadence prize economies — each draw type carries its own tiers
+// (floors/fixed prizes scale with the jackpot and ticket price).
+// ------------------------------------------------------------
+
+export function buildPrizeTiers(p: {
+  t1Floor: number;
+  t2Floor: number;
+  t3Floor: number;
+  t4Fixed: number;
+  t5Fixed: number;
+  t1Share?: number;
+  t2Share?: number;
+  t3Share?: number;
+}): LotteryPrizeTier[] {
+  const usd = (n: number) =>
+    `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return [
+    {
+      id: 'tier1_jackpot',
+      nameAr: 'الجائزة الكبرى (5 أرقام + 2 ذهبيين)',
+      nameEn: 'Jackpot (Match 5 + 2 Lucky Stars)',
+      matchMain: 5,
+      matchLucky: 2,
+      sharePercent: p.t1Share ?? 50,
+      guaranteedAmount: p.t1Floor,
+      odds: '1 : 139,838,160',
+      termsAr: `تتطلب مطابقة جميع الأرقام الخمسة الرئيسية (من 1 إلى 50) بالإضافة إلى رقمي نجوم الحظ الذهبيين (من 1 إلى 12) بدقة تامة. في حال تعدد التذاكر الفائزة، تُقسَّم الجائزة بالتساوي بينها، مع ضمان حد أدنى إجمالي لا يقل عن ${usd(p.t1Floor)}.`,
+      termsEn: `Requires an exact match of all 5 main balls (1-50) plus both lucky stars (1-12). If multiple tickets match, the jackpot is split equally among them, guaranteed at no less than ${usd(p.t1Floor)} in total.`,
+      payoutTermsAr: 'إيداع تلقائي في المحفظة النشطة بعد السحب، ومتاحة للسحب عبر USDT أو فودافون كاش أو التحويل البنكي.',
+      payoutTermsEn: 'Automatic credit to your active wallet after the draw. Withdrawable via USDT, Vodafone Cash, or Bank Transfer.',
+    },
+    {
+      id: 'tier2_match5',
+      nameAr: 'المستوى الثاني (5 أرقام + 1 ذهبي)',
+      nameEn: 'Tier 2 (Match 5 + 1 Lucky Star)',
+      matchMain: 5,
+      matchLucky: 1,
+      sharePercent: p.t2Share ?? 20,
+      guaranteedAmount: p.t2Floor,
+      odds: '1 : 6,991,908',
+      termsAr: `تتطلب مطابقة 5 أرقام رئيسية ورقم ذهبي واحد. يحصل الفائزون على ${p.t2Share ?? 20}% من إجمالي مجمع السحب مقسومة بينهم بالتساوي، بحد أدنى إجمالي مضمون ${usd(p.t2Floor)}.`,
+      termsEn: `Requires matching 5 main numbers and 1 lucky star. Awarded ${p.t2Share ?? 20}% of the total pool split equally among winners, with a guaranteed total minimum of ${usd(p.t2Floor)}.`,
+      payoutTermsAr: 'صرف مباشر في المحفظة بعد انتهاء السحب.',
+      payoutTermsEn: 'Direct credit to wallet after the draw completes.',
+    },
+    {
+      id: 'tier3_match4_2',
+      nameAr: 'المستوى الثالث (4 أرقام + 2 ذهبيين)',
+      nameEn: 'Tier 3 (Match 4 + 2 Lucky Stars)',
+      matchMain: 4,
+      matchLucky: 2,
+      sharePercent: p.t3Share ?? 15,
+      guaranteedAmount: p.t3Floor,
+      odds: '1 : 621,503',
+      termsAr: `تتطلب مطابقة 4 أرقام رئيسية ورقمي الحظ الذهبيين. يحصل الفائزون على ${p.t3Share ?? 15}% من المجمع مقسومة بينهم بالتساوي، بحد أدنى إجمالي مضمون ${usd(p.t3Floor)}.`,
+      termsEn: `Requires matching 4 main numbers and both lucky stars. Awarded ${p.t3Share ?? 15}% of the pool split equally among winners, with a guaranteed total minimum of ${usd(p.t3Floor)}.`,
+      payoutTermsAr: 'إيداع في المحفظة مع إشعار وتوليد إيصال رقمي.',
+      payoutTermsEn: 'Credit to wallet with push notification and a digital payout receipt.',
+    },
+    {
+      id: 'tier4_match3',
+      nameAr: 'المستوى الرابع (3 أرقام + أي ذهبي)',
+      nameEn: 'Tier 4 (Match 3 + Any Lucky)',
+      matchMain: 3,
+      matchLucky: 1,
+      sharePercent: 10,
+      fixedPrize: p.t4Fixed,
+      odds: '1 : 3,107',
+      termsAr: `تتطلب مطابقة 3 أرقام رئيسية على الأقل ورقم ذهبي واحد على الأقل. جائزة نقدية ثابتة بقيمة ${usd(p.t4Fixed)} لكل تذكرة فائزة.`,
+      termsEn: `Requires matching at least 3 main numbers and at least 1 lucky star. Fixed cash prize of ${usd(p.t4Fixed)} per winning ticket.`,
+      payoutTermsAr: 'تضاف لرصيد المحفظة المتاح للاستخدام في طلبات التعويض أو شراء تذاكر جديدة أو السحب.',
+      payoutTermsEn: 'Credited to spendable wallet balance for compensation requests, new tickets or withdrawals.',
+    },
+    {
+      id: 'tier5_match2',
+      nameAr: 'المستوى الخامس (رقمين + 1 ذهبي)',
+      nameEn: 'Tier 5 (Match 2 + 1 Lucky)',
+      matchMain: 2,
+      matchLucky: 1,
+      sharePercent: 5,
+      fixedPrize: p.t5Fixed,
+      odds: '1 : 128',
+      termsAr: `تتطلب مطابقة رقمين رئيسيين على الأقل ورقم ذهبي واحد على الأقل. تمنحك جائزة نقدية ${usd(p.t5Fixed)} لكل تذكرة فائزة.`,
+      termsEn: `Requires matching at least 2 main numbers and at least 1 lucky star. Awards ${usd(p.t5Fixed)} cash per winning ticket.`,
+      payoutTermsAr: 'تسليم للمحفظة وتحديث لرصيد التذاكر المجانية.',
+      payoutTermsEn: 'Credit to wallet and updated free ticket balance.',
+    },
+  ];
+}
+
+export const DEFAULT_DRAW_TYPES: Record<LotteryIntervalId, LotteryDrawType> = {
+  hourly: {
+    id: 'hourly',
+    nameAr: 'سحب كل ساعة',
+    nameEn: 'Hourly Draw',
+    intervalMinutes: 60,
+    ticketPrice: 0.25,
+    baseJackpot: 100,
+    enabled: true,
+    tiers: buildPrizeTiers({ t1Floor: 100, t2Floor: 20, t3Floor: 10, t4Fixed: 2, t5Fixed: 0.5 }),
+  },
+  every_5h: {
+    id: 'every_5h',
+    nameAr: 'سحب كل 5 ساعات',
+    nameEn: '5-Hour Draw',
+    intervalMinutes: 300,
+    ticketPrice: 0.5,
+    baseJackpot: 500,
+    enabled: true,
+    tiers: buildPrizeTiers({ t1Floor: 500, t2Floor: 100, t3Floor: 50, t4Fixed: 10, t5Fixed: 1 }),
+  },
+  every_15h: {
+    id: 'every_15h',
+    nameAr: 'سحب كل 15 ساعة',
+    nameEn: '15-Hour Draw',
+    intervalMinutes: 900,
+    ticketPrice: 1,
+    baseJackpot: 1500,
+    enabled: true,
+    tiers: buildPrizeTiers({ t1Floor: 1500, t2Floor: 300, t3Floor: 150, t4Fixed: 25, t5Fixed: 2.5 }),
+  },
+  daily: {
+    id: 'daily',
+    nameAr: 'السحب اليومي',
+    nameEn: 'Daily Draw',
+    intervalMinutes: 1440,
+    ticketPrice: 1,
+    baseJackpot: 15000,
+    enabled: true,
+    tiers: DEFAULT_PRIZE_TIERS,
+  },
+  weekly: {
+    id: 'weekly',
+    nameAr: 'السحب الأسبوعي',
+    nameEn: 'Weekly Draw',
+    intervalMinutes: 10080,
+    ticketPrice: 2,
+    baseJackpot: 50000,
+    enabled: true,
+    tiers: buildPrizeTiers({ t1Floor: 50000, t2Floor: 5000, t3Floor: 2500, t4Fixed: 100, t5Fixed: 10 }),
+  },
+  monthly: {
+    id: 'monthly',
+    nameAr: 'السحب الشهري',
+    nameEn: 'Monthly Draw',
+    intervalMinutes: 43200,
+    ticketPrice: 5,
+    baseJackpot: 250000,
+    enabled: true,
+    tiers: buildPrizeTiers({ t1Floor: 250000, t2Floor: 25000, t3Floor: 10000, t4Fixed: 500, t5Fixed: 50 }),
+  },
+};
+
+export const LOTTERY_DRAW_TYPE_IDS: LotteryIntervalId[] = [
+  'hourly',
+  'every_5h',
+  'every_15h',
+  'daily',
+  'weekly',
+  'monthly',
+];
+
+// ------------------------------------------------------------
 // Evaluation — strictly matches the advertised tier conditions above.
 // Edge cases (documented):
 //   5+0, 4+1 falls to tier4 (>=3 main + >=1 lucky), 3+0 / 2+0 / <=1 main -> no prize.
@@ -254,8 +434,8 @@ export function countMatches(
   };
 }
 
-export function getTier(tierId: LotteryTierId): LotteryPrizeTier {
-  return DEFAULT_PRIZE_TIERS.find((t) => t.id === tierId) || DEFAULT_PRIZE_TIERS[0];
+export function getTier(tierId: LotteryTierId, tiers: LotteryPrizeTier[] = DEFAULT_PRIZE_TIERS): LotteryPrizeTier {
+  return tiers.find((t) => t.id === tierId) || tiers[0] || DEFAULT_PRIZE_TIERS[0];
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -270,10 +450,11 @@ export function computeTierTotal(
   tierId: LotteryTierId,
   totalPool: number,
   jackpotAmount: number,
-  winnersCount: number
+  winnersCount: number,
+  tiers: LotteryPrizeTier[] = DEFAULT_PRIZE_TIERS
 ): number {
   if (winnersCount <= 0) return 0;
-  const tier = getTier(tierId);
+  const tier = getTier(tierId, tiers);
   if (tier.fixedPrize) return round2(tier.fixedPrize * winnersCount);
   if (tierId === 'tier1_jackpot') return round2(Math.max(jackpotAmount, tier.guaranteedAmount || 0));
   const share = round2((Math.max(totalPool, 0) * (tier.sharePercent || 0)) / 100);
@@ -285,10 +466,11 @@ export function computePerWinnerPrize(
   tierId: LotteryTierId,
   totalPool: number,
   jackpotAmount: number,
-  winnersCount: number
+  winnersCount: number,
+  tiers: LotteryPrizeTier[] = DEFAULT_PRIZE_TIERS
 ): number {
   if (winnersCount <= 0) return 0;
-  return round2(computeTierTotal(tierId, totalPool, jackpotAmount, winnersCount) / winnersCount);
+  return round2(computeTierTotal(tierId, totalPool, jackpotAmount, winnersCount, tiers) / winnersCount);
 }
 
 // ------------------------------------------------------------

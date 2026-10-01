@@ -17,7 +17,7 @@ import { getProfileText, type ProfileText } from './server/i18nProfiles';
 import { GUIDES, getGuide } from './server/i18nGuides';
 import { STATIC_PAGES, STATIC_PAGE_SLUGS, TRUST_NAV } from './server/staticPages';
 import * as lotteryEngine from './server/lotteryEngine';
-import { LOTTERY_ADMIN_KEY, type LotteryDraw } from './shared/lotteryConfig';
+import { LOTTERY_ADMIN_KEY, LOTTERY_DRAW_TYPE_IDS, type LotteryDraw, type LotteryIntervalId } from './shared/lotteryConfig';
 
 const currentFilename = '';
 const currentDirname = process.cwd();
@@ -3267,16 +3267,20 @@ app.post('/api/lottery/draw', (req, res) => {
   });
 });
 
-// Admin: schedule a new draw.
+// Admin: schedule a new draw (optionally for a specific cadence type).
 app.post('/api/lottery/create', (req, res) => {
   if (!requireLotteryAdmin(req, res)) return;
-  const { titleAr, titleEn, ticketPrice, initialJackpot, closeAt, closeDays } = req.body || {};
+  const { titleAr, titleEn, ticketPrice, initialJackpot, closeAt, closeDays, typeId } = req.body || {};
+  if (typeId !== undefined && typeId !== null && typeId !== '' && !LOTTERY_DRAW_TYPE_IDS.includes(typeId)) {
+    return res.status(400).json({ success: false, error: 'Unknown typeId' });
+  }
   const closeAtIso = closeAt
     ? String(closeAt)
     : closeDays
       ? new Date(Date.now() + Number(closeDays || 7) * 86400000).toISOString()
       : undefined;
   const draw = lotteryEngine.createDraw({
+    typeId: typeId ? (String(typeId) as LotteryIntervalId) : undefined,
     titleAr: titleAr ? String(titleAr) : undefined,
     titleEn: titleEn ? String(titleEn) : undefined,
     ticketPrice: Number.isFinite(Number(ticketPrice)) && ticketPrice !== undefined && ticketPrice !== null ? Number(ticketPrice) : undefined,
@@ -3286,6 +3290,27 @@ app.post('/api/lottery/create', (req, res) => {
   });
   dispatchLotteryNewDrawNotification(draw);
   res.json({ success: true, draw: lotteryEngine.publicDraw(draw) });
+});
+
+// Admin: update cadence draw types (enable/disable, price, jackpot, tiers)
+// and immediately stand up an active draw for any type that was re-enabled.
+app.post('/api/lottery/types', (req, res) => {
+  if (!requireLotteryAdmin(req, res)) return;
+  const { drawTypes } = req.body || {};
+  if (!Array.isArray(drawTypes)) {
+    return res.status(400).json({ success: false, error: 'drawTypes array is required' });
+  }
+  const result = lotteryEngine.updateDrawTypes(drawTypes);
+  if (!result.success) return res.status(400).json(result);
+  let created = 0;
+  try {
+    const newDraws = lotteryEngine.ensureActiveDraws();
+    created = newDraws.length;
+    newDraws.forEach(dispatchLotteryNewDrawNotification);
+  } catch (err) {
+    console.error('[Lottery] ensureActiveDraws after types update failed:', err);
+  }
+  res.json({ success: true, drawTypes: result.drawTypes, created });
 });
 
 // Admin: airdrop free solidarity tickets to a user.
@@ -6197,6 +6222,7 @@ ${secsHtml}
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`VEX Deals Full-Stack Server with Socket.io running at http://0.0.0.0:${PORT}`);
+    runLotterySchedulerTick();
     startDockerNotificationWorker();
     if (telegramConfig.bot_token && telegramConfig.is_active) {
       startTelegramPolling();

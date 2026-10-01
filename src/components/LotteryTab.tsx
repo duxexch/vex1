@@ -32,6 +32,7 @@ import {
   LotteryTicket, 
   LotteryStats, 
   LotteryUserWonPrize,
+  LotteryIntervalId,
   Wallet as UserWallet 
 } from '../types';
 import { lotteryService } from '../services/lotteryService';
@@ -68,6 +69,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
   // Lottery Data State
   const [activeDraw, setActiveDraw] = useState<LotteryDraw | null>(null);
   const [allDraws, setAllDraws] = useState<LotteryDraw[]>([]);
+  const [selectedDrawTypeId, setSelectedDrawTypeId] = useState<LotteryIntervalId | null>(null);
   const [userTickets, setUserTickets] = useState<LotteryTicket[]>([]);
   const [userWonPrizes, setUserWonPrizes] = useState<LotteryUserWonPrize[]>([]);
   const [stats, setStats] = useState<LotteryStats | null>(null);
@@ -124,7 +126,10 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
     try {
       const draws = await lotteryService.getDraws();
       setAllDraws(draws);
-      const current = draws.find((d) => d.status === 'open' || d.status === 'drawing') || draws[0] || null;
+      const openDraws = draws.filter((d) => d.status === 'open' || d.status === 'drawing');
+      const preferred = selectedDrawTypeId ? openDraws.find((d) => d.typeId === selectedDrawTypeId) : null;
+      const current = preferred || openDraws.find((d) => d.status === 'open') || draws[0] || null;
+      if (current && current.typeId) setSelectedDrawTypeId(current.typeId);
       setActiveDraw(current);
 
       const tickets = await lotteryService.getUserTickets(userId);
@@ -419,8 +424,45 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
     });
   };
 
+  const openDrawsForPicker = allDraws.filter((d) => d.status === 'open');
+
+  const handleSelectDraw = (draw: LotteryDraw) => {
+    setSelectedDrawTypeId(draw.typeId ?? null);
+    setActiveDraw(draw);
+    setErrorMessage(null);
+  };
+
   return (
     <div className="space-y-4 pb-20">
+      {/* Cadence draw picker: switch between hourly / 5h / 15h / daily / weekly / monthly */}
+      {openDrawsForPicker.length > 1 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+          <span className="text-[11px] font-black text-slate-400 shrink-0">
+            {isAr ? 'أنواع السحب:' : 'Draw Types:'}
+          </span>
+          {openDrawsForPicker.map((d) => {
+            const isActive = activeDraw?.id === d.id;
+            const label = (isAr ? d.titleAr : d.titleEn).replace(/#\d+\s*$/, '').trim();
+            return (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => handleSelectDraw(d)}
+                className={`shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-black transition ${
+                  isActive
+                    ? 'bg-amber-500/20 border-amber-400/60 text-amber-300 shadow-sm'
+                    : 'bg-slate-800/70 border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white'
+                }`}
+              >
+                <span>{label}</span>
+                <span className="font-mono text-emerald-400">${d.ticketPrice.toFixed(2)}</span>
+                <span className="font-mono text-slate-400">${d.jackpotAmount.toLocaleString('en-US')}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Top Banner: Progressive Jackpot Hero */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-4 sm:p-6 shadow-md border border-indigo-900/60">
         <div className="absolute -top-16 -right-16 w-48 h-48 bg-amber-500/15 rounded-full blur-2xl pointer-events-none" />

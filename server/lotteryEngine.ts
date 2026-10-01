@@ -11,6 +11,9 @@ import {
   LotteryTicket,
   LotteryTierId,
   LotteryConfig,
+  LotteryIntervalId,
+  LotteryDrawType,
+  LotteryPrizeTier,
   LotteryServerState,
   DEFAULT_PRIZE_TIERS,
   DEFAULT_LOTTERY_CONFIG,
@@ -152,14 +155,27 @@ function buildSeedDraws(): LotteryDraw[] {
   ];
 }
 
-function ensureDraws(): LotteryDraw[] {
+function loadDraws(): LotteryDraw[] {
   let draws = storage.getLotteryDraws();
+  let dirty = false;
   if (draws.length === 0) {
     draws = buildSeedDraws();
-    storage.saveLotteryDraws(draws);
+    dirty = true;
     console.log('[Lottery] Seeded initial draws (#86-#88) into data/lottery_draws.json');
   }
+  for (const d of draws) {
+    if (!d.typeId) {
+      // Legacy draws (pre-v3) followed the 7-day cadence.
+      d.typeId = 'weekly';
+      dirty = true;
+    }
+  }
+  if (dirty) storage.saveLotteryDraws(draws);
   return draws;
+}
+
+function ensureDraws(): LotteryDraw[] {
+  return loadDraws();
 }
 
 export function getConfig(): LotteryConfig {
@@ -167,6 +183,10 @@ export function getConfig(): LotteryConfig {
 }
 export function saveConfig(cfg: LotteryConfig): void {
   storage.saveLotteryConfig(cfg);
+}
+export function getDrawTypes(): LotteryDrawType[] {
+  const cfg = getConfig();
+  return cfg.drawTypes ? Object.values(cfg.drawTypes) : [];
 }
 export function getStateStore(): LotteryServerState {
   return storage.getLotteryState();
@@ -237,19 +257,23 @@ export interface LotteryPublicState {
   serverTime: string;
   activeDrawId: string | null;
   draws: LotteryDraw[];
+  drawTypes: LotteryDrawType[];
   stats: ReturnType<typeof computeLotteryStats>;
   user: { userId: string; freeTickets: number; tickets: LotteryTicket[] } | null;
   allTickets?: LotteryTicket[];
 }
 
 export function getPublicState(userId?: string, includeAllTickets = false): LotteryPublicState {
+  ensureActiveDraws();
   const draws = ensureDraws();
   const sorted = [...draws].sort((a, b) => b.drawNumber - a.drawNumber);
   const active = getActiveDraw(draws);
+  const cfg = getConfig();
   return {
     serverTime: new Date().toISOString(),
     activeDrawId: active ? active.id : null,
     draws: sorted.map(publicDraw),
+    drawTypes: cfg.drawTypes ? Object.values(cfg.drawTypes) : [],
     stats: computeStats(),
     user: userId
       ? { userId, freeTickets: getFreeTickets(userId), tickets: getUserTickets(userId) }
@@ -388,31 +412,40 @@ export function claimPrize(userId: string, ticketId: string, payoutCompanyId?: s
   };
 }
 
-export function createDraw(params: {
-  titleAr?: string;
-  titleEn?: string;
-  ticketPrice?: number;
-  initialJackpot?: number;
-  closeAt?: string;
-  isRollover?: boolean;
-}): LotteryDraw {
+function createDrawIn(
+  draws: LotteryDraw[],
+  params: {
+    typeId?: LotteryIntervalId;
+    titleAr?: string;
+    titleEn?: string;
+    ticketPrice?: number;
+    initialJackpot?: number;
+    closeAt?: string;
+    isRollover?: boolean;
+  }
+): LotteryDraw {
   const cfg = getConfig();
-  const draws = ensureDraws();
+  const type = params.typeId && cfg.drawTypes ? cfg.drawTypes[params.typeId] : undefined;
   const nextNumber = draws.reduce((max, d) => Math.max(max, d.drawNumber), 0) + 1;
   const serverSeed = crypto.randomBytes(32).toString('hex');
-  const closeAtMs = params.closeAt ? new Date(params.closeAt).getTime() : Date.now() + cfg.intervalDays * 86400000;
+  const intervalMs = type ? type.intervalMinutes * 60000 : cfg.intervalDays * 86400000;
+  const closeAtMs = params.closeAt ? new Date(params.closeAt).getTime() : Date.now() + intervalMs;
+  const jackpot = params.initialJackpot ?? type?.baseJackpot ?? cfg.baseJackpot;
 
   const newDraw: LotteryDraw = {
     id: `DRAW-${new Date().getFullYear()}-${String(nextNumber).padStart(3, '0')}`,
     drawNumber: nextNumber,
-    titleAr: params.titleAr || `سحب VEX الأسبوعي الكبرى #${nextNumber}`,
-    titleEn: params.titleEn || `VEX Weekly Mega Draw #${nextNumber}`,
+    titleAr:
+      params.titleAr ||
+      (type ? `${type.nameAr} الكبرى #${nextNumber}` : `سحب VEX الأسبوعي الكبرى #${nextNumber}`),
+    titleEn:
+      params.titleEn || (type ? `VEX ${type.nameEn} Mega Draw #${nextNumber}` : `VEX Weekly Mega Draw #${nextNumber}`),
     status: 'open',
-    ticketPrice: params.ticketPrice ?? cfg.ticketPrice,
+    ticketPrice: params.ticketPrice ?? type?.ticketPrice ?? cfg.ticketPrice,
     currency: 'USD',
-    jackpotAmount: params.initialJackpot ?? cfg.baseJackpot,
-    initialJackpot: params.initialJackpot ?? cfg.baseJackpot,
-    totalPool: params.initialJackpot ?? cfg.baseJackpot,
+    jackpotAmount: jackpot,
+    initialJackpot: jackpot,
+    totalPool: jackpot,
     ticketsSoldCount: 0,
     participantsCount: 0,
     openAt: new Date().toISOString(),
@@ -425,15 +458,114 @@ export function createDraw(params: {
       nonce: nextNumber,
       verified: false,
     },
-    tiers: DEFAULT_PRIZE_TIERS,
+    tiers: type ? type.tiers : DEFAULT_PRIZE_TIERS,
     isRollover: params.isRollover || false,
     reminded60: false,
     reminded30: false,
+    typeId: type?.id,
   };
 
   draws.unshift(newDraw);
   storage.saveLotteryDraws(draws);
   return newDraw;
+}
+
+export function createDraw(params: {
+  typeId?: LotteryIntervalId;
+  titleAr?: string;
+  titleEn?: string;
+  ticketPrice?: number;
+  initialJackpot?: number;
+  closeAt?: string;
+  isRollover?: boolean;
+} = {}): LotteryDraw {
+  return createDrawIn(ensureDraws(), params);
+}
+
+/** Keeps an open draw alive for every enabled cadence type. Returns new draws. */
+export function ensureActiveDraws(): LotteryDraw[] {
+  const cfg = getConfig();
+  const created: LotteryDraw[] = [];
+  if (!cfg.enabled || !cfg.autoCreateNext || !cfg.drawTypes) return created;
+  const draws = ensureDraws();
+  for (const type of Object.values(cfg.drawTypes)) {
+    if (!type.enabled) continue;
+    const active = draws.some(
+      (d) => d.typeId === type.id && (d.status === 'open' || d.status === 'closed' || d.status === 'drawing')
+    );
+    if (active) continue;
+
+    const prevCompleted = draws
+      .filter((d) => d.typeId === type.id && d.status === 'completed')
+      .reduce<LotteryDraw | null>((max, d) => (!max || d.drawNumber > max.drawNumber ? d : max), null);
+    const tier1Won = prevCompleted ? (prevCompleted.winnersCount?.tier1_jackpot || 0) > 0 : true;
+    const rolled = prevCompleted && !tier1Won ? Math.min(prevCompleted.jackpotAmount, type.baseJackpot * 10) : 0;
+    const nextJackpot = rolled > type.baseJackpot ? rolled : type.baseJackpot;
+    created.push(
+      createDrawIn(draws, {
+        typeId: type.id,
+        initialJackpot: nextJackpot,
+        isRollover: rolled > type.baseJackpot,
+      })
+    );
+  }
+  return created;
+}
+
+export function updateDrawTypes(
+  patch: Array<{
+    id: LotteryIntervalId;
+    enabled?: boolean;
+    ticketPrice?: number;
+    baseJackpot?: number;
+    tiers?: LotteryPrizeTier[];
+  }>
+): { success: boolean; error?: string; drawTypes?: LotteryDrawType[] } {
+  const cfg = getConfig();
+  if (!cfg.drawTypes) return { success: false, error: 'drawTypes schema not initialized' };
+  if (!Array.isArray(patch) || patch.length === 0) return { success: false, error: 'No draw type updates provided' };
+
+  for (const entry of patch) {
+    const type = cfg.drawTypes[entry.id];
+    if (!type) return { success: false, error: `Unknown draw type: ${String(entry.id)}` };
+    if (entry.enabled !== undefined) {
+      if (typeof entry.enabled !== 'boolean') return { success: false, error: `enabled must be boolean for ${entry.id}` };
+      type.enabled = entry.enabled;
+    }
+    if (entry.ticketPrice !== undefined) {
+      const v = Number(entry.ticketPrice);
+      if (!Number.isFinite(v) || v < 0.05 || v > 1000) {
+        return { success: false, error: `ticketPrice must be between 0.05 and 1000 for ${entry.id}` };
+      }
+      type.ticketPrice = Math.round(v * 100) / 100;
+    }
+    if (entry.baseJackpot !== undefined) {
+      const v = Number(entry.baseJackpot);
+      if (!Number.isFinite(v) || v < 1 || v > 100000000) {
+        return { success: false, error: `baseJackpot must be between 1 and 100000000 for ${entry.id}` };
+      }
+      type.baseJackpot = Math.round(v * 100) / 100;
+    }
+    if (entry.tiers !== undefined) {
+      if (!Array.isArray(entry.tiers) || entry.tiers.length !== 5) {
+        return { success: false, error: `tiers must contain all 5 tiers for ${entry.id}` };
+      }
+      const validIds = ['tier1_jackpot', 'tier2_match5', 'tier3_match4_2', 'tier4_match3', 'tier5_match2'];
+      for (const t of entry.tiers) {
+        if (!validIds.includes(t.id)) return { success: false, error: `Invalid tier id ${String(t.id)} for ${entry.id}` };
+        if (t.fixedPrize !== undefined && (!Number.isFinite(t.fixedPrize) || t.fixedPrize < 0 || t.fixedPrize > 10000000)) {
+          return { success: false, error: `fixedPrize out of range in ${entry.id}` };
+        }
+        if (t.guaranteedAmount !== undefined && (!Number.isFinite(t.guaranteedAmount) || t.guaranteedAmount < 0 || t.guaranteedAmount > 100000000)) {
+          return { success: false, error: `guaranteedAmount out of range in ${entry.id}` };
+        }
+      }
+      type.tiers = entry.tiers;
+    }
+  }
+
+  saveConfig(cfg);
+  return { success: true, drawTypes: Object.values(cfg.drawTypes) };
 }
 
 export function runDraw(
@@ -505,16 +637,16 @@ export function runDraw(
   (Object.keys(winnersCount) as LotteryTierId[]).forEach((tierId) => {
     const count = winnersCount[tierId];
     if (count <= 0) return;
-    const perWinner = computePerWinnerPrize(tierId, draw.totalPool, draw.jackpotAmount, count);
+    const perWinner = computePerWinnerPrize(tierId, draw.totalPool, draw.jackpotAmount, count, draw.tiers);
     tickets.forEach((t) => {
       if (t.drawId === draw.id && t.matchedTier === tierId) t.prizeWon = perWinner;
     });
-    totalPayout += computeTierTotal(tierId, draw.totalPool, draw.jackpotAmount, count);
+    totalPayout += computeTierTotal(tierId, draw.totalPool, draw.jackpotAmount, count, draw.tiers);
   });
   totalPayout = round2(totalPayout);
 
   const tier1Winners = winnersCount.tier1_jackpot || 0;
-  draw.jackpotPaid = tier1Winners > 0 ? round2(computeTierTotal('tier1_jackpot', draw.totalPool, draw.jackpotAmount, tier1Winners)) : 0;
+  draw.jackpotPaid = tier1Winners > 0 ? round2(computeTierTotal('tier1_jackpot', draw.totalPool, draw.jackpotAmount, tier1Winners, draw.tiers)) : 0;
   draw.winnersCount = winnersCount;
   draw.totalPaidOut = totalPayout;
   draw.status = 'completed';
@@ -602,12 +734,13 @@ export function schedulerTick(nowMs = Date.now()): LotteryTickEvent[] {
       events.push({ type: 'closed', draw: { ...draw } });
     } else {
       const diffMin = (closeMs - nowMs) / 60000;
-      if (diffMin <= 60 && !draw.reminded60) {
+      const windowMin = (closeMs - new Date(draw.openAt).getTime()) / 60000;
+      if (diffMin <= 60 && windowMin > 75 && !draw.reminded60) {
         draw.reminded60 = true;
         dirty = true;
         events.push({ type: 'reminder60', draw: { ...draw } });
       }
-      if (diffMin <= 30 && !draw.reminded30) {
+      if (diffMin <= 30 && windowMin > 45 && !draw.reminded30) {
         draw.reminded30 = true;
         dirty = true;
         const subs = getStateStore().tierAlertSubscriptions;
@@ -639,21 +772,10 @@ export function schedulerTick(nowMs = Date.now()): LotteryTickEvent[] {
     }
   }
 
-  // Phase 3: auto-create the next draw once nothing is active.
-  const current = ensureDraws();
-  const stillActive = current.some((d) => d.status === 'open' || d.status === 'closed' || d.status === 'drawing');
-  if (cfg.autoCreateNext && !stillActive && current.length > 0) {
-    const prev = current.reduce((max, d) => (d.drawNumber > max.drawNumber ? d : max), current[0]);
-    if (prev.status === 'completed') {
-      const tier1Won = (prev.winnersCount?.tier1_jackpot || 0) > 0;
-      const nextJackpot = tier1Won ? cfg.baseJackpot : Math.max(cfg.baseJackpot, prev.jackpotAmount);
-      const created = createDraw({
-        initialJackpot: nextJackpot,
-        closeAt: iso(nowMs + cfg.intervalDays * 86400000),
-        isRollover: !tier1Won,
-      });
-      events.push({ type: 'newDraw', draw: created });
-    }
+  // Phase 3: keep an active draw alive for every enabled cadence type
+  // (hourly / 5h / 15h / daily / weekly / monthly) with per-type rollover.
+  for (const created of ensureActiveDraws()) {
+    events.push({ type: 'newDraw', draw: created });
   }
 
   return events;

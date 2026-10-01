@@ -20,6 +20,7 @@ import {
   LotteryServerState,
   DEFAULT_LOTTERY_CONFIG,
   DEFAULT_LOTTERY_STATE,
+  DEFAULT_DRAW_TYPES,
 } from '../shared/lotteryConfig';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -215,15 +216,25 @@ export const storage = {
     if (fs.existsSync(fp)) {
       try {
         const parsed = JSON.parse(fs.readFileSync(fp, 'utf-8'));
-        if (parsed && typeof parsed.autoCreateNext === 'boolean') return parsed as LotteryConfig;
+        if (parsed && typeof parsed.autoCreateNext === 'boolean') {
+          if (!parsed.drawTypes || typeof parsed.drawTypes !== 'object') {
+            fs.copyFileSync(fp, `${fp}.bak-v2`);
+            const merged: LotteryConfig = { ...parsed, drawTypes: JSON.parse(JSON.stringify(DEFAULT_DRAW_TYPES)) };
+            writeJsonFile('lottery_config.json', merged);
+            console.log('[Storage] lottery_config.json migrated to v3 drawTypes schema (backup: .bak-v2)');
+            return merged;
+          }
+          return parsed as LotteryConfig;
+        }
         fs.copyFileSync(fp, `${fp}.bak-legacy`);
         console.warn('[Storage] Legacy lottery_config.json backed up to lottery_config.json.bak-legacy');
       } catch (err) {
         console.warn('[Storage] Corrupt lottery_config.json, rebuilding:', err);
       }
     }
-    writeJsonFile('lottery_config.json', DEFAULT_LOTTERY_CONFIG);
-    return DEFAULT_LOTTERY_CONFIG;
+    const fresh: LotteryConfig = { ...DEFAULT_LOTTERY_CONFIG, drawTypes: JSON.parse(JSON.stringify(DEFAULT_DRAW_TYPES)) };
+    writeJsonFile('lottery_config.json', fresh);
+    return fresh;
   },
   saveLotteryConfig(config: LotteryConfig): void {
     writeJsonFile('lottery_config.json', config);
