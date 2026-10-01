@@ -58,7 +58,7 @@ def to_item(e: dict) -> dict:
         'body': e.get('body_ar') or [],
         'bodyEn': e.get('body_en') or [],
         'source': e.get('source') or 'VEX News',
-        'sourceUrl': e.get('sourceUrl') or '',
+        'sourceUrl': e.get('sourceUrl') or e.get('url') or '',
         'publishedAt': pub,
         'category': e.get('category_ar') or 'رياضات أخرى',
         'categoryKey': e.get('category_key') or 'other',
