@@ -66,8 +66,8 @@ function buildSeedDraws(): LotteryDraw[] {
       jackpotAmount: 18450.0,
       initialJackpot: 15000.0,
       totalPool: 22680.0,
-      ticketsSoldCount: 3450,
-      participantsCount: 890,
+      ticketsSoldCount: 0,
+      participantsCount: 0,
       openAt: iso(now - 3 * day),
       closeAt: iso(close88),
       drawAt: iso(close88 + 3600000),
@@ -114,6 +114,7 @@ function buildSeedDraws(): LotteryDraw[] {
       totalPaidOut: 6850.0,
       jackpotPaid: 0,
       isRollover: true,
+      isSeedHistory: true,
     },
     {
       id: 'DRAW-2026-086',
@@ -146,6 +147,7 @@ function buildSeedDraws(): LotteryDraw[] {
       totalPaidOut: 14850.0,
       jackpotPaid: 12500.0,
       isRollover: false,
+      isSeedHistory: true,
     },
   ];
 }
@@ -226,7 +228,9 @@ export function computeStats() {
   const state = getStateStore();
   const tickets = getAllTickets();
   const freeSpent = tickets.filter((t) => t.paymentMethod === 'compassion_free_ticket').length;
-  return computeLotteryStats(draws, state.airDropTotal + freeSpent);
+  // Seeded demo-history draws are display-only — platform stats track real activity.
+  const realDraws = draws.filter((d) => !d.isSeedHistory);
+  return computeLotteryStats(realDraws, state.airDropTotal + freeSpent);
 }
 
 export interface LotteryPublicState {

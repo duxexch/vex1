@@ -60,6 +60,8 @@ export interface LotteryDraw {
   isRollover?: boolean;
   reminded60?: boolean;
   reminded30?: boolean;
+  /** Demo-history draw seeded at first boot — excluded from platform statistics. */
+  isSeedHistory?: boolean;
 }
 
 export interface LotteryTicket {
