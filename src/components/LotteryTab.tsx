@@ -110,11 +110,6 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
   const [drawnMainNumbers, setDrawnMainNumbers] = useState<number[]>([]);
   const [drawnLuckyNumbers, setDrawnLuckyNumbers] = useState<number[]>([]);
 
-  // Total available balance across all active wallets
-  const totalAvailableBalance = useMemo(() => {
-    return wallets.reduce((acc, w) => acc + (w.available || 0), 0);
-  }, [wallets]);
-
   // Set default wallet company if available
   useEffect(() => {
     if (wallets.length > 0 && !selectedWalletCompanyId) {
@@ -317,11 +312,20 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
         return;
       }
     } else {
-      if (totalAvailableBalance < activeDraw.ticketPrice) {
+      const selectedWallet = wallets.find((w) => w.company_id === selectedWalletCompanyId);
+      if (!selectedWallet) {
         setErrorMessage(
-          isAr 
-            ? `رصيد محفظتك المتاح ($${totalAvailableBalance.toFixed(2)}) غير كافٍ لشراء التذكرة ($${activeDraw.ticketPrice.toFixed(2)})` 
-            : `Insufficient available balance ($${totalAvailableBalance.toFixed(2)}) for ticket ($${activeDraw.ticketPrice.toFixed(2)})`
+          isAr
+            ? 'لا توجد محفظة مرتبطة — أضف حساب شركة أولاً لشراء التذكرة'
+            : 'No linked wallet — add a company account first to buy tickets'
+        );
+        return;
+      }
+      if ((Number(selectedWallet.available) || 0) < activeDraw.ticketPrice) {
+        setErrorMessage(
+          isAr
+            ? `رصيد محفظة ${selectedWallet.company_name} المتاح ($${(Number(selectedWallet.available) || 0).toFixed(2)}) غير كافٍ لشراء التذكرة ($${activeDraw.ticketPrice.toFixed(2)})`
+            : `Insufficient balance in ${selectedWallet.company_name} wallet ($${(Number(selectedWallet.available) || 0).toFixed(2)}) for ticket ($${activeDraw.ticketPrice.toFixed(2)})`
         );
         return;
       }
@@ -352,6 +356,37 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
       setErrorMessage(err.message || 'Error occurred while purchasing ticket');
     } finally {
       setIsPurchasing(false);
+    }
+  };
+
+  // Claim a prize: server marks the ticket claimed once, wallet gets credited
+  const [claimingTicketId, setClaimingTicketId] = useState<string | null>(null);
+  const handleClaimPrize = async (prize: LotteryUserWonPrize) => {
+    if (claimingTicketId) return;
+    setClaimingTicketId(prize.ticketId);
+    try {
+      const res = await lotteryService.claimPrize(
+        userId,
+        prize.ticketId,
+        prize.payoutWalletCompanyId || selectedWalletCompanyId || undefined
+      );
+      if (res.success) {
+        if (onCopyToast) {
+          onCopyToast(
+            isAr
+              ? `✅ تم إيداع جائزة $${(res.amount || 0).toFixed(2)} في محفظتك (مرجع: ${res.transactionId})`
+              : `✅ Prize of $${(res.amount || 0).toFixed(2)} deposited to your wallet (ref: ${res.transactionId})`
+          );
+        }
+        if (onRefreshWallets) onRefreshWallets();
+        await loadLotteryData();
+      } else if (onCopyToast) {
+        onCopyToast(res.error || (isAr ? 'فشلت المطالبة بالجائزة' : 'Claim failed'));
+      }
+    } catch (err: any) {
+      if (onCopyToast) onCopyToast(err.message || (isAr ? 'فشلت المطالبة بالجائزة' : 'Claim failed'));
+    } finally {
+      setClaimingTicketId(null);
     }
   };
 
@@ -881,7 +916,13 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
                       {isAr ? 'رصيد المحفظة المتاح' : 'Wallet Available Balance'}
                     </span>
                     <span className="text-[11px] text-slate-500">
-                      {isAr ? `المتاح: $${totalAvailableBalance.toFixed(2)}` : `Available: $${totalAvailableBalance.toFixed(2)}`}
+                      {(() => {
+                        const w = wallets.find((x) => x.company_id === selectedWalletCompanyId);
+                        const bal = Number(w?.available) || 0;
+                        return isAr
+                          ? `${w?.company_name || '—'}: $${bal.toFixed(2)}`
+                          : `${w?.company_name || '—'}: $${bal.toFixed(2)}`;
+                      })()}
                     </span>
                   </div>
                 </div>
@@ -890,6 +931,29 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
                 </span>
               </button>
             </div>
+
+            {/* Wallet picker (when several company wallets are linked) */}
+            {wallets.length > 1 && (
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] font-bold text-slate-500 shrink-0">
+                  {isAr ? 'المحفظة:' : 'Wallet:'}
+                </label>
+                <select
+                  value={selectedWalletCompanyId}
+                  onChange={(e) => {
+                    setSelectedWalletCompanyId(e.target.value);
+                    setSelectedPaymentMethod('wallet_balance');
+                  }}
+                  className="flex-1 text-xs px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white font-bold text-slate-700"
+                >
+                  {wallets.map((w) => (
+                    <option key={w.company_id} value={w.company_id}>
+                      {w.company_name} — ${(Number(w.available) || 0).toFixed(2)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Error Message */}
             {errorMessage && (
@@ -1200,6 +1264,8 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
           wonPrizes={userWonPrizes}
           onPlayClick={() => setActiveSubTab('play')}
           onCopyToast={onCopyToast}
+          onClaim={handleClaimPrize}
+          claimingTicketId={claimingTicketId}
         />
       )}
 

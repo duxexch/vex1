@@ -308,6 +308,10 @@ export function purchaseTicket(params: {
   const numErr = validNumbers(mainNumbers, luckyNumbers);
   if (numErr) return { success: false, error: numErr };
 
+  if (paymentMethod === 'wallet_balance' && !companyId) {
+    return { success: false, error: 'companyId is required for wallet purchases (refund/payout destination)' };
+  }
+
   let pricePaid = draw.ticketPrice;
   if (paymentMethod === 'compassion_free_ticket') {
     const credits = storage.getLotteryCredits();
@@ -347,6 +351,41 @@ export function purchaseTicket(params: {
   storage.saveLotteryDraws(draws);
 
   return { success: true, ticket };
+}
+
+// ------------------------------------------------------------
+// Prize claim — server-authoritative "claimed once" gate.
+// The actual money movement happens client-side (the platform keeps
+// balances in the browser), but the server owns the claim flag so a
+// prize can never be collected twice.
+// ------------------------------------------------------------
+
+export type ClaimResult =
+  | { success: true; ticket: LotteryTicket; amount: number; companyId?: string; transactionId: string }
+  | { success: false; error: string };
+
+export function claimPrize(userId: string, ticketId: string, payoutCompanyId?: string): ClaimResult {
+  const tickets = storage.getLotteryTickets();
+  const ticket = tickets.find((t) => t.id === ticketId);
+  if (!ticket) return { success: false, error: 'Ticket not found' };
+  if (ticket.userId !== userId) return { success: false, error: 'This ticket does not belong to the requesting user' };
+  if (!ticket.prizeWon || ticket.prizeWon <= 0) return { success: false, error: 'This ticket has no prize to claim' };
+  if (ticket.isClaimed) return { success: false, error: 'This prize has already been claimed' };
+
+  if (!ticket.companyId && payoutCompanyId) ticket.companyId = payoutCompanyId;
+  ticket.isClaimed = true;
+  ticket.claimedAt = new Date().toISOString();
+  ticket.transactionId =
+    ticket.transactionId || `VEX-TX-${Date.now().toString(36).toUpperCase()}-${ticket.id.slice(-4)}`;
+  storage.saveLotteryTickets(tickets);
+
+  return {
+    success: true,
+    ticket,
+    amount: ticket.prizeWon,
+    companyId: ticket.companyId,
+    transactionId: ticket.transactionId,
+  };
 }
 
 export function createDraw(params: {

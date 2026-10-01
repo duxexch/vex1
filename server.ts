@@ -3225,6 +3225,22 @@ app.post('/api/lottery/purchase', (req, res) => {
   res.json(result);
 });
 
+// User: claim a prize (server marks the ticket claimed exactly once;
+// the wallet credit itself is executed client-side like all platform balances).
+app.post('/api/lottery/claim', (req, res) => {
+  const { userId, ticketId, companyId } = req.body || {};
+  if (!userId || !ticketId) {
+    return res.status(400).json({ success: false, error: 'userId and ticketId are required' });
+  }
+  const result = lotteryEngine.claimPrize(
+    String(userId),
+    String(ticketId),
+    companyId ? String(companyId) : undefined
+  );
+  if (!result.success) return res.status(400).json(result);
+  res.json(result);
+});
+
 // Admin: run the draw now (optionally forcing specific balls).
 app.post('/api/lottery/draw', (req, res) => {
   if (!requireLotteryAdmin(req, res)) return;

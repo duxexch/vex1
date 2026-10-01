@@ -16,6 +16,7 @@ import {
   type LotteryTierId,
 } from '../../shared/lotteryConfig';
 import { requestFCMToken } from './firebaseClient';
+import { vexApi } from './api';
 
 // Re-export for existing consumers (LotteryPrizeCards, LotteryTierAlertsModal)
 export { DEFAULT_PRIZE_TIERS };
@@ -240,6 +241,35 @@ class LotteryService {
     companyId?: string;
     userPhoneMasked?: string;
   }): Promise<{ success: boolean; ticket?: LotteryTicket; error?: string }> {
+    const isPaid = params.paymentMethod === 'wallet_balance';
+    let price = 0;
+    let debited = false;
+
+    // Wallet purchases: validate + debit locally BEFORE creating the ticket,
+    // refunding if the server rejects it.
+    if (isPaid) {
+      const state = await this.fetchState();
+      const draw = state?.draws.find((d) => d.id === params.drawId);
+      if (!draw) return { success: false, error: 'Draw not found' };
+      if (draw.status !== 'open') {
+        return { success: false, error: 'Draw is currently not open for ticket purchases' };
+      }
+      price = draw.ticketPrice;
+      if (!params.companyId) {
+        return { success: false, error: 'No wallet selected for payment' };
+      }
+      debited = await vexApi.debitWallet(params.companyId, price, 'lottery_ticket_purchase', 'VEX LOTTERY');
+      if (!debited) {
+        return { success: false, error: 'Insufficient balance in the selected wallet' };
+      }
+    }
+
+    const refund = () => {
+      if (debited && params.companyId) {
+        void vexApi.creditWallet(params.companyId, price, 'lottery_ticket_refund', 'VEX LOTTERY REFUND');
+      }
+    };
+
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 8000);
@@ -271,6 +301,7 @@ class LotteryService {
           }
           return { success: true, ticket: data.ticket };
         }
+        refund();
         return { success: false, error: (data && data.error) || 'Failed to purchase ticket' };
       }
 
@@ -281,11 +312,15 @@ class LotteryService {
       } catch {
         /* non-JSON error body */
       }
+      refund();
       return { success: false, error };
     } catch (err) {
       // Network/server unreachable — keep the offline demo path working.
+      // Paid tickets were already debited above; free tickets debit their own counter.
       console.warn('Lottery purchase fell back to local mode:', err);
-      return this.purchaseTicketLocal(params);
+      const local = this.purchaseTicketLocal(params);
+      if (!local.success) refund();
+      return local;
     }
   }
 
@@ -636,9 +671,11 @@ class LotteryService {
           matchedLuckyCount: t.matchedLuckyCount || 0,
           mainNumbers: t.mainNumbers,
           luckyNumbers: t.luckyNumbers,
-          deliveryStatus: 'processing' as const,
+          deliveryStatus: t.isClaimed ? ('deposited_to_wallet' as const) : ('processing' as const),
           payoutWalletCompanyId: t.companyId,
-          transactionRef: t.transactionId || `VEX-TX-${t.id.slice(-6)}`,
+          transactionRef: t.isClaimed
+            ? t.transactionId || `VEX-TX-${t.id.slice(-6)}`
+            : undefined,
           claimedAt: t.claimedAt,
         };
       });
@@ -663,6 +700,71 @@ class LotteryService {
         return true;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }
+
+  // ----------------------------------------------------------
+  // Prize claim — server marks the ticket claimed once, then the
+  // prize is credited into the user's wallet (platform pattern).
+  // ----------------------------------------------------------
+
+  public async claimPrize(
+    userId: string,
+    ticketId: string,
+    fallbackCompanyId?: string
+  ): Promise<{
+    success: boolean;
+    amount?: number;
+    companyId?: string;
+    transactionId?: string;
+    error?: string;
+  }> {
+    // Wallet must exist before we hit the server: once the server marks the
+    // ticket claimed we cannot roll that flag back, so never claim blind.
+    const wallets = await vexApi.getWallets();
+    const wallet = fallbackCompanyId ? wallets.find((w) => w.company_id === fallbackCompanyId) : undefined;
+    if (!wallet) {
+      return { success: false, error: 'No linked wallet to deposit the prize into' };
+    }
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch('/api/lottery/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({ userId, ticketId, companyId: fallbackCompanyId }),
+      });
+      clearTimeout(timer);
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || !data.success) {
+        return { success: false, error: (data && data.error) || `Claim failed (${res.status})` };
+      }
+
+      const amount = Number(data.amount) || 0;
+      const targetCompanyId = data.companyId || fallbackCompanyId!;
+      const credited = await vexApi.creditWallet(targetCompanyId, amount, 'lottery_prize_payout', 'VEX LOTTERY PRIZE');
+      this.invalidateState();
+
+      if (!credited) {
+        return {
+          success: false,
+          amount,
+          transactionId: data.transactionId,
+          error: 'Prize was marked claimed but the wallet credit failed — contact support with this reference',
+        };
+      }
+      return {
+        success: true,
+        amount,
+        companyId: targetCompanyId,
+        transactionId: data.transactionId,
+      };
+    } catch (err) {
+      // No offline claim path: the server flag is what prevents double payouts.
+      console.warn('Lottery claim failed:', err);
+      return { success: false, error: 'Could not reach the server to claim — check your connection and try again' };
+    }
   }
 
   // ----------------------------------------------------------

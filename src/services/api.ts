@@ -1214,6 +1214,86 @@ class VexMobileApiService {
   }
 
   // --------------------------------------------------------------------------
+  // Wallet debit / credit with transaction log (lottery purchases & prizes).
+  // Same localStorage-authoritative pattern as transfers & compensation credits.
+  // --------------------------------------------------------------------------
+
+  private recordWalletTx(
+    wallet: Wallet,
+    amount: number,
+    transferType: Transfer['transfer_type'],
+    toAccount: string
+  ): void {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.TRANSFERS);
+      const list: Transfer[] = raw ? JSON.parse(raw) : [];
+      list.unshift({
+        id: `TX-${Date.now().toString(36).toUpperCase()}`,
+        from_user: this.userId,
+        to_account: toAccount,
+        company_id: wallet.company_id,
+        company_name: wallet.company_name,
+        amount: Math.abs(Math.round(amount * 100) / 100),
+        status: 'completed',
+        created_at: new Date().toISOString(),
+        transfer_type: transferType,
+      });
+      localStorage.setItem(STORAGE_KEYS.TRANSFERS, JSON.stringify(list));
+    } catch (e) {
+      console.warn('Failed to record wallet transaction:', e);
+    }
+  }
+
+  /** Deducts from `available`. Returns false when the wallet is missing or funds are insufficient. */
+  public async debitWallet(
+    companyId: string,
+    amount: number,
+    transferType: Transfer['transfer_type'],
+    toAccount: string
+  ): Promise<boolean> {
+    const amt = Math.round(amount * 100) / 100;
+    if (!companyId || amt <= 0) return false;
+    const wallets = await this.getWallets();
+    const wallet = wallets.find((w) => w.company_id === companyId);
+    if (!wallet) return false;
+    if ((Number(wallet.available) || 0) < amt) return false;
+    wallet.available = Math.round((wallet.available - amt) * 100) / 100;
+    localStorage.setItem(STORAGE_KEYS.WALLETS, JSON.stringify(wallets));
+    this.recordWalletTx(wallet, amt, transferType, toAccount);
+    return true;
+  }
+
+  /** Adds to `available` (creates the wallet row when this company is not linked yet). */
+  public async creditWallet(
+    companyId: string,
+    amount: number,
+    transferType: Transfer['transfer_type'],
+    toAccount: string,
+    companyName?: string
+  ): Promise<boolean> {
+    const amt = Math.round(amount * 100) / 100;
+    if (!companyId || amt <= 0) return false;
+    const wallets = await this.getWallets();
+    let wallet = wallets.find((w) => w.company_id === companyId);
+    if (!wallet) {
+      wallet = {
+        user_id: this.userId,
+        company_id: companyId,
+        company_name: companyName || companyId,
+        frozen: 0,
+        available: 0,
+        pending_locked: 0,
+        created_at: new Date().toISOString(),
+      };
+      wallets.push(wallet);
+    }
+    wallet.available = Math.round((wallet.available + amt) * 100) / 100;
+    localStorage.setItem(STORAGE_KEYS.WALLETS, JSON.stringify(wallets));
+    this.recordWalletTx(wallet, amt, transferType, toAccount);
+    return true;
+  }
+
+  // --------------------------------------------------------------------------
   // Compensation Requests
   // --------------------------------------------------------------------------
   public async getCompensationRequests(): Promise<CompensationRequest[]> {

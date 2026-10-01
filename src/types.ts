@@ -220,7 +220,7 @@ export interface Transfer {
   status: TransferStatus;
   otp_phone?: string;
   created_at: string;
-  transfer_type?: 'friend_transfer' | 'company_api_payout';
+  transfer_type?: 'friend_transfer' | 'company_api_payout' | 'lottery_ticket_purchase' | 'lottery_ticket_refund' | 'lottery_prize_payout';
   api_reference?: string;
   api_integration_type?: CompanyApiIntegrationType;
   api_response_message?: string;
@@ -865,7 +865,7 @@ export interface LotteryUserWonPrize {
   luckyNumbers: number[];
   deliveryStatus: 'deposited_to_wallet' | 'processing' | 'claimed' | 'claimed_cash' | 'claimed_free_tickets';
   payoutWalletCompanyId?: string;
-  transactionRef: string;
+  transactionRef?: string;
   claimedAt?: string;
 }
 

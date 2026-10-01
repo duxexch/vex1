@@ -17,7 +17,8 @@ import {
   Ticket,
   PartyPopper,
   Flame,
-  Award
+  Award,
+  RefreshCw
 } from 'lucide-react';
 import { Language, LotteryUserWonPrize } from '../../types';
 import {
@@ -31,6 +32,8 @@ interface LotteryWinningsHistoryProps {
   wonPrizes: LotteryUserWonPrize[];
   onPlayClick?: () => void;
   onCopyToast?: (msg: string) => void;
+  onClaim?: (prize: LotteryUserWonPrize) => Promise<void> | void;
+  claimingTicketId?: string | null;
 }
 
 export const LotteryWinningsHistory: React.FC<LotteryWinningsHistoryProps> = ({
@@ -38,6 +41,8 @@ export const LotteryWinningsHistory: React.FC<LotteryWinningsHistoryProps> = ({
   wonPrizes,
   onPlayClick,
   onCopyToast,
+  onClaim,
+  claimingTicketId,
 }) => {
   const isAr = lang === 'ar';
   const [selectedReceipt, setSelectedReceipt] = useState<LotteryUserWonPrize | null>(null);
@@ -301,6 +306,32 @@ export const LotteryWinningsHistory: React.FC<LotteryWinningsHistoryProps> = ({
                   </div>
                 </div>
 
+                {/* Claim CTA (pending prizes only) */}
+                {onClaim && prize.deliveryStatus === 'processing' && (
+                  <button
+                    type="button"
+                    onClick={() => onClaim(prize)}
+                    disabled={!!claimingTicketId}
+                    className="w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20 active:scale-[0.99]"
+                  >
+                    {claimingTicketId === prize.ticketId ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>{isAr ? 'جاري الإيداع في المحفظة...' : 'Depositing to wallet...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Wallet className="w-4 h-4" />
+                        <span>
+                          {isAr
+                            ? `إيداع الجائزة في المحفظة ($${prize.amountWon.toFixed(2)})`
+                            : `Deposit Prize to Wallet ($${prize.amountWon.toFixed(2)})`}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                )}
+
                 {/* Footer Bar: Transaction Ref */}
                 {prize.transactionRef && (
                   <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-1">
@@ -393,9 +424,24 @@ export const LotteryWinningsHistory: React.FC<LotteryWinningsHistoryProps> = ({
 
                 <div className="flex items-center justify-between pt-2">
                   <span className="text-slate-400">{isAr ? 'حالة التسليم والصرف' : 'Delivery Status'}</span>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-md">
-                    <CheckCircle2 className="w-3 h-3" />
-                    {isAr ? 'تم الإيداع بنجاح بالمحفظة' : 'Deposited Successfully'}
+                  <span
+                    className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md border ${
+                      selectedReceipt.deliveryStatus === 'deposited_to_wallet'
+                        ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30'
+                        : 'text-amber-400 bg-amber-500/15 border-amber-500/30'
+                    }`}
+                  >
+                    {selectedReceipt.deliveryStatus === 'deposited_to_wallet' ? (
+                      <>
+                        <CheckCircle2 className="w-3 h-3" />
+                        {isAr ? 'تم الإيداع بنجاح بالمحفظة' : 'Deposited Successfully'}
+                      </>
+                    ) : (
+                      <>
+                        <Clock className="w-3 h-3" />
+                        {isAr ? 'قيد المعالجة — بانتظار المطالبة' : 'Pending — awaiting claim'}
+                      </>
+                    )}
                   </span>
                 </div>
               </div>

@@ -421,6 +421,7 @@ export const LotteryAdminManager: React.FC<LotteryAdminManagerProps> = ({
                         {isWinner ? (
                           <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
                             {isAr ? 'فائزة' : 'Winner'}
+                            {t.isClaimed ? (isAr ? ' • مطالَب ✓' : ' • Claimed ✓') : ''}
                           </span>
                         ) : (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
