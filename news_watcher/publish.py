@@ -1,12 +1,24 @@
 """Atomic publishing into data/sports_news.json (read by the Express server)."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
 from datetime import datetime, timezone
 
 MAX_ITEMS = 300
+
+
+def _ensure_identity(e: dict) -> None:
+    """Every enriched item must carry id + slug (dedupe keys) — derive them if the enricher did not."""
+    seed = e.get('url') or e.get('title') or ''
+    h = hashlib.sha1(seed.encode('utf-8')).hexdigest()[:8]
+    if not e.get('id'):
+        e['id'] = 'NEWS-' + datetime.now(timezone.utc).strftime('%Y%m%d') + '-' + h
+    if not e.get('slug'):
+        from dedupe import slugify_en
+        e['slug'] = slugify_en(e.get('title_en') or e.get('title') or '') or ('news-' + h)
 
 
 def load_news(path) -> dict:
@@ -65,6 +77,7 @@ def publish(path, enriched: list[dict], log, dry_run: bool = False) -> tuple[int
 
     added = 0
     for e in enriched:
+        _ensure_identity(e)
         if not e.get('id') or e['id'] in keys or e.get('slug') in seen_slugs:
             continue
         item = to_item(e)

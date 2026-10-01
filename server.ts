@@ -265,7 +265,7 @@ const getNewsItems = (): SportsNewsItem[] => {
       items,
       updatedAt: (!Array.isArray(parsed) && typeof parsed.updatedAt === 'string') ? parsed.updatedAt : new Date(st.mtimeMs).toISOString(),
     };
-    return items;
+    return items.length ? items : SPORTS_NEWS; // empty store (cold start) -> keep the seed visible
   } catch {
     return SPORTS_NEWS;
   }

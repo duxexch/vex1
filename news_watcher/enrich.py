@@ -47,6 +47,13 @@ _KW_MAP = [
 ]
 
 
+_AD_RE = re.compile(
+    r'\b(bonus|promo\s*code|free\s*bet|casino|jackpot\s*winner|download\s*the\s*app|sponsored|advert)\b'
+    r'|كازينو|كود خصم|لعبة الروليت|إعلان ممول|عرض ترويجي',
+    re.IGNORECASE,
+)
+
+
 def guess_category_key(text: str) -> str:
     low = (text or '').lower()
     for key, pat in _KW_MAP:
@@ -160,16 +167,25 @@ def enrich_batch(batch: list[dict], api_key: str, log) -> list[dict]:
     out: list[dict] = []
     for i, cand in enumerate(batch):
         entry = results.get(i) or {}
+        ai_used = bool(entry)
         cat = entry.get('category_key') if entry.get('category_key') in CATEGORIES else guess_category_key(
             f"{cand.get('title', '')} {cand.get('snippet', '')}"
         )
-        is_sports = entry.get('is_sports')
-        if is_sports is None:
-            is_sports = cat != 'other' or bool(re.search(r'sport|رياضة|كرة', f"{cand.get('title','')} {cand.get('snippet','')}", re.I))
-        try:
-            score = int(entry.get('score'))
-        except (TypeError, ValueError):
-            score = 60 if is_sports else 20
+        if ai_used:
+            is_sports = entry.get('is_sports')
+            if is_sports is None:
+                is_sports = cat != 'other' or bool(
+                    re.search(r'sport|رياضة|كرة', f"{cand.get('title', '')} {cand.get('snippet', '')}", re.I)
+                )
+            try:
+                score = int(entry.get('score'))
+            except (TypeError, ValueError):
+                score = 60 if is_sports else 20
+        else:
+            # AI unavailable: every configured source is a sports outlet, so default to
+            # accepting real-looking stories and reject only obvious promo/ad spam.
+            is_sports = not _AD_RE.search(f"{cand.get('title', '')} {cand.get('snippet', '')}")
+            score = 65 if is_sports else 10
         title_en = (entry.get('title_en') or '').strip() or cand.get('title', '')
         title_ar = (entry.get('title_ar') or '').strip() or cand.get('title', '')
         out.append({
