@@ -68,6 +68,37 @@ _NONSPORT_RE = re.compile(
 
 _MIN_WORDS = 3   # titles shorter than this (e.g. "Photos") are nav/page junk
 
+_AR_RE = re.compile(r'[\u0600-\u06FF]')
+
+
+def has_arabic(text: str) -> bool:
+    """True when the text contains Arabic script (publishable without translation)."""
+    return bool(_AR_RE.search(text or ''))
+
+
+def probe(api_key: str, log) -> bool:
+    """One tiny Gemini call per cycle: True -> bilingual mode (ar+en),
+    False -> arabic-only mode (English items wait for a later cycle)."""
+    global _COOLDOWN_UNTIL
+    if not api_key:
+        log('[probe] no gemini api key -> arabic-only mode')
+        return False
+    url = f'{API_BASE}/{MODEL}:generateContent?key={api_key}'
+    body = {
+        'contents': [{'parts': [{'text': 'Reply with exactly: OK'}]}],
+        'generationConfig': {'temperature': 0, 'maxOutputTokens': 8},
+    }
+    try:
+        r = requests.post(url, json=body, timeout=20)
+        if r.status_code == 200 and r.json().get('candidates'):
+            _COOLDOWN_UNTIL = 0.0
+            log('[probe] gemini OK -> bilingual mode (ar+en)')
+            return True
+        log(f'[probe] gemini down (HTTP {r.status_code}) -> arabic-only mode')
+    except Exception as e:  # noqa: BLE001
+        log(f'[probe] gemini down ({str(e)[:120]}) -> arabic-only mode')
+    return False
+
 
 def guess_category_key(text: str) -> str:
     low = (text or '').lower()
@@ -169,14 +200,15 @@ _COOLDOWN_UNTIL = 0.0
 _COOLDOWN_FAIL = 900.0   # after a failed batch, wait 15 min before trying Gemini again
 
 
-def enrich_batch(batch: list[dict], api_key: str, log) -> list[dict]:
-    """Returns enriched items aligned with `batch` (fallback fills whatever is missing)."""
+def enrich_batch(batch: list[dict], api_key: str, log, ai_ok: bool = True) -> list[dict]:
+    """Returns enriched items aligned with `batch` (fallback fills whatever is missing).
+    ai_ok comes from probe() every cycle; when False no API call is made at all."""
     global _COOLDOWN_UNTIL
     results: dict[int, dict] = {}
-    if api_key and batch:
+    if api_key and batch and ai_ok:
         now = time.time()
         if now < _COOLDOWN_UNTIL:
-            log(f'[enrich] gemini in cooldown for {int(_COOLDOWN_UNTIL - now)}s more; using fallback for {len(batch)} items')
+            log(f'[enrich] gemini failed earlier this cycle; fallback for {len(batch)} items')
         else:
             try:
                 raw = _gemini_json(api_key, _build_prompt(batch), log)
@@ -190,8 +222,8 @@ def enrich_batch(batch: list[dict], api_key: str, log) -> list[dict]:
                     _COOLDOWN_UNTIL = 0.0
             except Exception as e:  # noqa: BLE001
                 _COOLDOWN_UNTIL = time.time() + _COOLDOWN_FAIL
-                log(f'[enrich] gemini batch failed, using fallback for {len(batch)} items; '
-                    f'cooling down {int(_COOLDOWN_FAIL // 60)} min: {e}')
+                log(f'[enrich] gemini batch failed, fallback for {len(batch)} items '
+                    f'(rest of cycle is arabic-only): {e}')
 
     out: list[dict] = []
     for i, cand in enumerate(batch):
@@ -200,6 +232,7 @@ def enrich_batch(batch: list[dict], api_key: str, log) -> list[dict]:
         cat = entry.get('category_key') if entry.get('category_key') in CATEGORIES else guess_category_key(
             f"{cand.get('title', '')} {cand.get('snippet', '')}"
         )
+        hold = False
         if ai_used:
             is_sports = entry.get('is_sports')
             if is_sports is None:
@@ -211,8 +244,9 @@ def enrich_batch(batch: list[dict], api_key: str, log) -> list[dict]:
             except (TypeError, ValueError):
                 score = 60 if is_sports else 20
         else:
-            # AI unavailable: accept real-looking stories from sports outlets, but
-            # reject promos/ads, nav junk ("Photos") and general-news leaks.
+            # AI unavailable this cycle: quality-gate first, then arabic-only rule —
+            # non-Arabic stories are held (not remembered) until a later cycle
+            # when gemini is back and can translate them to ar+en.
             text = f"{cand.get('title', '')} {cand.get('snippet', '')}"
             words = re.findall(r'\S+', cand.get('title', ''))
             if _AD_RE.search(text):
@@ -221,12 +255,16 @@ def enrich_batch(batch: list[dict], api_key: str, log) -> list[dict]:
                 is_sports, score = False, 5   # page/nav junk
             elif guess_category_key(text) == 'other' and _NONSPORT_RE.search(text):
                 is_sports, score = False, 15  # general-news leak from a mixed feed
+            elif not has_arabic(text):
+                hold = True
+                is_sports, score = False, 0   # english story, gemini down -> wait
             else:
                 is_sports, score = True, 65
         title_en = (entry.get('title_en') or '').strip() or cand.get('title', '')
         title_ar = (entry.get('title_ar') or '').strip() or cand.get('title', '')
         out.append({
             **cand,
+            'hold_lang': hold,
             'is_sports': bool(is_sports),
             'score': max(0, min(100, score)),
             'category_key': cat,

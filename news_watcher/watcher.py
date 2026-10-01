@@ -99,7 +99,11 @@ def run_cycle(args, cfg: dict, sources: list[dict], hist: dd.NewsHistory, state:
     notif_titles: set[str] = set()
     in_cycle_dups: list[dict] = []
     embed_drops: list[dict] = []
+    skipped_lang = 0
     estore = emb.EmbedStore(DATA / 'news_embs.json')
+
+    # Test gemini EVERY cycle: OK -> bilingual (ar+en); down -> arabic-only mode.
+    ai_ok = en.probe(api_key, log)
 
     try:
         for src in sources:
@@ -127,6 +131,10 @@ def run_cycle(args, cfg: dict, sources: list[dict], hist: dd.NewsHistory, state:
                 norm = dd.normalize_url(url)
                 if not norm or norm in seen_cycle_urls:
                     continue
+                if not ai_ok and not en.has_arabic(
+                        (it.get('title', '') or '') + ' ' + (it.get('snippet', '') or '')):
+                    skipped_lang += 1  # english story with gemini down: skip now,
+                    continue            # NOT remembered -> auto-retries every cycle
                 if hist.seen_url(url):
                     hist.remember_url(url)  # refresh timestamp
                     continue
@@ -199,14 +207,16 @@ def run_cycle(args, cfg: dict, sources: list[dict], hist: dd.NewsHistory, state:
     enriched: list[dict] = []
     for i in range(0, len(batch), en.BATCH_SIZE):
         chunk = batch[i:i + en.BATCH_SIZE]
-        enriched.extend(en.enrich_batch(chunk, api_key, log))
+        enriched.extend(en.enrich_batch(chunk, api_key, log, ai_ok))
         if i + en.BATCH_SIZE < len(batch):
             time.sleep(4.0)
 
     min_score = int(cfg.get('min_score', 60))
-    accepted, rejected = [], []
+    accepted, rejected, held = [], [], []
     for e in enriched:
-        if e.get('is_sports') and int(e.get('score', 0)) >= min_score:
+        if e.get('hold_lang'):
+            held.append(e)      # non-Arabic, gemini down: keep waiting, never remembered
+        elif e.get('is_sports') and int(e.get('score', 0)) >= min_score:
             accepted.append(e)
         else:
             rejected.append(e)
@@ -256,10 +266,12 @@ def run_cycle(args, cfg: dict, sources: list[dict], hist: dd.NewsHistory, state:
         save_json(STATE_PATH, state)
 
     dt = time.time() - t0
-    summary = (f"[cycle] fetched={fetched} errors={fetch_errors} new={len(candidates)} "
+    summary = (f"[cycle] mode={'bilingual' if ai_ok else 'arabic-only'} "
+               f"fetched={fetched} errors={fetch_errors} new={len(candidates)} "
                f"clustered={len(batch)} dropped={dropped} storyDups={story_dups} "
                f"embedDups={len(embed_drops)} published={added} "
-               f"rejected={len(rejected)} store={total} "
+               f"rejected={len(rejected)} held={len(held)} skippedLang={skipped_lang} "
+               f"store={total} "
                f"notif={len(notif_titles)} "
                f"time={dt:.1f}s")
     log(summary)
