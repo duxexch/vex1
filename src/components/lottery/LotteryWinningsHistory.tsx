@@ -34,6 +34,7 @@ interface LotteryWinningsHistoryProps {
   onCopyToast?: (msg: string) => void;
   onClaim?: (prize: LotteryUserWonPrize) => Promise<void> | void;
   claimingTicketId?: string | null;
+  onManualClaimRequest?: (prize: LotteryUserWonPrize) => void;
 }
 
 export const LotteryWinningsHistory: React.FC<LotteryWinningsHistoryProps> = ({
@@ -43,6 +44,7 @@ export const LotteryWinningsHistory: React.FC<LotteryWinningsHistoryProps> = ({
   onCopyToast,
   onClaim,
   claimingTicketId,
+  onManualClaimRequest,
 }) => {
   const isAr = lang === 'ar';
   const [selectedReceipt, setSelectedReceipt] = useState<LotteryUserWonPrize | null>(null);
@@ -329,6 +331,21 @@ export const LotteryWinningsHistory: React.FC<LotteryWinningsHistoryProps> = ({
                         </span>
                       </>
                     )}
+                  </button>
+                )}
+
+                {/* Manual admin-reviewed claim request (alternative to instant credit) */}
+                {onManualClaimRequest && prize.deliveryStatus === 'processing' && (
+                  <button
+                    type="button"
+                    onClick={() => onManualClaimRequest(prize)}
+                    className="w-full py-2 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer bg-white hover:bg-amber-50 text-amber-700 border border-amber-300 active:scale-[0.99]"
+                    title={isAr ? 'إرسال طلب استلام يدوي لمراجعة الإدارة' : 'Submit a manual claim request for admin review'}
+                  >
+                    <FileCheck className="w-3.5 h-3.5" />
+                    <span>
+                      {isAr ? 'طلب استلام يدوي (مراجعة الإدارة)' : 'Manual Claim Request (Admin Review)'}
+                    </span>
                   </button>
                 )}
 

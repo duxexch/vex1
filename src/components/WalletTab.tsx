@@ -9,6 +9,7 @@ import {
   Lock,
   Unlock,
   ArrowUpRight,
+  ArrowDownLeft,
   UserPlus,
   DollarSign,
   HelpCircle,
@@ -34,6 +35,7 @@ interface WalletTabProps {
   onGoToReferral: (companyId: string) => void;
   onRequestComp: (companyId: string) => void;
   onOpenDepositUnfreeze: () => void;
+  onOpenFinancialRequest?: (type: 'deposit' | 'withdraw') => void;
   onOpenPhoneModal?: () => void;
   onOpenPhoneChangeRequest?: () => void;
   pendingPhoneRequest?: PhoneChangeRequest | null;
@@ -52,6 +54,7 @@ export const WalletTab: React.FC<WalletTabProps> = ({
   onGoToReferral,
   onRequestComp,
   onOpenDepositUnfreeze,
+  onOpenFinancialRequest,
   onOpenPhoneModal,
   onOpenPhoneChangeRequest,
   pendingPhoneRequest,
@@ -179,6 +182,26 @@ export const WalletTab: React.FC<WalletTabProps> = ({
               >
                 <ArrowUpRight className="w-3 h-3" />
                 <span>{isAr ? 'فك تجميد سريع' : 'Quick Unfreeze'}</span>
+              </button>
+            </div>
+            <div className="flex items-center gap-2 mt-1.5">
+              <button
+                type="button"
+                onClick={() => onOpenFinancialRequest && onOpenFinancialRequest('deposit')}
+                className="flex-1 h-7 text-[11px] font-bold text-emerald-700 bg-white hover:bg-emerald-50 border border-emerald-300 rounded-lg flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                title={isAr ? 'طلب إيداع رصيد جديد' : 'New deposit request'}
+              >
+                <ArrowDownLeft className="w-3 h-3" />
+                <span>{isAr ? 'إيداع رصيد' : 'Deposit'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenFinancialRequest && onOpenFinancialRequest('withdraw')}
+                className="flex-1 h-7 text-[11px] font-bold text-sky-700 bg-white hover:bg-sky-50 border border-sky-300 rounded-lg flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                title={isAr ? 'طلب سحب رصيد' : 'Withdraw request'}
+              >
+                <ArrowUpRight className="w-3 h-3" />
+                <span>{isAr ? 'سحب رصيد' : 'Withdraw'}</span>
               </button>
             </div>
           </div>

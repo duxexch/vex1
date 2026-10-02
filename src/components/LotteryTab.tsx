@@ -47,6 +47,10 @@ interface LotteryTabProps {
   userPhone?: string;
   onRefreshWallets?: () => void;
   onCopyToast?: (msg: string) => void;
+  onOpenFinancialRequest?: (
+    type: 'deposit' | 'withdraw' | 'prize_claim',
+    prefill?: { ticket_id?: string; draw_id?: string; amount?: number; company_id?: string; company_name?: string }
+  ) => void;
 }
 
 export const LotteryTab: React.FC<LotteryTabProps> = ({
@@ -56,6 +60,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
   userPhone,
   onRefreshWallets,
   onCopyToast,
+  onOpenFinancialRequest,
 }) => {
   const isAr = lang === 'ar';
 
@@ -393,6 +398,18 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
     } finally {
       setClaimingTicketId(null);
     }
+  };
+
+  // Manual prize-claim request: opens the admin-reviewed financial request
+  // modal instead of the instant wallet credit.
+  const handleManualClaimRequest = (prize: LotteryUserWonPrize) => {
+    if (!onOpenFinancialRequest) return;
+    onOpenFinancialRequest('prize_claim', {
+      ticket_id: prize.ticketId,
+      draw_id: prize.drawId,
+      amount: prize.amountWon,
+      company_id: prize.payoutWalletCompanyId || selectedWalletCompanyId || wallets[0]?.company_id || undefined,
+    });
   };
 
   // Provably Fair Verification Trigger
@@ -1308,6 +1325,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
           onCopyToast={onCopyToast}
           onClaim={handleClaimPrize}
           claimingTicketId={claimingTicketId}
+          onManualClaimRequest={onOpenFinancialRequest ? handleManualClaimRequest : undefined}
         />
       )}
 

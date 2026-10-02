@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { CompensationAccount, CompensationRequest, Language } from '../types';
+import React, { useState, useEffect } from 'react';
+import { CompensationAccount, CompensationRequest, FinancialRequest, Language } from '../types';
 import { TRANSLATIONS } from '../data/translations';
 import { ActivityTabSkeleton } from './SkeletonLoader';
-import { ShieldCheck, Clock, XCircle, CheckCircle2, DollarSign, PlusCircle, Ticket, Copy, Check, Share2 } from 'lucide-react';
+import { ShieldCheck, Clock, XCircle, CheckCircle2, DollarSign, PlusCircle, Ticket, Copy, Check, Share2, ArrowDownLeft, ArrowUpRight, Trophy, Landmark } from 'lucide-react';
 import { ResurrectedSlipModal } from './ResurrectedSlipModal';
+import { vexApi } from '../services/api';
 
 interface ActivityTabProps {
   accounts: CompensationAccount[];
@@ -24,7 +25,46 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
 }) => {
   const [copiedAccountId, setCopiedAccountId] = useState<string | null>(null);
   const [shareSlipReq, setShareSlipReq] = useState<CompensationRequest | null>(null);
+  const [financialReqs, setFinancialReqs] = useState<FinancialRequest[]>([]);
   const t = TRANSLATIONS[lang] || TRANSLATIONS['ar'];
+
+  // Own financial requests (deposit / withdraw / prize claim) from the server
+  useEffect(() => {
+    let alive = true;
+    vexApi
+      .getFinancialRequests(vexApi.getUserId())
+      .then((list) => {
+        if (alive) setFinancialReqs(list);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const getFinancialTypeMeta = (type: FinancialRequest['type']) => {
+    switch (type) {
+      case 'deposit':
+        return {
+          label: lang === 'ar' ? 'إيداع رصيد' : 'Deposit',
+          icon: ArrowDownLeft,
+          iconClasses: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        };
+      case 'withdraw':
+        return {
+          label: lang === 'ar' ? 'سحب رصيد' : 'Withdraw',
+          icon: ArrowUpRight,
+          iconClasses: 'bg-sky-50 text-sky-700 border-sky-200',
+        };
+      case 'prize_claim':
+      default:
+        return {
+          label: lang === 'ar' ? 'استلام جائزة' : 'Prize Claim',
+          icon: Trophy,
+          iconClasses: 'bg-amber-50 text-amber-700 border-amber-200',
+        };
+    }
+  };
 
   const handleCopyAccount = (accNum: string, accId: string) => {
     navigator.clipboard.writeText(accNum);
@@ -311,6 +351,132 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                         <Share2 className="w-3.5 h-3.5" />
                         {lang === 'ar' ? 'شارك القسيمة المنجية' : 'Share Resurrected Slip'}
                       </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 3. Financial Requests (deposit / withdraw / prize claim) */}
+      <div className="space-y-2.5">
+        <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider px-1">
+          {lang === 'ar' ? 'الطلبات المالية' : 'Financial Requests'} ({financialReqs.length})
+        </h3>
+
+        {financialReqs.length === 0 ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center text-xs text-slate-400 shadow-xs">
+            {lang === 'ar'
+              ? 'لا توجد طلبات مالية سابقة (إيداع / سحب / جائزة).'
+              : 'No financial requests yet (deposit / withdraw / prize).'}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {financialReqs.map((req) => {
+              const badge = getStatusBadge(req.status);
+              const BadgeIcon = badge.icon;
+              const typeMeta = getFinancialTypeMeta(req.type);
+              const TypeIcon = typeMeta.icon;
+
+              return (
+                <div
+                  key={req.id}
+                  className={`bg-white border-y border-r border-slate-200 hover:border-slate-300 border-l-4 ${badge.borderClass} rounded-2xl p-4 shadow-xs hover:shadow-sm flex flex-col justify-between transition-all duration-200 space-y-3`}
+                >
+                  <div className="space-y-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${typeMeta.iconClasses}`}
+                        >
+                          <TypeIcon className="w-4 h-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-bold text-slate-900 truncate">{typeMeta.label}</h4>
+                          <span className="text-[10px] text-slate-400 font-mono block">
+                            {req.id}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-right rtl:text-left shrink-0">
+                        <span className="text-sm font-black font-mono text-slate-900 block">
+                          ${Number(req.amount).toFixed(2)}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono block">
+                          {new Date(req.created_at).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {(req.account_number || req.sender_phone || req.meta?.ticket_id) && (
+                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-1.5 text-xs">
+                        {req.account_number && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500 text-[11px]">
+                              {lang === 'ar' ? 'الحساب:' : 'Account:'}
+                            </span>
+                            <span className="font-mono font-bold text-slate-800 text-[11px]">
+                              {req.account_number}
+                            </span>
+                          </div>
+                        )}
+                        {req.sender_phone && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500 text-[11px]">
+                              {lang === 'ar' ? 'هاتف المرسل:' : 'Sender Phone:'}
+                            </span>
+                            <span className="font-mono font-bold text-slate-800 text-[11px]">
+                              {req.sender_phone}
+                            </span>
+                          </div>
+                        )}
+                        {req.meta?.ticket_id && (
+                          <div className="flex items-center justify-between border-t border-slate-200/60 pt-1">
+                            <span className="text-slate-500 text-[11px]">{lang === 'ar' ? 'التذكرة:' : 'Ticket:'}</span>
+                            <span className="flex items-center gap-0.5 text-amber-700 font-mono font-bold text-[11px]">
+                              <Ticket className="w-3 h-3" />
+                              <span>{req.meta.ticket_id}</span>
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 flex flex-col gap-1.5 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${badge.classes}`}
+                      >
+                        <BadgeIcon className="w-3 h-3" />
+                        <span>{badge.label}</span>
+                      </span>
+                      {req.status === 'approved' && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
+                          <Landmark className="w-3 h-3" />
+                          {req.applied_at
+                            ? lang === 'ar'
+                              ? 'تم تطبيق الرصيد'
+                              : 'Balance Applied'
+                            : lang === 'ar'
+                            ? 'بانتظار التطبيق'
+                            : 'Awaiting Apply'}
+                        </span>
+                      )}
+                    </div>
+                    {req.status === 'rejected' && req.rejection_reason && (
+                      <span className="text-[11px] text-rose-600 italic truncate" title={req.rejection_reason}>
+                        {lang === 'ar' ? 'السبب: ' : 'Reason: '}
+                        {req.rejection_reason}
+                      </span>
+                    )}
+                    {req.status === 'approved' && req.admin_note && (
+                      <span className="text-[11px] text-slate-500 italic truncate" title={req.admin_note}>
+                        «{req.admin_note}»
+                      </span>
                     )}
                   </div>
                 </div>

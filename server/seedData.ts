@@ -406,6 +406,37 @@ export interface ServerPhoneChangeRequest {
 
 export const DEFAULT_PHONE_CHANGE_REQUESTS: ServerPhoneChangeRequest[] = [];
 
+export type FinancialRequestType = 'deposit' | 'withdraw' | 'prize_claim';
+
+export interface ServerFinancialRequest {
+  id: string;
+  type: FinancialRequestType;
+  user_id: string;
+  company_id?: string;
+  company_name?: string;
+  amount: number;
+  account_number?: string;
+  sender_phone?: string;
+  payment_method_name?: string;
+  note?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_note?: string;
+  rejection_reason?: string;
+  created_at: string;
+  reviewed_at?: string;
+  reviewed_by?: string;
+  applied_at?: string;
+  apply_blocked?: boolean;
+  meta?: {
+    ticket_id?: string;
+    draw_id?: string;
+    ticket_already_claimed?: boolean;
+    transaction_id?: string;
+  };
+}
+
+export const DEFAULT_FINANCIAL_REQUESTS: ServerFinancialRequest[] = [];
+
 export const DEFAULT_TELEGRAM_CONFIG = {
   bot_token: '7199284710:AAHq_DemoBotTokenForVexDealsPlatformTest',
   bot_username: 'VexDealsSecurityBot',

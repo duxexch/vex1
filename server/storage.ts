@@ -4,12 +4,14 @@ import {
   DEFAULT_COMPANIES,
   DEFAULT_COMPENSATION_REQUESTS,
   DEFAULT_PHONE_CHANGE_REQUESTS,
+  DEFAULT_FINANCIAL_REQUESTS,
   DEFAULT_TELEGRAM_CONFIG,
   DEFAULT_APP_BRANDING,
   DEFAULT_NOTIFICATIONS,
   DEFAULT_AB_TEST_CAMPAIGNS,
   ServerCompensationRequest,
   ServerPhoneChangeRequest,
+  ServerFinancialRequest,
 } from './seedData';
 import { Company, CompensationEmailTemplate, EmailDispatchLog } from '../src/types';
 import { DEFAULT_COMPENSATION_EMAIL_TEMPLATES } from '../src/data/compensationEmailTemplates';
@@ -170,6 +172,31 @@ export const storage = {
     if (idx === -1) return null;
     list[idx] = { ...list[idx], ...updates };
     this.savePhoneChangeRequests(list);
+    return list[idx];
+  },
+
+  // 3b. Financial Requests (deposit / withdraw / prize_claim)
+  getFinancialRequests(): ServerFinancialRequest[] {
+    return readJsonFile<ServerFinancialRequest[]>('financial_requests.json', DEFAULT_FINANCIAL_REQUESTS);
+  },
+  saveFinancialRequests(requests: ServerFinancialRequest[]): void {
+    writeJsonFile('financial_requests.json', requests);
+  },
+  addFinancialRequest(req: ServerFinancialRequest): ServerFinancialRequest {
+    const list = this.getFinancialRequests();
+    list.unshift(req);
+    this.saveFinancialRequests(list);
+    return req;
+  },
+  updateFinancialRequest(
+    id: string,
+    updates: Partial<ServerFinancialRequest>
+  ): ServerFinancialRequest | null {
+    const list = this.getFinancialRequests();
+    const idx = list.findIndex((r) => r.id === id);
+    if (idx === -1) return null;
+    list[idx] = { ...list[idx], ...updates };
+    this.saveFinancialRequests(list);
     return list[idx];
   },
 
@@ -795,6 +822,7 @@ export const storage = {
     this.saveCompanies(DEFAULT_COMPANIES);
     this.saveCompensationRequests(DEFAULT_COMPENSATION_REQUESTS);
     this.savePhoneChangeRequests(DEFAULT_PHONE_CHANGE_REQUESTS);
+    this.saveFinancialRequests(DEFAULT_FINANCIAL_REQUESTS);
     this.saveAppBranding(DEFAULT_APP_BRANDING);
     this.saveTelegramConfig(DEFAULT_TELEGRAM_CONFIG);
     this.saveNotifications(DEFAULT_NOTIFICATIONS);
@@ -817,15 +845,18 @@ export const storage = {
     clearedRequests: number;
     clearedNotifications: number;
     clearedPhoneRequests: number;
+    clearedFinancialRequests: number;
     clearedEmailLogs: number;
   } {
     const reqs = this.getCompensationRequests();
     const notifs = this.getNotifications();
     const phoneReqs = this.getPhoneChangeRequests();
+    const finReqs = this.getFinancialRequests();
     const logs = this.getEmailDispatchLogs();
 
     this.saveCompensationRequests([]);
     this.savePhoneChangeRequests([]);
+    this.saveFinancialRequests([]);
     this.saveNotifications([]);
     writeJsonFile('compensation_email_logs.json', []);
     writeJsonFile('ab_test_campaigns.json', []);
@@ -836,6 +867,7 @@ export const storage = {
       clearedRequests: reqs.length,
       clearedNotifications: notifs.length,
       clearedPhoneRequests: phoneReqs.length,
+      clearedFinancialRequests: finReqs.length,
       clearedEmailLogs: logs.length,
     };
   },
@@ -956,6 +988,7 @@ ensureDataDir();
 storage.getCompanies();
 storage.getCompensationRequests();
 storage.getPhoneChangeRequests();
+storage.getFinancialRequests();
 storage.getAppBranding();
 storage.getTelegramConfig();
 storage.getNotifications();

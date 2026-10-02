@@ -73,6 +73,9 @@ const LegalTermsModal = lazy(() => import('./components/LegalTermsModal').then(m
 const DirectDepositUnfreezeModal = lazy(() =>
   import('./components/DirectDepositUnfreezeModal').then(m => ({ default: m.DirectDepositUnfreezeModal })),
 );
+const FinancialRequestModal = lazy(() =>
+  import('./components/FinancialRequestModal').then(m => ({ default: m.FinancialRequestModal })),
+);
 import { Toast } from './components/Toast';
 import { NotificationToast } from './components/NotificationToast';
 import { playNotificationSound, vibrateNotificationPattern } from './services/notificationSound';
@@ -245,6 +248,10 @@ export default function App() {
   const [responsibleGamingOpen, setResponsibleGamingOpen] = useState(false);
   const [legalTermsOpen, setLegalTermsOpen] = useState(false);
   const [depositUnfreezeModalOpen, setDepositUnfreezeModalOpen] = useState(false);
+  const [financialRequest, setFinancialRequest] = useState<{
+    type: 'deposit' | 'withdraw' | 'prize_claim';
+    prefill?: { ticket_id?: string; draw_id?: string; amount?: number; company_id?: string; company_name?: string };
+  } | null>(null);
 
   // AI Match Analysis & Fixtures
   const [fixtures, setFixtures] = useState<SportsMatchFixture[]>([]);
@@ -444,6 +451,17 @@ export default function App() {
       setFixtures(sportsFixtures);
       setSportsNews(newsList);
       setUserId(vexApi.getUserId());
+
+      // Self-apply any admin-approved financial requests (server once-gate),
+      // then refresh wallets only when something actually changed.
+      vexApi
+        .applyApprovedFinancialRequests()
+        .then((applied) => {
+          if (applied > 0) {
+            vexApi.getWallets().then(setWallets).catch(() => undefined);
+          }
+        })
+        .catch(() => undefined);
     } catch (err) {
       console.error('Failed to load VEX data:', err);
     } finally {
@@ -911,6 +929,7 @@ export default function App() {
                 onGoToReferral={handleGoToReferral}
                 onRequestComp={handleRequestComp}
                 onOpenDepositUnfreeze={() => setDepositUnfreezeModalOpen(true)}
+                onOpenFinancialRequest={(type) => setFinancialRequest({ type })}
                 onOpenPhoneModal={() => setPhoneModalOpen(true)}
                 lang={lang}
                 isLoading={isLoadingData}
@@ -983,6 +1002,7 @@ export default function App() {
                 wallets={wallets}
                 onRefreshWallets={loadData}
                 onCopyToast={showToast}
+                onOpenFinancialRequest={(type, prefill) => setFinancialRequest({ type, prefill })}
               />
             )}
             </Suspense>
@@ -1224,6 +1244,24 @@ export default function App() {
       <DirectDepositUnfreezeModal
         isOpen={depositUnfreezeModalOpen}
         onClose={() => setDepositUnfreezeModalOpen(false)}
+        wallets={wallets}
+        companies={localizedCompanies}
+        lang={lang}
+        displayCurrency={displayCurrency}
+        onSuccess={loadData}
+        showToast={showToast}
+      />
+      </Suspense>
+      )}
+
+      {/* Financial Request Modal (deposit / withdraw / manual prize claim) */}
+      {financialRequest && (
+      <Suspense fallback={null}>
+      <FinancialRequestModal
+        isOpen={!!financialRequest}
+        type={financialRequest.type}
+        prefill={financialRequest.prefill}
+        onClose={() => setFinancialRequest(null)}
         wallets={wallets}
         companies={localizedCompanies}
         lang={lang}

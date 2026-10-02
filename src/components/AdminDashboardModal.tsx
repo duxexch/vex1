@@ -12,6 +12,7 @@ import {
   PLATFORM_DOMAIN,
   AppNotification,
   PhoneChangeRequest,
+  FinancialRequest,
   PaymentMethod,
 } from '../types';
 import { AppIconRenderer } from './AppIconRenderer';
@@ -103,6 +104,9 @@ import {
   ListChecks,
   DollarSign,
   Trophy,
+  Landmark,
+  ArrowDownLeft,
+  ArrowUpRight,
 } from 'lucide-react';
 import { AbTestingTab } from './AbTestingTab';
 import { SportsAgentManager } from './admin/SportsAgentManager';
@@ -305,6 +309,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     | 'branding'
     | 'compensation'
     | 'phone_requests'
+    | 'financial_requests'
     | 'telegram_bot'
     | 'telegram_ads'
     | 'ai_agent'
@@ -921,6 +926,108 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
       setTimeout(() => setPhoneActionFeedback(null), 3500);
     } finally {
       setPhoneActionLoadingId(null);
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // Financial Requests (deposit / withdraw / prize claim) — manual review
+  // --------------------------------------------------------------------------
+  const [financialRequests, setFinancialRequests] = useState<FinancialRequest[]>([]);
+  const [loadingFinancialRequests, setLoadingFinancialRequests] = useState(false);
+  const [finActionLoadingId, setFinActionLoadingId] = useState<string | null>(null);
+  const [finActionFeedback, setFinActionFeedback] = useState<{ id: string; message: string; type: 'success' | 'error' } | null>(null);
+  const [rejectFinModalId, setRejectFinModalId] = useState<string | null>(null);
+  const [rejectFinReason, setRejectFinReason] = useState('لم تتم استيفاء شروط الطلب المالي');
+  const [finTypeFilter, setFinTypeFilter] = useState<'all' | 'deposit' | 'withdraw' | 'prize_claim'>('all');
+  const [finStatusFilter, setFinStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+
+  const loadFinancialRequests = async () => {
+    setLoadingFinancialRequests(true);
+    try {
+      const list = await vexApi.getFinancialRequests();
+      setFinancialRequests(list);
+    } catch {
+      // pass
+    } finally {
+      setLoadingFinancialRequests(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      loadFinancialRequests();
+    }
+  }, [isOpen, activeTab]);
+
+  const pendingFinancialRequests = financialRequests.filter((r) => r.status === 'pending');
+
+  const financialTypeLabel = (type: FinancialRequest['type']) =>
+    type === 'deposit'
+      ? t('إيداع رصيد', 'Deposit', 'Депозит')
+      : type === 'withdraw'
+      ? t('سحب رصيد', 'Withdraw', 'Вывод средств')
+      : t('استلام جائزة', 'Prize Claim', 'Получение выигрыша');
+
+  const financialTypeIcon = (type: FinancialRequest['type']) =>
+    type === 'deposit' ? ArrowDownLeft : type === 'withdraw' ? ArrowUpRight : Trophy;
+
+  const handleApproveFinancial = async (reqId: string) => {
+    setFinActionLoadingId(reqId);
+    try {
+      const res = await vexApi.approveFinancialRequest(reqId, 'Super Admin');
+      if (!res.success) throw new Error(res.error || 'Approval failed');
+      setFinActionFeedback({
+        id: reqId,
+        message: res.ticket_already_claimed
+          ? t(
+              'تم اعتماد الطلب — لكن تذكرة الجائزة كانت مطالَ بها مسبقاً! لا تدفع المبلغ مرة ثانية.',
+              'Approved — but this ticket was already claimed! Do NOT pay the amount again.',
+              'Одобрено — но этот билет уже был погашен! Не выплачивайте сумму повторно.'
+            )
+          : t(
+              'تم اعتماد الطلب المالي — وسيُطبَّق على محفظة المستخدم تلقائياً عند فتحه للتطبيق.',
+              'Request approved — it will apply to the user wallet automatically on their next app open.',
+              'Запрос одобрен — он автоматически применится к кошелюку пользователя при следующем входе.'
+            ),
+        type: 'success',
+      });
+      await loadFinancialRequests();
+      setTimeout(() => setFinActionFeedback(null), 5000);
+    } catch (err: any) {
+      setFinActionFeedback({
+        id: reqId,
+        message: err.message || t('فشل اعتماد الطلب', 'Approval failed', 'Не удалось одобрить запрос'),
+        type: 'error',
+      });
+      setTimeout(() => setFinActionFeedback(null), 4000);
+    } finally {
+      setFinActionLoadingId(null);
+    }
+  };
+
+  const handleRejectFinancial = async () => {
+    if (!rejectFinModalId) return;
+    setFinActionLoadingId(rejectFinModalId);
+    try {
+      const res = await vexApi.rejectFinancialRequest(rejectFinModalId, rejectFinReason, 'Super Admin');
+      if (!res.success) throw new Error(res.error || 'Rejection failed');
+      setFinActionFeedback({
+        id: rejectFinModalId,
+        message: t('تم رفض الطلب المالي وإشعار المستخدم.', 'Financial request rejected and user notified.', 'Финансовый запрос отклонен, пользователь уведомлен.'),
+        type: 'success',
+      });
+      setRejectFinModalId(null);
+      await loadFinancialRequests();
+      setTimeout(() => setFinActionFeedback(null), 4000);
+    } catch (err: any) {
+      setFinActionFeedback({
+        id: rejectFinModalId,
+        message: err.message || t('فشل رفض الطلب', 'Rejection failed', 'Не удалось отклонить запрос'),
+        type: 'error',
+      });
+      setTimeout(() => setFinActionFeedback(null), 4000);
+    } finally {
+      setFinActionLoadingId(null);
     }
   };
 
@@ -1965,6 +2072,11 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                       id: 'phone_requests',
                       label: `${t('طلبات تغيير أرقام الهواتف', 'Phone Change Requests', 'Запросы смены номера')} (${pendingPhoneRequests.length})`,
                       icon: Phone,
+                    },
+                    {
+                      id: 'financial_requests',
+                      label: `${t('الطلبات المالية', 'Financial Requests', 'Финансовые запросы')} (${pendingFinancialRequests.length})`,
+                      icon: Landmark,
                     },
                     {
                       id: 'telegram_bot',
@@ -5787,6 +5899,440 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                       })}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* ========================================================= */}
+              {/* TAB: FINANCIAL REQUESTS (deposit / withdraw / prize)     */}
+              {/* ========================================================= */}
+              {activeTab === 'financial_requests' && (
+                <div className="space-y-5 animate-fadeIn">
+                  {/* Header Banner */}
+                  <div className="bg-gradient-to-r from-emerald-900 via-slate-900 to-slate-950 text-white p-5 rounded-2xl shadow-sm border border-emerald-800/30">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 text-emerald-400 font-extrabold text-sm sm:text-base">
+                          <Landmark className="w-5 h-5 text-emerald-400" />
+                          <span>{t('مركز مراجعة الطلبات المالية', 'Financial Requests Hub', 'Центр финансовых запросов')}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                            Manual Review
+                          </span>
+                        </div>
+                        <p className="text-xs text-emerald-100/80 max-w-2xl leading-relaxed">
+                          {t(
+                            'العميل يقدّم طلب إيداع أو سحب أو استلام جائزة، والإدارة تعالج المبلغ يدوياً. عند الاعتماد يُطبَّق تعديل المحفظة على جهاز المستخدم تلقائياً عبر بوابة "مرة واحدة" تمنع أي تطبيق مزدوج، واعتماد طلب الجائزة يقفل تذكرة الفوز ضد المطالبة المزدوجة.',
+                            'Users submit deposit / withdraw / prize-claim requests and the admin processes the amount manually. On approval the wallet change applies on the user device automatically through a server once-gate that prevents double application; approving a prize request also locks the winning ticket against double claiming.',
+                            'Пользователи отправляют запросы на депозит / вывод / получение выигрыша, администратор обрабатывает сумму вручную. При одобрении изменение кошелька применяется на устройстве пользователя автоматически через одноразовый шлюз, исключающий двойное применение.'
+                          )}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={loadFinancialRequests}
+                        disabled={loadingFinancialRequests}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-all flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${loadingFinancialRequests ? 'animate-spin' : ''}`} />
+                        <span>{t('تحديث', 'Refresh', 'Обновить')}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Feedback Message */}
+                  {finActionFeedback && (
+                    <div
+                      className={`p-3 rounded-2xl border text-xs font-bold flex items-center gap-2 animate-fade-in ${
+                        finActionFeedback.type === 'success'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                          : 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-300'
+                      }`}
+                    >
+                      {finActionFeedback.type === 'success' ? (
+                        <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                      )}
+                      <span>{finActionFeedback.message}</span>
+                    </div>
+                  )}
+
+                  {/* Summary Metric Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-800">
+                      <span className="text-[11px] font-bold text-slate-500 block mb-1">
+                        {t('إجمالي الطلبات', 'Total Requests', 'Всего запросов')}
+                      </span>
+                      <span className="text-xl font-black text-slate-900 dark:text-white font-mono">
+                        {financialRequests.length}
+                      </span>
+                    </div>
+
+                    <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-800/50">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
+                          {t('بانتظار المراجعة', 'Pending Review', 'На рассмотрении')}
+                        </span>
+                        {pendingFinancialRequests.length > 0 && (
+                          <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                        )}
+                      </div>
+                      <span className="text-xl font-black text-amber-900 dark:text-amber-300 font-mono">
+                        {pendingFinancialRequests.length}
+                      </span>
+                    </div>
+
+                    <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200 dark:border-emerald-800/50">
+                      <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 block mb-1">
+                        {t('الطلبات المعتمدة', 'Approved', 'Подтвержденные')}
+                      </span>
+                      <span className="text-xl font-black text-emerald-900 dark:text-emerald-300 font-mono">
+                        {financialRequests.filter((r) => r.status === 'approved').length}
+                      </span>
+                    </div>
+
+                    <div className="p-3.5 bg-rose-50 dark:bg-rose-950/30 rounded-2xl border border-rose-200 dark:border-rose-800/50">
+                      <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400 block mb-1">
+                        {t('الطلبات المرفوضة', 'Rejected', 'Отклоненные')}
+                      </span>
+                      <span className="text-xl font-black text-rose-900 dark:text-rose-300 font-mono">
+                        {financialRequests.filter((r) => r.status === 'rejected').length}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Type & Status Filters */}
+                  <div className="flex flex-wrap items-center gap-2 p-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+                    <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
+                      <Filter className="w-3.5 h-3.5" />
+                      {t('النوع:', 'Type:', 'Тип:')}
+                    </span>
+                    {(['all', 'deposit', 'withdraw', 'prize_claim'] as const).map((ft) => (
+                      <button
+                        key={ft}
+                        type="button"
+                        onClick={() => setFinTypeFilter(ft)}
+                        className={`px-2.5 py-1 text-[11px] rounded-lg border font-bold transition-all ${
+                          finTypeFilter === ft
+                            ? 'bg-emerald-600 text-white border-emerald-700'
+                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-emerald-50'
+                        }`}
+                      >
+                        {ft === 'all' ? t('الكل', 'All', 'Все') : financialTypeLabel(ft)}
+                      </button>
+                    ))}
+
+                    <span className="text-[11px] font-bold text-slate-500 ms-2">
+                      {t('الحالة:', 'Status:', 'Статус:')}
+                    </span>
+                    {(['all', 'pending', 'approved', 'rejected'] as const).map((fs) => (
+                      <button
+                        key={fs}
+                        type="button"
+                        onClick={() => setFinStatusFilter(fs)}
+                        className={`px-2.5 py-1 text-[11px] rounded-lg border font-bold transition-all ${
+                          finStatusFilter === fs
+                            ? 'bg-slate-800 text-white border-slate-900'
+                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {fs === 'all'
+                          ? t('الكل', 'All', 'Все')
+                          : fs === 'pending'
+                          ? t('قيد المراجعة', 'Pending', 'На проверке')
+                          : fs === 'approved'
+                          ? t('معتمد', 'Approved', 'Одобрено')
+                          : t('مرفوض', 'Rejected', 'Отклонено')}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Reject Reason Form */}
+                  {rejectFinModalId && (
+                    <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-2xl space-y-3 animate-fadeIn">
+                      <div className="flex items-center gap-2 text-rose-900 dark:text-rose-200">
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <h4 className="text-xs font-bold">
+                          {t(`سبب رفض الطلب المالي #${rejectFinModalId}:`, `Reason for rejecting financial request #${rejectFinModalId}:`, `Причина отклонения финансового запроса #${rejectFinModalId}:`)}
+                        </h4>
+                      </div>
+
+                      <div className="flex gap-1.5 flex-wrap">
+                        {[
+                          {
+                            ar: 'لم تتم استيفاء شروط الطلب المالي',
+                            en: 'Financial request conditions not met',
+                            ru: 'Условия финансового запроса не выполнены',
+                          },
+                          {
+                            ar: 'الإيصال أو بيانات التحويل غير مطابقة',
+                            en: 'Receipt or transfer details do not match',
+                            ru: 'Квитанция или данные перевода не совпадают',
+                          },
+                          {
+                            ar: 'المبلغ يتجاوز الحد المسموح أو الرصيد غير كافٍ',
+                            en: 'Amount exceeds the allowed limit or insufficient balance',
+                            ru: 'Сумма превышает лимит или недостаточно средств',
+                          },
+                          {
+                            ar: 'التذكرة تمت مطالبتها مسبقاً أو غير صالحة',
+                            en: 'Ticket already claimed or invalid',
+                            ru: 'Билет уже погашен или недействителен',
+                          },
+                        ].map((item) => {
+                          const reason = t(item.ar, item.en, item.ru);
+                          return (
+                            <button
+                              key={item.en}
+                              type="button"
+                              onClick={() => setRejectFinReason(reason)}
+                              className={`px-2.5 py-1 text-[11px] rounded-lg border font-medium transition-all ${
+                                rejectFinReason === reason
+                                  ? 'bg-rose-600 text-white border-rose-700 font-bold'
+                                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-rose-100 dark:hover:bg-rose-900/30'
+                              }`}
+                            >
+                              {reason}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <input
+                        type="text"
+                        value={rejectFinReason}
+                        onChange={(e) => setRejectFinReason(e.target.value)}
+                        placeholder={t('أدخل سبب الرفض بالتفصيل...', 'Enter rejection reason...', 'Укажите подробную причину отказа...')}
+                        className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800 text-slate-900 dark:text-white"
+                      />
+
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setRejectFinModalId(null)}
+                          className="px-3 py-1.5 text-xs rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold"
+                        >
+                          {t('إلغاء', 'Cancel', 'Отмена')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRejectFinancial}
+                          disabled={finActionLoadingId === rejectFinModalId}
+                          className="px-4 py-1.5 text-xs rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          {finActionLoadingId === rejectFinModalId ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <X className="w-3.5 h-3.5" />
+                          )}
+                          <span>{t('تأكيد الرفض وإشعار المستخدم', 'Confirm Rejection', 'Подтвердить отклонение')}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Requests List */}
+                  {(() => {
+                    const visible = financialRequests.filter(
+                      (r) =>
+                        (finTypeFilter === 'all' || r.type === finTypeFilter) &&
+                        (finStatusFilter === 'all' || r.status === finStatusFilter)
+                    );
+                    return visible.length === 0 ? (
+                      <div className="p-8 text-center bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-400 space-y-2">
+                        <Landmark className="w-8 h-8 mx-auto text-slate-400" />
+                        <p className="text-xs font-bold text-slate-600 dark:text-slate-400">
+                          {t('لا توجد طلبات مالية مطابقة حالياً.', 'No matching financial requests.', 'Нет подходящих финансовых запросов.')}
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          {t(
+                            'عندما يقدّم أي مستخدم طلب إيداع أو سحب أو استلام جائزة، سيظهر هنا للمراجعة اليدوية والاعتماد.',
+                            'When a user submits a deposit, withdraw or prize-claim request it will appear here for manual review.',
+                            'Когда пользователь отправит запрос на депозит, вывод или получение выигрыша, он появится здесь.'
+                          )}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {visible.map((req) => {
+                          const isLoadingThis = finActionLoadingId === req.id;
+                          const TypeIcon = financialTypeIcon(req.type);
+                          return (
+                            <div
+                              key={req.id}
+                              className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-3"
+                            >
+                              {/* Card header: id / user / type / amount / status */}
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono text-xs font-black text-slate-900 dark:text-white">
+                                    #{req.id}
+                                  </span>
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                    {t('المستخدم:', 'User:', 'Пользователь:')} {req.user_id}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                    <TypeIcon className="w-3 h-3" />
+                                    {financialTypeLabel(req.type)}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-black font-mono text-emerald-700 dark:text-emerald-400">
+                                    ${Number(req.amount).toFixed(2)}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {new Date(req.created_at).toLocaleDateString([], {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                      req.status === 'approved'
+                                        ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                                        : req.status === 'rejected'
+                                        ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800'
+                                        : 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 animate-pulse'
+                                    }`}
+                                  >
+                                    {req.status === 'approved'
+                                      ? t('معتمد', 'Approved', 'Подтвержден')
+                                      : req.status === 'rejected'
+                                      ? t('مرفوض', 'Rejected', 'Отклонен')
+                                      : t('قيد المراجعة', 'Pending', 'На проверке')}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Details grid */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+                                  {req.account_number && (
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="text-slate-500 font-bold">{t('رقم الحساب:', 'Account:', 'Счёт:')}</span>
+                                      <span className="font-mono font-black text-slate-900 dark:text-white">{req.account_number}</span>
+                                    </div>
+                                  )}
+                                  {req.sender_phone && (
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="text-slate-500 font-bold">{t('هاتف المرسل:', 'Sender:', 'Отправитель:')}</span>
+                                      <span className="font-mono font-black text-slate-900 dark:text-white" dir="ltr">{req.sender_phone}</span>
+                                    </div>
+                                  )}
+                                  {req.payment_method_name && (
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="text-slate-500 font-bold">{t('وسيلة الدفع:', 'Method:', 'Метод:')}</span>
+                                      <span className="font-bold text-slate-800 dark:text-slate-200">{req.payment_method_name}</span>
+                                    </div>
+                                  )}
+                                  {req.meta?.ticket_id && (
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="text-slate-500 font-bold">{t('تذكرة الجائزة:', 'Ticket:', 'Билет:')}</span>
+                                      <span className="font-mono font-black text-amber-700 dark:text-amber-400">{req.meta.ticket_id}</span>
+                                    </div>
+                                  )}
+                                  {!req.account_number && !req.sender_phone && !req.payment_method_name && !req.meta?.ticket_id && (
+                                    <span className="text-[11px] text-slate-400">{t('لا توجد بيانات إضافية.', 'No extra details.', 'Нет дополнительных данных.')}</span>
+                                  )}
+                                </div>
+
+                                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-800 text-xs space-y-1">
+                                  {req.company_name && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-slate-500 font-bold">{t('المنصة:', 'Company:', 'Компания:')}</span>
+                                      <span className="font-bold text-slate-800 dark:text-slate-200">{req.company_name}</span>
+                                    </div>
+                                  )}
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-slate-500 font-bold">{t('المرجع:', 'Ref:', 'Номер:')}</span>
+                                    <span className="font-mono text-slate-700 dark:text-slate-300">{req.id}</span>
+                                  </div>
+                                  {req.note && (
+                                    <div className="pt-1 border-t border-slate-200 dark:border-slate-700">
+                                      <span className="text-slate-500 font-bold block mb-0.5">{t('ملاحظة العميل:', 'User note:', 'Заметка:')}</span>
+                                      <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed">{req.note}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Prize double-claim warning */}
+                              {req.type === 'prize_claim' && req.meta?.ticket_already_claimed && (
+                                <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 rounded-xl text-[11px] font-bold text-amber-900 dark:text-amber-300 flex items-start gap-2">
+                                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+                                  <span>
+                                    {t(
+                                      'تنبيه: تذكرة الفوز هذه كانت مطالَ بها مسبقاً (عبر الإيداع الفوري) — لا تدفع قيمة الجائزة مرة ثانية عند اعتماد الطلب.',
+                                      'Warning: this winning ticket was already claimed (via instant deposit) — do NOT pay the prize again when approving.',
+                                      'Внимание: этот билет уже был погашен — не выплачивайте выигрыш повторно.'
+                                    )}
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Client-side apply status for approved requests */}
+                              {req.status === 'approved' && (
+                                <div className="text-[11px] font-mono flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-2 text-slate-500">
+                                  <span>
+                                    {t('تمت المراجعة بواسطة: ', 'Reviewed by: ', 'Проверено: ')}
+                                    <strong className="text-slate-700 dark:text-slate-300">{req.reviewed_by || 'Admin'}</strong>
+                                  </span>
+                                  <span className={req.applied_at ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
+                                    {req.applied_at
+                                      ? t('✓ تم تطبيق الرصيد على المحفظة', '✓ Balance applied to wallet', '✓ Баланс применен')
+                                      : t('بانتظار تطبيق المحفظة عند فتح المستخدم للتطبيق', 'Awaiting wallet apply on user app open', 'Ожидает применения при открытии приложения')}
+                                  </span>
+                                </div>
+                              )}
+
+                              {req.status === 'rejected' && req.rejection_reason && (
+                                <div className="text-[11px] border-t border-slate-100 dark:border-slate-800 pt-2 text-rose-600 dark:text-rose-400 font-medium">
+                                  {t('سبب الرفض: ', 'Reason: ', 'Причина: ')}
+                                  {req.rejection_reason}
+                                  {req.reviewed_by && (
+                                    <span className="text-slate-400 font-mono ms-2">— {req.reviewed_by}</span>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Pending Action Buttons */}
+                              {req.status === 'pending' && (
+                                <div className="flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-2.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setRejectFinModalId(req.id);
+                                      setRejectFinReason(t('لم تتم استيفاء شروط الطلب المالي', 'Financial request conditions not met', 'Условия финансового запроса не выполнены'));
+                                    }}
+                                    disabled={isLoadingThis}
+                                    className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 text-xs font-bold transition-all border border-rose-200 dark:border-rose-900 disabled:opacity-50"
+                                  >
+                                    {t('رفض الطلب', 'Reject', 'Отклонить')}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveFinancial(req.id)}
+                                    disabled={isLoadingThis}
+                                    className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                                  >
+                                    {isLoadingThis ? (
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <Check className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>{t('اعتماد وتطبيق على المحفظة', 'Approve & Apply to Wallet', 'Одобрить и применить')}</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 

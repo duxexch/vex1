@@ -2286,6 +2286,276 @@ app.post('/api/admin/phone-change-requests/reject', (req, res) => {
 });
 
 // ============================================================================
+// FINANCIAL REQUESTS (deposit / withdraw / prize_claim) — manual admin review
+// with a server-side once-gate for the client-side wallet application.
+// ============================================================================
+
+const FINANCIAL_REQUEST_TYPES = ['deposit', 'withdraw', 'prize_claim'] as const;
+const FINANCIAL_MAX_AMOUNT = 50000;
+
+function financialTypeLabel(type: string): string {
+  if (type === 'deposit') return 'إيداع رصيد';
+  if (type === 'withdraw') return 'سحب رصيد';
+  if (type === 'prize_claim') return 'استلام جائزة';
+  return 'طلب مالي';
+}
+
+// Submit a financial request
+app.post('/api/financial/requests', (req, res) => {
+  const { userId, type, amount, company_id, company_name, account_number, sender_phone, payment_method_name, note, meta } = req.body || {};
+
+  if (!userId || typeof userId !== 'string') {
+    return res.status(400).json({ success: false, error: 'معرف المستخدم مطلوب.' });
+  }
+  if (!FINANCIAL_REQUEST_TYPES.includes(type)) {
+    return res.status(400).json({ success: false, error: 'نوع الطلب المالي غير صالح.' });
+  }
+  const numericAmount = Number(amount);
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    return res.status(400).json({ success: false, error: 'المبلغ يجب أن يكون أكبر من صفر.' });
+  }
+  if (numericAmount > FINANCIAL_MAX_AMOUNT) {
+    return res.status(400).json({ success: false, error: `الحد الأقصى للمبلغ هو ${FINANCIAL_MAX_AMOUNT}.` });
+  }
+
+  const existingList = storage.getFinancialRequests();
+  const pendingSameType = existingList.find((r) => r.user_id === userId && r.type === type && r.status === 'pending');
+  if (pendingSameType) {
+    return res.status(429).json({
+      success: false,
+      error: `لديك طلب ${financialTypeLabel(type)} قيد المراجعة لدى الإدارة بالفعل. يرجى انتظار قرار الإدارة.`,
+      requestId: pendingSameType.id,
+    });
+  }
+
+  let cleanMeta: any = undefined;
+  if (type === 'prize_claim') {
+    const ticketId = meta && typeof meta.ticket_id === 'string' ? meta.ticket_id.trim() : '';
+    if (!ticketId) {
+      return res.status(400).json({ success: false, error: 'معرف تذكرة الجائزة مطلوب لطلب الاستلام.' });
+    }
+    cleanMeta = { ticket_id: ticketId };
+    if (meta && typeof meta.draw_id === 'string' && meta.draw_id) cleanMeta.draw_id = meta.draw_id;
+  }
+
+  const now = Date.now();
+  const newRequest = {
+    id: `FIN-${now}-${Math.floor(Math.random() * 1000)}`,
+    type,
+    user_id: userId,
+    company_id: company_id ? String(company_id) : undefined,
+    company_name: company_name ? String(company_name).slice(0, 120) : undefined,
+    amount: Math.round(numericAmount * 100) / 100,
+    account_number: account_number ? String(account_number).trim().slice(0, 100) : undefined,
+    sender_phone: sender_phone ? String(sender_phone).trim().slice(0, 30) : undefined,
+    payment_method_name: payment_method_name ? String(payment_method_name).slice(0, 120) : undefined,
+    note: note ? String(note).trim().slice(0, 500) : undefined,
+    status: 'pending' as const,
+    created_at: new Date().toISOString(),
+    meta: cleanMeta,
+  };
+
+  storage.addFinancialRequest(newRequest);
+
+  const adminNotif = {
+    id: `NOTIF-FIN-${now}`,
+    title: `💰 طلب ${financialTypeLabel(type)} جديد`,
+    message: `طلب المستخدم ${userId} بقيمة ${newRequest.amount} — بانتظار مراجعة الإدارة.`,
+    category: 'finance',
+    timestamp: new Date().toISOString(),
+    read: false,
+    data: { requestId: newRequest.id, type, amount: newRequest.amount },
+  };
+  storage.addNotification(adminNotif);
+  io.emit('notification', adminNotif);
+  io.emit('new_financial_request', newRequest);
+
+  res.json({
+    success: true,
+    request: newRequest,
+    message: 'تم إرسال الطلب المالي إلى الإدارة بنجاح وسيتم مراجعته يدوياً.',
+  });
+});
+
+// List financial requests (user's own with ?userId=, admin view requires x-vex-admin)
+app.get('/api/financial/requests', (req, res) => {
+  const { userId, status, type } = req.query;
+
+  if (!userId) {
+    if (req.header('x-vex-admin') !== LOTTERY_ADMIN_KEY) {
+      return res.status(403).json({ success: false, error: 'Admin key required' });
+    }
+  }
+
+  let list = storage.getFinancialRequests();
+  if (userId && typeof userId === 'string') list = list.filter((r) => r.user_id === userId);
+  if (status && typeof status === 'string') list = list.filter((r) => r.status === status);
+  if (type && typeof type === 'string') list = list.filter((r) => r.type === type);
+
+  res.json({ success: true, requests: list, total: list.length });
+});
+
+// Approve financial request (Admin) — for prize_claim this flips the lottery
+// ticket's claim-once flag so the prize can never be collected twice.
+app.post('/api/admin/financial-requests/approve', (req, res) => {
+  if (!requireLotteryAdmin(req, res)) return;
+  const { requestId, adminName, note } = req.body || {};
+  if (!requestId) {
+    return res.status(400).json({ success: false, error: 'معرف الطلب مطلوب.' });
+  }
+
+  const current = storage.getFinancialRequests().find((r) => r.id === requestId);
+  if (!current) {
+    return res.status(404).json({ success: false, error: 'الطلب غير موجود في النظام.' });
+  }
+  if (current.status !== 'pending') {
+    return res.status(409).json({ success: false, error: 'تمت مراجعة هذا الطلب مسبقاً.' });
+  }
+
+  const updates: any = {
+    status: 'approved',
+    reviewed_at: new Date().toISOString(),
+    reviewed_by: adminName || 'الإدارة العامة',
+  };
+  if (note) updates.admin_note = String(note).trim().slice(0, 500);
+
+  let ticketAlreadyClaimed = false;
+  let ticketClaimed = false;
+  let ticketError: string | undefined;
+
+  if (current.type === 'prize_claim' && current.meta?.ticket_id) {
+    const claimResult = lotteryEngine.claimPrize(current.user_id, current.meta.ticket_id, current.company_id);
+    if (claimResult.success === true) {
+      ticketClaimed = true;
+      updates.amount = claimResult.amount;
+      updates.meta = {
+        ...(current.meta || {}),
+        ticket_already_claimed: false,
+        transaction_id: claimResult.transactionId,
+      };
+    } else {
+      ticketError = claimResult.error;
+      if (claimResult.error === 'This prize has already been claimed') {
+        ticketAlreadyClaimed = true;
+      }
+      updates.apply_blocked = true;
+      updates.meta = { ...(current.meta || {}), ticket_already_claimed: ticketAlreadyClaimed };
+    }
+  }
+
+  const updated = storage.updateFinancialRequest(requestId, updates);
+  if (!updated) {
+    return res.status(404).json({ success: false, error: 'الطلب غير موجود في النظام.' });
+  }
+
+  const notif = {
+    id: `NOTIF-FIN-APP-${Date.now()}`,
+    title: '✅ تم اعتماد طلبك المالي',
+    message: `اعتمدت الإدارة ${financialTypeLabel(updated.type)} بقيمة ${updated.amount} — سيتم تحديث محفظتك تلقائياً.`,
+    category: 'finance',
+    timestamp: new Date().toISOString(),
+    read: false,
+    data: { requestId: updated.id, type: updated.type, amount: updated.amount },
+  };
+  storage.addNotification(notif);
+  io.emit('notification', notif);
+  io.emit('financial_request_status_updated', { requestId: updated.id, status: 'approved', request: updated });
+
+  res.json({
+    success: true,
+    request: updated,
+    ticket_claimed: ticketClaimed,
+    ticket_already_claimed: ticketAlreadyClaimed || undefined,
+    ticket_error: ticketError,
+    message: ticketAlreadyClaimed
+      ? 'تم اعتماد الطلب، لكن تذكرة الجائزة كانت مطالَ بها مسبقاً — لا تدفع المبلغ مرة ثانية.'
+      : 'تم اعتماد الطلب المالي بنجاح.',
+  });
+});
+
+// Reject financial request (Admin)
+app.post('/api/admin/financial-requests/reject', (req, res) => {
+  if (!requireLotteryAdmin(req, res)) return;
+  const { requestId, reason, adminName } = req.body || {};
+  if (!requestId) {
+    return res.status(400).json({ success: false, error: 'معرف الطلب مطلوب.' });
+  }
+
+  const current = storage.getFinancialRequests().find((r) => r.id === requestId);
+  if (!current) {
+    return res.status(404).json({ success: false, error: 'الطلب غير موجود في النظام.' });
+  }
+  if (current.status !== 'pending') {
+    return res.status(409).json({ success: false, error: 'تمت مراجعة هذا الطلب مسبقاً.' });
+  }
+
+  const updated = storage.updateFinancialRequest(requestId, {
+    status: 'rejected',
+    reviewed_at: new Date().toISOString(),
+    reviewed_by: adminName || 'الإدارة العامة',
+    rejection_reason: reason ? String(reason).trim().slice(0, 500) : 'لم تتم استيفاء شروط الطلب',
+  });
+  if (!updated) {
+    return res.status(404).json({ success: false, error: 'الطلب غير موجود في النظام.' });
+  }
+
+  const notif = {
+    id: `NOTIF-FIN-REJ-${Date.now()}`,
+    title: '❌ تم رفض طلبك المالي',
+    message: `رفضت الإدارة ${financialTypeLabel(updated.type)}: ${updated.rejection_reason}`,
+    category: 'finance',
+    timestamp: new Date().toISOString(),
+    read: false,
+    data: { requestId: updated.id, type: updated.type },
+  };
+  storage.addNotification(notif);
+  io.emit('notification', notif);
+  io.emit('financial_request_status_updated', { requestId: updated.id, status: 'rejected', request: updated });
+
+  res.json({ success: true, request: updated, message: 'تم رفض الطلب المالي.' });
+});
+
+// Apply approved request to the caller's local wallet — server is the
+// once-gate: the client applies the balance change only after this succeeds,
+// and a repeat call is rejected so the change can never be applied twice.
+app.post('/api/financial/requests/apply', (req, res) => {
+  const { requestId, userId } = req.body || {};
+  if (!requestId || !userId) {
+    return res.status(400).json({ success: false, error: 'معرف الطلب ومعرف المستخدم مطلوبان.' });
+  }
+
+  const current = storage.getFinancialRequests().find((r) => r.id === requestId);
+  if (!current) {
+    return res.status(404).json({ success: false, error: 'الطلب غير موجود في النظام.' });
+  }
+  if (current.user_id !== userId) {
+    return res.status(403).json({ success: false, error: 'هذا الطلب لا يخصك.' });
+  }
+  if (current.status !== 'approved') {
+    return res.status(409).json({ success: false, error: 'الطلب غير معتمد بعد.' });
+  }
+  if (current.apply_blocked) {
+    return res.status(409).json({ success: false, error: 'الطلب معتمد بدون تطبيق تلقائي للمحفظة (مراجَع يدوياً).', apply_blocked: true });
+  }
+  if (current.applied_at) {
+    return res.status(409).json({ success: false, error: 'تم تطبيق هذا الطلب على المحفظة مسبقاً.', already_applied: true });
+  }
+
+  const updated = storage.updateFinancialRequest(requestId, { applied_at: new Date().toISOString() });
+  if (!updated) {
+    return res.status(404).json({ success: false, error: 'الطلب غير موجود في النظام.' });
+  }
+
+  res.json({
+    success: true,
+    request: updated,
+    amount: updated.amount,
+    type: updated.type,
+    message: 'تم تأكيد تطبيق الطلب على المحفظة.',
+  });
+});
+
+// ============================================================================
 // TELEGRAM BOT VERIFICATION ENGINE (Token in Admin, Contact Sharing, 6-Digit OTP)
 // ============================================================================
 

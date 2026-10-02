@@ -220,10 +220,39 @@ export interface Transfer {
   status: TransferStatus;
   otp_phone?: string;
   created_at: string;
-  transfer_type?: 'friend_transfer' | 'company_api_payout' | 'lottery_ticket_purchase' | 'lottery_ticket_refund' | 'lottery_prize_payout';
+  transfer_type?: 'friend_transfer' | 'company_api_payout' | 'lottery_ticket_purchase' | 'lottery_ticket_refund' | 'lottery_prize_payout' | 'financial_deposit' | 'financial_withdraw' | 'financial_prize';
   api_reference?: string;
   api_integration_type?: CompanyApiIntegrationType;
   api_response_message?: string;
+}
+
+export type FinancialRequestType = 'deposit' | 'withdraw' | 'prize_claim';
+
+export interface FinancialRequest {
+  id: string;
+  type: FinancialRequestType;
+  user_id: string;
+  company_id?: string;
+  company_name?: string;
+  amount: number;
+  account_number?: string;
+  sender_phone?: string;
+  payment_method_name?: string;
+  note?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_note?: string;
+  rejection_reason?: string;
+  created_at: string;
+  reviewed_at?: string;
+  reviewed_by?: string;
+  applied_at?: string;
+  apply_blocked?: boolean;
+  meta?: {
+    ticket_id?: string;
+    draw_id?: string;
+    ticket_already_claimed?: boolean;
+    transaction_id?: string;
+  };
 }
 
 export interface UserEngagementBehavior {

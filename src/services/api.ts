@@ -5,6 +5,7 @@ import {
   CompanyApiIntegrationType,
   CompensationAccount,
   CompensationRequest,
+  FinancialRequest,
   Referral,
   Transfer,
   Wallet,
@@ -1650,6 +1651,185 @@ class VexMobileApiService {
     } catch {}
 
     return newReq;
+  }
+
+  // --------------------------------------------------------------------------
+  // Financial Requests (deposit / withdraw / prize_claim)
+  // Server keeps the records + the once-gate; balances stay client-side.
+  // --------------------------------------------------------------------------
+
+  /** With userId → the user's own list; without userId → admin list (x-vex-admin). */
+  public async getFinancialRequests(userId?: string): Promise<FinancialRequest[]> {
+    try {
+      if (typeof fetch !== 'undefined') {
+        const url = userId
+          ? `/api/financial/requests?userId=${encodeURIComponent(userId)}`
+          : '/api/financial/requests';
+        const res = await fetch(url, {
+          headers: userId ? {} : { 'x-vex-admin': LOTTERY_ADMIN_KEY },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.requests)) return data.requests as FinancialRequest[];
+        }
+      }
+    } catch {}
+    return [];
+  }
+
+  public async createFinancialRequest(params: {
+    type: FinancialRequest['type'];
+    amount: number;
+    company_id?: string;
+    company_name?: string;
+    account_number?: string;
+    sender_phone?: string;
+    payment_method_name?: string;
+    note?: string;
+    ticket_id?: string;
+    draw_id?: string;
+  }): Promise<{ success: boolean; request?: FinancialRequest; error?: string; message?: string }> {
+    try {
+      const res = await fetch('/api/financial/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: this.userId,
+          type: params.type,
+          amount: params.amount,
+          company_id: params.company_id,
+          company_name: params.company_name,
+          account_number: params.account_number,
+          sender_phone: params.sender_phone,
+          payment_method_name: params.payment_method_name,
+          note: params.note,
+          meta: params.type === 'prize_claim' ? { ticket_id: params.ticket_id, draw_id: params.draw_id } : undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data && data.success) {
+        return { success: true, request: data.request as FinancialRequest, message: data.message };
+      }
+      return { success: false, error: data && data.error ? String(data.error) : 'تعذر إرسال الطلب، حاول مرة أخرى.' };
+    } catch {
+      return { success: false, error: 'تعذر الاتصال بالخادم، حاول مرة أخرى.' };
+    }
+  }
+
+  public async approveFinancialRequest(
+    requestId: string,
+    adminName: string = 'الإدارة',
+    note?: string
+  ): Promise<{ success: boolean; request?: FinancialRequest; ticket_already_claimed?: boolean; message?: string; error?: string }> {
+    try {
+      const res = await fetch('/api/admin/financial-requests/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-vex-admin': LOTTERY_ADMIN_KEY },
+        body: JSON.stringify({ requestId, adminName, note }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data && data.success) {
+        return {
+          success: true,
+          request: data.request as FinancialRequest,
+          ticket_already_claimed: data.ticket_already_claimed,
+          message: data.message,
+        };
+      }
+      return { success: false, error: data && data.error ? String(data.error) : 'تعذر اعتماد الطلب.' };
+    } catch {
+      return { success: false, error: 'تعذر الاتصال بالخادم.' };
+    }
+  }
+
+  public async rejectFinancialRequest(
+    requestId: string,
+    reason?: string,
+    adminName: string = 'الإدارة'
+  ): Promise<{ success: boolean; request?: FinancialRequest; error?: string }> {
+    try {
+      const res = await fetch('/api/admin/financial-requests/reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-vex-admin': LOTTERY_ADMIN_KEY },
+        body: JSON.stringify({ requestId, reason, adminName }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data && data.success) {
+        return { success: true, request: data.request as FinancialRequest };
+      }
+      return { success: false, error: data && data.error ? String(data.error) : 'تعذر رفض الطلب.' };
+    } catch {
+      return { success: false, error: 'تعذر الاتصال بالخادم.' };
+    }
+  }
+
+  /**
+   * Self-apply loop: for every approved-and-not-yet-applied request, take the
+   * server's once-gate first and only then mutate the local wallet. A repeat
+   * call (or a 409 from the gate) is skipped, so a balance change can never
+   * be applied twice — reloads are idempotent.
+   */
+  public async applyApprovedFinancialRequests(): Promise<number> {
+    try {
+      const list = await this.getFinancialRequests(this.userId);
+      let applied = 0;
+      for (const req of list) {
+        if (req.status !== 'approved' || req.applied_at || req.apply_blocked) continue;
+        const amt = Math.round((Number(req.amount) || 0) * 100) / 100;
+        if (amt <= 0) continue;
+
+        const gate = await fetch('/api/financial/requests/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requestId: req.id, userId: this.userId }),
+        });
+        if (!gate.ok) continue;
+        const gateData = await gate.json().catch(() => ({}));
+        if (!gateData || !gateData.success) continue;
+
+        if (req.type === 'withdraw') {
+          await this.applyWithdrawToWallet(req, amt);
+        } else {
+          const wallets = await this.getWallets();
+          const targetCompanyId = req.company_id || (wallets[0] && wallets[0].company_id) || 'default';
+          await this.creditWallet(
+            targetCompanyId,
+            amt,
+            req.type === 'deposit' ? 'financial_deposit' : 'financial_prize',
+            req.type === 'deposit' ? 'FINANCIAL DEPOSIT' : 'LOTTERY PRIZE (MANUAL)',
+            req.company_name
+          );
+        }
+        applied += 1;
+      }
+      return applied;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Deducts an approved withdraw request from the target wallet (clamped to what is left). */
+  private async applyWithdrawToWallet(req: FinancialRequest, amt: number): Promise<void> {
+    const wallets = await this.getWallets();
+    let wallet = req.company_id ? wallets.find((w) => w.company_id === req.company_id) : undefined;
+    if (!wallet) wallet = wallets[0];
+    if (!wallet) {
+      wallets.push({
+        user_id: this.userId,
+        company_id: req.company_id || 'default',
+        company_name: req.company_name || req.company_id || 'default',
+        frozen: 0,
+        available: 0,
+        pending_locked: 0,
+        created_at: new Date().toISOString(),
+      });
+      localStorage.setItem(STORAGE_KEYS.WALLETS, JSON.stringify(wallets));
+      return;
+    }
+    const deduct = Math.min(amt, Math.max(0, Number(wallet.available) || 0));
+    wallet.available = Math.round((wallet.available - deduct) * 100) / 100;
+    localStorage.setItem(STORAGE_KEYS.WALLETS, JSON.stringify(wallets));
+    if (deduct > 0) this.recordWalletTx(wallet, deduct, 'financial_withdraw', req.account_number || 'WITHDRAW REQUEST');
   }
 
   // --------------------------------------------------------------------------
