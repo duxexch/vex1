@@ -395,6 +395,8 @@ export interface TelegramVerificationSession {
   code?: string;
   expires_at: number;
   bot_configured: boolean;
+  // Hostname of the site that requested this verification (e.g. "vex.deals").
+  origin_domain?: string;
 }
 
 export interface PhoneChangeRequest {

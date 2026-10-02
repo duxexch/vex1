@@ -2359,6 +2359,9 @@ interface ServerTelegramSession {
   telegram_first_name?: string;
   code?: string;
   bound_telegram_id?: number;
+  // Hostname of the site that requested this verification (e.g. "vex.deals").
+  // Used to keep every bot message aligned with the domain the user came from.
+  origin_domain?: string;
 }
 
 // In-Memory Telegram State
@@ -2371,6 +2374,7 @@ const TELEGRAM_VERIFIED_HISTORY: Array<{
   telegram_id?: number;
   verified_at: string;
   session_id: string;
+  origin_domain?: string;
 }> = [];
 
 // Sessions/codes persistence — survives server restarts so a verification
@@ -2474,6 +2478,7 @@ async function sendTelegramMessage(
 let telegramPollingActive = false;
 let telegramPollingOffset = 0;
 let telegramPollingAbortController: AbortController | null = null;
+let telegramPollingGeneration = 0;
 
 async function handleTelegramUpdate(update: any) {
   const message = update.message;
@@ -2536,6 +2541,10 @@ async function handleTelegramUpdate(update: any) {
     session.telegram_id = telegramUserId;
     session.telegram_first_name = telegramFirstName;
     session.code = code;
+    // Restart the 15-minute window from code issuance: a user who opens the
+    // bot link near the original session deadline must still get a full window
+    // to paste the code (this was causing "expired" verdicts).
+    session.expires_at = Date.now() + 15 * 60 * 1000;
 
     TELEGRAM_ACTIVE_CODES.set(code, session);
     if (telegramUserId) {
@@ -2550,17 +2559,24 @@ async function handleTelegramUpdate(update: any) {
       code,
       telegramUsername,
       telegramId: telegramUserId,
+      originDomain: session.origin_domain || '',
     });
 
-    // Send formatted message with click-to-copy code in backticks
+    // Send formatted message with click-to-copy code in backticks — always
+    // worded around the domain that requested this verification.
+    const originDomain = session.origin_domain || '';
+    const backToLine = originDomain
+      ? `الرجاء العودة إلى الموقع \`${originDomain}\``
+      : 'الرجاء العودة إلى الموقع أو التطبيق';
     const replyMsg =
       `✅ *تم استلام رقم هاتفك بنجاح وتأمينه!*\n\n` +
+      (originDomain ? `🌐 *الموقع الذي طلب التوثيق:* \`${originDomain}\`\n\n` : '') +
       `📞 *رقم الهاتف المعتمد:* \`${cleanPhone}\`\n\n` +
       `🔐 *رمز تأكيد وتفعيل المحفظة الفريد الخاص بك:* \n\n` +
       `\`${code}\`\n\n` +
       `👆 *(اضغط فوق الرمز أعلاه لنسخه بنقرة واحدة)*\n\n` +
       `📋 *الخطوة الأخيرة:*\n` +
-      `الرجاء العودة إلى الموقع أو التطبيق ولصق هذا الرمز المكون من 6 أرقام في خانة التأكيد لإتمام ربط وقفل رقم هاتفك بمحفظتك بشكل دائم.`;
+      `${backToLine} ولصق هذا الرمز المكون من 6 أرقام في خانة التأكيد لإتمام ربط وقفل رقم هاتفك بمحفظتك بشكل دائم.`;
 
     await sendTelegramMessage(chatId, replyMsg, {
       remove_keyboard: true,
@@ -2576,9 +2592,16 @@ async function handleTelegramUpdate(update: any) {
     if (deepLinkPayload.startsWith('v_')) {
       const knownSession = TELEGRAM_SESSIONS.get(deepLinkPayload);
       if (!knownSession || Date.now() > knownSession.expires_at) {
+        const dom = knownSession?.origin_domain || '';
+        const whereLine = dom
+          ? `انتهت صلاحية جلسة التحقق المطلوبة من الموقع \`${dom}\`.`
+          : 'انتهت صلاحية جلسة التحقق.';
+        const backLine = dom
+          ? `الرجاء العودة إلى الموقع \`${dom}\` والضغط على زر "فتح بوت تيليجرام" مرة أخرى للحصول على رابط جديد.`
+          : 'الرجاء العودة إلى الموقع أو تطبيق VEX Deals والضغط على زر "فتح بوت تيليجرام" مرة أخرى للحصول على رابط جديد.';
         await sendTelegramMessage(
           chatId,
-          '⌛ *انتهت صلاحية جلسة التحقق.*\n\nالرجاء العودة إلى موقع أو تطبيق VEX Deals والضغط على زر "فتح بوت تيليجرام" مرة أخرى للحصول على رابط جديد.',
+          `⌛ *${whereLine}*\n\n${backLine}`,
           { parse_mode: 'Markdown' }
         );
         return;
@@ -2590,8 +2613,15 @@ async function handleTelegramUpdate(update: any) {
       }
     }
 
+    const boundDomain = deepLinkPayload.startsWith('v_')
+      ? TELEGRAM_SESSIONS.get(deepLinkPayload)?.origin_domain || ''
+      : '';
+    const domainLine = boundDomain
+      ? `🌐 *الموقع الذي طلب توثيق رقمك:* \`${boundDomain}\`\n\n`
+      : '';
     const welcomeMsg =
       `مرحباً بك في نظام التوثيق والأمان لمحفظة *VEX Deals* 🛡️\n\n` +
+      domainLine +
       `لحماية حسابك ومحفظتك من العمليات غير المصرح بها، يلزم بروتوكول الأمان ربط رقم هاتفك الحقيقي بالمحفظة لمرة واحدة فقط.\n\n` +
       `يرجى الضغط على الزر أدناه لمشاركة جهة الاتصال الخاصة بك (رقم هاتفك):`;
 
@@ -2637,20 +2667,51 @@ async function startTelegramPolling() {
   }
   if (telegramPollingActive) return;
   telegramPollingActive = true;
+  // Each started loop owns a unique generation. A superseded (aborted) loop may
+  // ONLY clear the active flag while it is still the current generation — the
+  // old "break → telegramPollingActive = false" pattern used to kill the freshly
+  // restarted daemon seconds after every config save.
+  const generation = ++telegramPollingGeneration;
   console.log(`🤖 [Telegram Polling Daemon] Started listening for @${telegramConfig.bot_username || 'Bot'} updates...`);
 
   (async () => {
-    while (telegramPollingActive && telegramConfig.bot_token && telegramConfig.is_active) {
+    let announced = false;
+    while (
+      telegramPollingActive &&
+      telegramPollingGeneration === generation &&
+      telegramConfig.bot_token &&
+      telegramConfig.is_active
+    ) {
       try {
         telegramPollingAbortController = new AbortController();
-        const url = `https://api.telegram.org/bot${telegramConfig.bot_token}/getUpdates?offset=${telegramPollingOffset}&timeout=15&allowed_updates=["message"]`;
-        const res = await fetch(url, { signal: telegramPollingAbortController.signal });
+        const params = new URLSearchParams({
+          offset: String(telegramPollingOffset),
+          timeout: '15',
+          allowed_updates: JSON.stringify(['message']),
+        });
+        const res = await fetch(
+          `https://api.telegram.org/bot${telegramConfig.bot_token}/getUpdates?${params}`,
+          { signal: telegramPollingAbortController.signal }
+        );
         if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          console.error(`⚠️ [Telegram Polling] getUpdates HTTP ${res.status}: ${body.slice(0, 200)}`);
           await new Promise((r) => setTimeout(r, 6000));
           continue;
         }
         const data: any = await res.json();
-        if (data && data.ok && Array.isArray(data.result)) {
+        if (!data || data.ok !== true) {
+          console.error(
+            `⚠️ [Telegram Polling] getUpdates rejected: ${data?.description || 'unknown error'}`
+          );
+          await new Promise((r) => setTimeout(r, 6000));
+          continue;
+        }
+        if (!announced) {
+          announced = true;
+          console.log('📡 [Telegram Polling] Connected — receiving updates live.');
+        }
+        if (Array.isArray(data.result)) {
           for (const update of data.result) {
             telegramPollingOffset = update.update_id + 1;
             await handleTelegramUpdate(update);
@@ -2658,15 +2719,20 @@ async function startTelegramPolling() {
         }
       } catch (err: any) {
         if (err?.name === 'AbortError') break;
+        console.error('⚠️ [Telegram Polling] loop error:', err?.message || err);
         await new Promise((r) => setTimeout(r, 4000));
       }
     }
-    telegramPollingActive = false;
+    if (telegramPollingGeneration === generation) {
+      telegramPollingActive = false;
+      console.log('🛑 [Telegram Polling] Daemon stopped.');
+    }
   })();
 }
 
 function stopTelegramPolling() {
   telegramPollingActive = false;
+  telegramPollingGeneration++;
   if (telegramPollingAbortController) {
     telegramPollingAbortController.abort();
     telegramPollingAbortController = null;
@@ -2829,12 +2895,26 @@ app.post('/api/telegram/session', (req, res) => {
 
   const sessionId = `v_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
 
+  // Which domain requested this verification (sent by the client as its
+  // window.location.origin) — every bot message is worded around it so a user
+  // coming from a different mirror/domain always sees their own domain.
+  const originRaw = typeof req.body.origin === 'string' ? req.body.origin.trim() : '';
+  let originDomain = '';
+  if (originRaw) {
+    try {
+      originDomain = new URL(originRaw).hostname;
+    } catch {
+      originDomain = /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(originRaw) ? originRaw : '';
+    }
+  }
+
   const session: ServerTelegramSession = {
     session_id: sessionId,
     user_id: userId || 'user_guest',
     created_at: Date.now(),
     expires_at: Date.now() + 15 * 60 * 1000, // 15 mins
     status: 'pending_telegram',
+    origin_domain: originDomain || undefined,
   };
 
   TELEGRAM_SESSIONS.set(sessionId, session);
@@ -2849,6 +2929,7 @@ app.post('/api/telegram/session', (req, res) => {
     deep_link: deepLink,
     bot_configured: true,
     expires_at: session.expires_at,
+    origin_domain: originDomain,
   });
 });
 
@@ -2864,6 +2945,7 @@ app.get('/api/telegram/session-status/:sessionId', (req, res) => {
     phone_number: session.phone_number,
     has_code: !!session.code,
     telegram_username: session.telegram_username,
+    origin_domain: session.origin_domain || '',
   });
 });
 
@@ -2907,12 +2989,17 @@ app.post('/api/telegram/verify-code', (req, res) => {
     telegram_id: session.telegram_id,
     verified_at: new Date().toISOString(),
     session_id: session.session_id,
+    origin_domain: session.origin_domain || '',
   });
 
+  const originDomain = session.origin_domain || '';
   const notif = {
     id: `NOTIF-TG-VER-${Date.now()}`,
     title: '🔒 تم تأكيد وقفل رقم هاتفك بنجاح',
-    message: `تم ربط وتوثيق رقم هاتفك (${verifiedPhone}) عبر بوت تيليجرام وقفله كمعرف أساسي لمحفظتك.`,
+    message:
+      `تم ربط وتوثيق رقم هاتفك (${verifiedPhone}) عبر بوت تيليجرام` +
+      (originDomain ? ` للموقع ${originDomain}` : '') +
+      ` وقفله كمعرف أساسي لمحفظتك.`,
     category: 'security',
     timestamp: new Date().toISOString(),
     read: false,
@@ -2925,6 +3012,7 @@ app.post('/api/telegram/verify-code', (req, res) => {
     phone: verifiedPhone,
     telegramUsername: session.telegram_username,
     telegramId: session.telegram_id,
+    originDomain,
   });
 
   res.json({
@@ -2932,6 +3020,7 @@ app.post('/api/telegram/verify-code', (req, res) => {
     phone_number: verifiedPhone,
     telegram_username: session.telegram_username,
     telegram_id: session.telegram_id,
+    origin_domain: originDomain,
     message: `تم تأكيد وتوثيق رقم هاتفك (${verifiedPhone}) وقفله في المحفظة بنجاح!`,
   });
 });

@@ -15,6 +15,7 @@ import {
   ClipboardPaste,
   RefreshCw,
   MessageSquare,
+  Globe,
 } from 'lucide-react';
 
 interface PhoneVerificationModalProps {
@@ -349,6 +350,18 @@ export const PhoneVerificationModal: React.FC<PhoneVerificationModalProps> = ({
                         ? 'انقر على الزر أدناه لفتح بوت تيليجرام الرسمي، ثم اضغط داخل البوت على زر [📲 مشاركة جهة الاتصال] لمشاركة رقم هاتفك الحقيقي بأمان.'
                         : 'Click below to launch the official Telegram bot, then tap [Share Contact] in the bot to provide your verified phone number.'}
                     </p>
+
+                    {session?.origin_domain && (
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-sky-800 dark:text-sky-300">
+                        <Globe className="w-3.5 h-3.5 shrink-0" />
+                        <span>
+                          {isAr ? 'الموقع الذي طلب التوثيق:' : 'Verification requested from:'}
+                        </span>
+                        <span className="font-mono font-black" dir="ltr">
+                          {session.origin_domain}
+                        </span>
+                      </div>
+                    )}
 
                     <div className="flex gap-2">
                       <a

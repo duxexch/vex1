@@ -557,7 +557,12 @@ class VexMobileApiService {
       const res = await fetch('/api/telegram/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: this.userId }),
+        body: JSON.stringify({
+          userId: this.userId,
+          // Tell the server WHICH domain is requesting this verification so the
+          // bot's messages can be worded around the user's own domain.
+          origin: typeof window !== 'undefined' ? window.location.origin : '',
+        }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -570,6 +575,7 @@ class VexMobileApiService {
             status: 'pending_telegram',
             expires_at: data.expires_at,
             bot_configured: true,
+            origin_domain: data.origin_domain || '',
           };
         }
         // Bot not configured (or server refused): NO link is produced — the UI
@@ -663,9 +669,10 @@ class VexMobileApiService {
 
       localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profile));
 
+      const originDomain = data.origin_domain || '';
       await this.broadcastNotification(
         '🔒 تم تأكيد وقفل رقم هاتفك بالمحفظة',
-        `تم توثيق رقم هاتفك (${profile.phone_number}) عبر بوت تيليجرام وتثبيته كمعرف رسمي وحيد لمحفظتك.`,
+        `تم توثيق رقم هاتفك (${profile.phone_number}) عبر بوت تيليجرام${originDomain ? ` للموقع ${originDomain}` : ''} وتثبيته كمعرف رسمي وحيد لمحفظتك.`,
         'security'
       );
 
