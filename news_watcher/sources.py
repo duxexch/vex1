@@ -32,7 +32,7 @@ DEFAULT_SOURCES = [
      "feed": "https://www.kicker.de/news/rss", "max_items": 20},
 
     # ---------- RSS: Arabic ----------
-    {"id": "bbc-arabic-sport", "name": "بي بي سي عربي - رياضة", "type": "rss", "lang": "ar", "enabled": True,
+    {"id": "bbc-arabic-sport", "name": "بي بي سي عربي - رياضة", "type": "rss", "lang": "ar", "enabled": False,
      "feed": "https://feeds.bbci.co.uk/arabic/sport/rss.xml", "max_items": 20},
     {"id": "kingfut", "name": "كينج فوت", "type": "rss", "lang": "ar", "enabled": True,
      "feed": "https://www.kingfut.com/feed/", "max_items": 20},

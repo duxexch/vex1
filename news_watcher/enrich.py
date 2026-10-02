@@ -1,22 +1,19 @@
-"""Gemini enrichment: bilingual titles/summaries, category, relevance score, slug.
+"""Enrichment: bilingual titles/summaries, category, relevance score, slug.
 
-Calls the same model family the site uses (gemini-3.8-flash) via the REST API.
-Batched (8 items per call) with retry/backoff; a plain fallback keeps the pipeline
-alive when the model is unavailable (original title + snippet, guessed category).
+AI calls go through the multi-provider key ring (aiclient): Gemini native keys,
+OpenRouter or any OpenAI-compatible API — a dead key cools down and the next one
+takes over. When every key is cooling down a pure-rules fallback keeps the
+pipeline alive (original title + snippet, guessed category, strict sports gate,
+English items published as-is) so publishing never stops.
 """
 from __future__ import annotations
 
 import json
 import os
 import re
-import time
-from typing import Any
 
-import requests
+import aiclient
 
-MODEL = os.environ.get('VEX_GEMINI_MODEL', 'gemini-3.8-flash')
-API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
-TIMEOUT = 60
 BATCH_SIZE = 8
 
 CATEGORIES = {
@@ -66,6 +63,75 @@ _NONSPORT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Positive sports signal (English): items that land in the generic 'other' bucket
+# (no sport keyword matched) may only publish when they clearly talk about sport —
+# this is what stops general-interest leaks (politics/tech/celebrity) from mixed
+# feeds. Arabic is handled word-by-word in _ar_signal() below because attached
+# clitics (و/ال/ف prefixes) break plain regex word boundaries.
+_SPORTS_SIGNAL_RE = re.compile(
+    r'\b(sports?|football|soccer|basketball|tennis|cricket|rugby|golf|boxing|wrestling'
+    r'|formula\s*1|\bf1\b|nba|nfl|mlb|nhl|epl|la\s*liga|serie\s*a|bundesliga'
+    r'|champions?\s*league|championship|tournament|match(es|day)?\b'
+    r'|players?\b|clubs?\b|teams?\b|goals?\b|goalkeepers?|strikers?|midfielders?'
+    r'|scorers?|scores?|scoring|injur(?:y|ies|ied)|wins?|victor(?:y|ies)|defeats?|beaten'
+    r'|managers?|coaches|captains?|stadiums?|qualifiers?|semis?|relegations?|standings?'
+    r'|transfers?\b|kickoff|halftime|penalt(y|ies)|own\s*goal|hat-?trick|derby'
+    r'|premier\s*league|world\s*cup|euros?\b|olympic|grand\s*slam|wimbledon'
+    r'|tour\s+de\s+france|davis\s+cup|open\s*championship)\b',
+    re.IGNORECASE,
+)
+
+_AR_LETTER = re.compile(r'[\u0600-\u06FF]')
+
+# Arabic signal words incl. common conjugated verbs. Prefix clitics (ال/و/ف/ب/ل/ك)
+# are stripped before the boundary check; longer words come first so that e.g.
+# 'مباريات' matches before 'مباراة' would strip wrongly.
+_AR_SIGNAL_WORDS = sorted((
+    'بطولة', 'بطولات', 'دوريات', 'دوري', 'كأس', 'الكأس', 'مباراة', 'مباريات',
+    'تصفيات', 'نهائية', 'نهائي', 'دور المجموعات',
+    'لاعب', 'لاعبون', 'لاعبين', 'لاعبه', 'لاعبها', 'نادي', 'أندية', 'اندية',
+    'فريق', 'فريقي', 'الفريق', 'منتخب', 'منتخبات', 'المنتخب',
+    'مدرب', 'مدربين', 'مهاجم', 'مهاجمين', 'حارس', 'حارس مرمى',
+    'هداف', 'الهداف', 'هدافين',
+    'رياضة', 'رياضية', 'رياضي', 'رياضيين', 'ملعب', 'ملاعب',
+    'شباك', 'الشباك', 'مرمى', 'المرمى',
+    'يفوز', 'تفوز', 'فاز', 'فازت', 'يخسر', 'تخسر', 'خسر', 'يتعادل', 'تعادل',
+    'يتأهل', 'تأهل', 'يتصدر', 'تصدر', 'يقصي', 'قصى',
+    'يسجل', 'أحرز', 'احرز', 'يحرز',
+    'ينضم', 'انضم', 'يتعاقد', 'تعاقد', 'انتقال', 'انتقالات', 'صفقة', 'صفقات',
+    'يواجه', 'مواجهات', 'مواجهته',
+), key=len, reverse=True)
+
+_AR_PREFIXES = ('وال', 'بال', 'كال', 'فال', 'لل', 'ال', 'و', 'ف', 'ب', 'ل', 'ك')
+
+
+def _ar_pre_ok(pre: str) -> bool:
+    s = pre
+    for _ in range(3):
+        hit = next((c for c in _AR_PREFIXES if s.endswith(c)), '')
+        if not hit:
+            break
+        s = s[:-len(hit)]
+    # only the char immediately before the word matters: space/punct/latin = token
+    # start; an Arabic letter means the word is glued inside a longer word (استهداف)
+    return not s or not _AR_LETTER.search(s[-1])
+
+
+def _ar_signal(text: str) -> bool:
+    for w in _AR_SIGNAL_WORDS:
+        i = text.find(w)
+        while i != -1:
+            if _ar_pre_ok(text[max(0, i - 4):i]):
+                return True
+            i = text.find(w, i + 1)
+    return False
+
+
+def has_sports_signal(text: str) -> bool:
+    """True when the text clearly talks about sport (rules-mode gate)."""
+    t = text or ''
+    return bool(_SPORTS_SIGNAL_RE.search(t)) or _ar_signal(t)
+
 _MIN_WORDS = 3   # titles shorter than this (e.g. "Photos") are nav/page junk
 
 _AR_RE = re.compile(r'[\u0600-\u06FF]')
@@ -76,28 +142,10 @@ def has_arabic(text: str) -> bool:
     return bool(_AR_RE.search(text or ''))
 
 
-def probe(api_key: str, log) -> bool:
-    """One tiny Gemini call per cycle: True -> bilingual mode (ar+en),
-    False -> arabic-only mode (English items wait for a later cycle)."""
-    global _COOLDOWN_UNTIL
-    if not api_key:
-        log('[probe] no gemini api key -> arabic-only mode')
-        return False
-    url = f'{API_BASE}/{MODEL}:generateContent?key={api_key}'
-    body = {
-        'contents': [{'parts': [{'text': 'Reply with exactly: OK'}]}],
-        'generationConfig': {'temperature': 0, 'maxOutputTokens': 8},
-    }
-    try:
-        r = requests.post(url, json=body, timeout=20)
-        if r.status_code == 200 and r.json().get('candidates'):
-            _COOLDOWN_UNTIL = 0.0
-            log('[probe] gemini OK -> bilingual mode (ar+en)')
-            return True
-        log(f'[probe] gemini down (HTTP {r.status_code}) -> arabic-only mode')
-    except Exception as e:  # noqa: BLE001
-        log(f'[probe] gemini down ({str(e)[:120]}) -> arabic-only mode')
-    return False
+def probe(log) -> bool:
+    """True -> AI mode (ar+en via the key ring); False -> rules-only mode.
+    State-only check: no HTTP request, so probing never burns quota."""
+    return aiclient.get_ring(log).probe()
 
 
 def guess_category_key(text: str) -> str:
@@ -127,35 +175,6 @@ def load_api_key() -> str:
         except OSError:
             continue
     return ''
-
-
-def _gemini_json(api_key: str, payload_text: str, log) -> Any:
-    url = f'{API_BASE}/{MODEL}:generateContent?key={api_key}'
-    body = {
-        'contents': [{'parts': [{'text': payload_text}]}],
-        'generationConfig': {
-            'temperature': 0.3,
-            'maxOutputTokens': 8192,
-            'responseMimeType': 'application/json',
-        },
-    }
-    last_err: Exception | None = None
-    for attempt, wait in enumerate((3, 8, 20, 45, 90)):
-        try:
-            r = requests.post(url, json=body, timeout=TIMEOUT)
-            if r.status_code == 429 or r.status_code >= 500:
-                raise RuntimeError(f'HTTP {r.status_code}: {r.text[:200]}')
-            r.raise_for_status()
-            data = r.json()
-            text = data['candidates'][0]['content']['parts'][0]['text']
-            return json.loads(text)
-        except Exception as e:  # noqa: BLE001 — any failure -> backoff retry
-            last_err = e
-            if attempt >= 4:
-                break
-            log(f'[enrich] gemini attempt {attempt + 1} failed: {str(e)[:160]}; retry in {wait}s')
-            time.sleep(wait)
-    raise RuntimeError(f'gemini failed after retries: {last_err}')
 
 
 def _build_prompt(batch: list[dict]) -> str:
@@ -195,76 +214,55 @@ Items:
 {json.dumps(items, ensure_ascii=False)}"""
 
 
-# When Gemini fails with quota/demand errors we stop hammering it for a while.
-_COOLDOWN_UNTIL = 0.0
-_COOLDOWN_FAIL = 900.0   # after a failed batch, wait 15 min before trying Gemini again
-
-
-def enrich_batch(batch: list[dict], api_key: str, log, ai_ok: bool = True) -> list[dict]:
-    """Returns enriched items aligned with `batch` (fallback fills whatever is missing).
+def enrich_batch(batch: list[dict], log, ai_ok: bool = True) -> list[dict]:
+    """Returns enriched items aligned with `batch` (rules fallback fills whatever is missing).
     ai_ok comes from probe() every cycle; when False no API call is made at all."""
-    global _COOLDOWN_UNTIL
     results: dict[int, dict] = {}
-    if api_key and batch and ai_ok:
-        now = time.time()
-        if now < _COOLDOWN_UNTIL:
-            log(f'[enrich] gemini failed earlier this cycle; fallback for {len(batch)} items')
-        else:
-            try:
-                raw = _gemini_json(api_key, _build_prompt(batch), log)
-                if isinstance(raw, dict):
-                    raw = raw.get('items') or raw.get('results') or []
-                for entry in raw if isinstance(raw, list) else []:
-                    i = entry.get('i')
-                    if isinstance(i, int) and 0 <= i < len(batch):
-                        results[i] = entry
-                if results:
-                    _COOLDOWN_UNTIL = 0.0
-            except Exception as e:  # noqa: BLE001
-                _COOLDOWN_UNTIL = time.time() + _COOLDOWN_FAIL
-                log(f'[enrich] gemini batch failed, fallback for {len(batch)} items '
-                    f'(rest of cycle is arabic-only): {e}')
+    if batch and ai_ok:
+        try:
+            raw = aiclient.get_ring(log).chat_json(_build_prompt(batch))
+            if isinstance(raw, dict):
+                raw = raw.get('items') or raw.get('results') or []
+            for entry in raw if isinstance(raw, list) else []:
+                i = entry.get('i')
+                if isinstance(i, int) and 0 <= i < len(batch):
+                    results[i] = entry
+            if not results:
+                log(f'[enrich] AI returned no usable entries; rules for {len(batch)} items')
+        except Exception as e:  # noqa: BLE001
+            log(f'[enrich] AI ring exhausted, rules-only for {len(batch)} items: {str(e)[:200]}')
 
     out: list[dict] = []
     for i, cand in enumerate(batch):
         entry = results.get(i) or {}
         ai_used = bool(entry)
-        cat = entry.get('category_key') if entry.get('category_key') in CATEGORIES else guess_category_key(
-            f"{cand.get('title', '')} {cand.get('snippet', '')}"
-        )
-        hold = False
+        text = f"{cand.get('title', '')} {cand.get('snippet', '')}"
+        cat = entry.get('category_key') if entry.get('category_key') in CATEGORIES else guess_category_key(text)
         if ai_used:
             is_sports = entry.get('is_sports')
             if is_sports is None:
-                is_sports = cat != 'other' or bool(
-                    re.search(r'sport|رياضة|كرة', f"{cand.get('title', '')} {cand.get('snippet', '')}", re.I)
-                )
+                is_sports = cat != 'other' or bool(re.search(r'sport|رياضة|كرة', text, re.I))
             try:
                 score = int(entry.get('score'))
             except (TypeError, ValueError):
                 score = 60 if is_sports else 20
         else:
-            # AI unavailable this cycle: quality-gate first, then arabic-only rule —
-            # non-Arabic stories are held (not remembered) until a later cycle
-            # when gemini is back and can translate them to ar+en.
-            text = f"{cand.get('title', '')} {cand.get('snippet', '')}"
+            # AI cooling down: pure rules. Sport-keyword buckets pass; the generic
+            # 'other' bucket needs a positive sports signal and no hard non-sports
+            # match (stops general-news leaks); English items publish as-is.
             words = re.findall(r'\S+', cand.get('title', ''))
             if _AD_RE.search(text):
                 is_sports, score = False, 10
             elif len(words) < _MIN_WORDS and len(cand.get('title', '')) < 30:
-                is_sports, score = False, 5   # page/nav junk
-            elif guess_category_key(text) == 'other' and _NONSPORT_RE.search(text):
-                is_sports, score = False, 15  # general-news leak from a mixed feed
-            elif not has_arabic(text):
-                hold = True
-                is_sports, score = False, 0   # english story, gemini down -> wait
+                is_sports, score = False, 5    # page/nav junk
+            elif cat == 'other' and (not has_sports_signal(text) or _NONSPORT_RE.search(text)):
+                is_sports, score = False, 15   # general-news leak from a mixed feed
             else:
                 is_sports, score = True, 65
         title_en = (entry.get('title_en') or '').strip() or cand.get('title', '')
         title_ar = (entry.get('title_ar') or '').strip() or cand.get('title', '')
         out.append({
             **cand,
-            'hold_lang': hold,
             'is_sports': bool(is_sports),
             'score': max(0, min(100, score)),
             'category_key': cat,
