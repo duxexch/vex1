@@ -2370,6 +2370,39 @@ app.post('/api/financial/requests', (req, res) => {
   io.emit('notification', adminNotif);
   io.emit('new_financial_request', newRequest);
 
+  // Confirmation for the submitting user (bell + toast) so the request never
+  // feels "lost" — the decision notification follows on approve/reject.
+  const userNotif = {
+    id: `NOTIF-FIN-SUB-${now}`,
+    title: '📨 تم استلام طلبك المالي',
+    message: `تم استلام طلب ${financialTypeLabel(type)} بقيمة ${newRequest.amount} — بانتظار مراجعة الإدارة. سيصلك إشعار فور الاعتماد أو الرفض.`,
+    category: 'finance',
+    timestamp: new Date().toISOString(),
+    read: false,
+    data: { requestId: newRequest.id, type, amount: newRequest.amount, stage: 'submitted' },
+  };
+  storage.addNotification(userNotif);
+  io.emit('notification', userNotif);
+
+  const adminTgText =
+    `💰 طلب مالي جديد بانتظار مراجعتك\n\n` +
+    `📌 النوع: ${financialTypeLabel(type)}\n` +
+    `👤 المستخدم: ${userId}\n` +
+    `💵 المبلغ: $${newRequest.amount}\n` +
+    (newRequest.company_name ? `🏢 الشركة: ${newRequest.company_name}\n` : '') +
+    (newRequest.account_number ? `🔢 رقم الحساب: ${newRequest.account_number}\n` : '') +
+    (newRequest.sender_phone ? `📞 هاتف المرسل: ${newRequest.sender_phone}\n` : '') +
+    (newRequest.note ? `📝 ملاحظة: ${newRequest.note}\n` : '') +
+    `\n🆔 المعرف: ${newRequest.id}`;
+  void sendFinancialAdminTelegram(adminTgText);
+  void sendFinancialUserTelegram(
+    userId,
+    `📩 تم استلام طلبك المالي\n\n` +
+      `📌 ${financialTypeLabel(type)} — $${newRequest.amount}\n` +
+      `⏳ الحالة: بانتظار مراجعة الإدارة\n\n` +
+      `سيصلك إشعار فور اتخاذ القرار.`
+  );
+
   res.json({
     success: true,
     request: newRequest,
@@ -2461,6 +2494,16 @@ app.post('/api/admin/financial-requests/approve', (req, res) => {
   io.emit('notification', notif);
   io.emit('financial_request_status_updated', { requestId: updated.id, status: 'approved', request: updated });
 
+  const approveTgText = ticketAlreadyClaimed
+    ? `⚠️ متابعة طلبك المالي\n\n` +
+      `📌 ${financialTypeLabel(updated.type)} — $${updated.amount}\n` +
+      `الطلب اعتمدناه، لكن تذكرة الجائزة كانت مطالَ بها مسبقاً — لن يُضاف المبلغ إلى رصيدك. تواصل مع الإدارة للتفاصيل.`
+    : `✅ تم اعتماد طلبك المالي\n\n` +
+      `📌 ${financialTypeLabel(updated.type)} — $${updated.amount}\n` +
+      (updated.meta?.transaction_id ? `🧾 رقم العملية: ${updated.meta.transaction_id}\n` : '') +
+      `💳 سيتم تحديث رصيدك تلقائياً — افتح الموقع أو التطبيق لتطبيق الرصيد.`;
+  void sendFinancialUserTelegram(updated.user_id, approveTgText);
+
   res.json({
     success: true,
     request: updated,
@@ -2511,6 +2554,14 @@ app.post('/api/admin/financial-requests/reject', (req, res) => {
   storage.addNotification(notif);
   io.emit('notification', notif);
   io.emit('financial_request_status_updated', { requestId: updated.id, status: 'rejected', request: updated });
+
+  void sendFinancialUserTelegram(
+    updated.user_id,
+    `❌ تم رفض طلبك المالي\n\n` +
+      `📌 ${financialTypeLabel(updated.type)} — $${updated.amount}\n` +
+      `📝 السبب: ${updated.rejection_reason || 'لم تتم استيفاء شروط الطلب'}\n\n` +
+      `يمكنك تقديم طلب جديد بعد مراجعة الشروط.`
+  );
 
   res.json({ success: true, request: updated, message: 'تم رفض الطلب المالي.' });
 });
@@ -2568,6 +2619,9 @@ interface ServerTelegramConfig {
   is_active: boolean;
   bot_name?: string;
   bot_id?: number;
+  // Admin alerts destination: the chat bound via `/<admin> <key>` in the bot
+  // (or TELEGRAM_ADMIN_CHAT_ID env). Financial request alerts go ONLY here.
+  admin_chat_id?: string;
   updated_at?: string;
 }
 
@@ -3089,6 +3143,48 @@ async function sendTelegramPersonal(
   return { bound: true, sent: result.ok, failed: !result.ok };
 }
 
+// Admin alerts destination: env override or the chat bound via `/admin <key>`.
+// Returns the chat id as a number, or 0 when no destination is configured.
+function getFinancialAdminChatId(): number {
+  const raw = process.env.TELEGRAM_ADMIN_CHAT_ID || telegramConfig.admin_chat_id || '';
+  const n = Number(raw);
+  return Number.isFinite(n) && n !== 0 ? n : 0;
+}
+
+// Financial ops alerts → the bound admin chat ONLY (never broadcast to
+// subscribers — these carry account numbers and balances).
+async function sendFinancialAdminTelegram(text: string): Promise<boolean> {
+  try {
+    const chat = getFinancialAdminChatId();
+    if (!chat) return false;
+    if (!telegramConfig.bot_token || !telegramConfig.is_active) return false;
+    const r = await sendPlainTelegramMessage(chat, text.slice(0, 4000));
+    if (r.ok) {
+      pushTelegramBroadcastHistory('personal', '💰 تنبيه مالي للإدارة', { sent: 1, failed: 0 });
+    }
+    return r.ok;
+  } catch (err) {
+    console.warn('⚠️ [Financial Telegram] admin alert failed', err);
+    return false;
+  }
+}
+
+// Financial status updates → the requesting user's OWN bound chat ONLY
+// (never broadcast). Silently skipped when the user has no binding.
+async function sendFinancialUserTelegram(userId: string, text: string): Promise<void> {
+  try {
+    const r = await sendTelegramPersonal(userId, text);
+    if (r.bound) {
+      pushTelegramBroadcastHistory('personal', '💰 تحديث طلب مالي', {
+        sent: r.sent ? 1 : 0,
+        failed: r.failed ? 1 : 0,
+      });
+    }
+  } catch (err) {
+    console.warn('⚠️ [Financial Telegram] user alert failed', err);
+  }
+}
+
 // Personal win notice: grouped per winning user, sent only to their own chat.
 async function notifyLotteryWinnersOnTelegram(draw: LotteryDraw) {
   try {
@@ -3308,6 +3404,36 @@ async function handleTelegramUpdate(update: any) {
     return;
   }
 
+  // Case 1b: /admin <key> — bind THIS chat as the admin alerts destination
+  // (new financial request alerts etc.). The key proves site-admin ownership,
+  // so no private financial data can reach a stranger's chat.
+  if (/^\/admin(@\w+)?(\s|$)/.test(text)) {
+    const key = (text.split(/\s+/)[1] || '').trim();
+    if (!key) {
+      await sendTelegramMessage(
+        chatId,
+        '🔑 لتفعيل تنبيهات الإدارة في هذه المحادثة أرسل:\n\n/admin <مفتاح الإدارة>\n\nتجد المفتاح في لوحة الإدارة — بعد الرابط ستصلك تنبيهات الطلبات المالية الجديدة فوراً.',
+        { remove_keyboard: true }
+      );
+      return;
+    }
+    if (key === LOTTERY_ADMIN_KEY) {
+      telegramConfig.admin_chat_id = String(chatId);
+      telegramConfig.updated_at = new Date().toISOString();
+      saveTelegramConfigToFile();
+      await sendTelegramMessage(
+        chatId,
+        '✅ تم ربط هذه المحادثة بنجاح كوجهة تنبيهات الإدارة.\n\n💰 ستتصلك تنبيهات الطلبات المالية الجديدة (إيداع / سحب / جوائز) فور تقديمها من المستخدمين، وببياناتها الكاملة لهذه المحادثة فقط.',
+        { remove_keyboard: true }
+      );
+    } else {
+      await sendTelegramMessage(chatId, '⛔ مفتاح الإدارة غير صحيح. تحقق من المفتاح وحاول مرة أخرى.', {
+        remove_keyboard: true,
+      });
+    }
+    return;
+  }
+
   // Case 2: /start or /start v_SESSION_ID
   if (text.startsWith('/start')) {
     // Explicit /start always (re)subscribes the user to broadcasts.
@@ -3508,6 +3634,7 @@ app.get('/api/admin/telegram-config', requireTelegramAdmin, (req, res) => {
       is_active: telegramConfig.is_active,
       bot_name: telegramConfig.bot_name,
       bot_id: telegramConfig.bot_id,
+      admin_chat_id: telegramConfig.admin_chat_id || '',
       polling_active: telegramPollingActive,
       updated_at: telegramConfig.updated_at,
     },
