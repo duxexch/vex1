@@ -45,7 +45,8 @@ _KW_MAP = [
 
 
 _AD_RE = re.compile(
-    r'\b(bonus|promo\s*code|free\s*bet|casino|jackpot\s*winner|download\s*the\s*app|sponsored|advert'
+    r'\b(free\s*bet|betting\s+bonus|casino\s+bonus|bonus\s+(?:bet|betting|code|offer|round)'
+    r'|promo\s*code|casino|jackpot\s*winner|download\s+the\s+app|sponsored|advert'
     r'|betting\s+sites?|betting\s+guide|sports\s*betting|sportsbook|where\s+to\s+bet|best\s+\S+\s+sites'
     r'|quiz|quizzes|gallery|photo\s+essay)\b'
     r'|كازينو|كود خصم|لعبة الروليت|إعلان ممول|عرض ترويجي|التخمين|مسابقة|معرض صور',
@@ -55,7 +56,8 @@ _AD_RE = re.compile(
 # Clearly-not-sports news (war, politics, weather, health, flights...) that slips
 # through general-interest feeds. Only used as a fallback when the AI is offline.
 _NONSPORT_RE = re.compile(
-    r'\b(war|military|minister|government|election|parliament|museum|flight[sd]?\b|airport'
+    r'\b(war|military|minister|government|election|parliament|museum'
+    r'|airlines?\b|airport|\bflights?\s+to\b'
     r'|earthquake|storm\b|flood|virus|vaccine|refugee|court\s+ruling|inflation|strike[sd]?\b'
     r'|obituary|funeral)\b'
     r'|حرب|قتلى|هجوم|انفجار|متحف|رحلات جوية|مطار|رئيس الوزراء|الحكومة|وزارة|انتخابات|برلمان'
@@ -70,14 +72,20 @@ _NONSPORT_RE = re.compile(
 # clitics (و/ال/ف prefixes) break plain regex word boundaries.
 _SPORTS_SIGNAL_RE = re.compile(
     r'\b(sports?|football|soccer|basketball|tennis|cricket|rugby|golf|boxing|wrestling'
-    r'|formula\s*1|\bf1\b|nba|nfl|mlb|nhl|epl|la\s*liga|serie\s*a|bundesliga'
+    r'|judo(?:ka)?|karate|taekwondo|sumo|chess|cycling|cyclists?|horse\s*racing|jockeys?'
+    r'|formula\s*1|\bf1\b|nba|nfl|mlb|nhl|ncaa|epl|la\s*liga|serie\s*a|bundesliga'
     r'|champions?\s*league|championship|tournament|match(es|day)?\b'
     r'|players?\b|clubs?\b|teams?\b|goals?\b|goalkeepers?|strikers?|midfielders?'
-    r'|scorers?|scores?|scoring|injur(?:y|ies|ied)|wins?|victor(?:y|ies)|defeats?|beaten'
+    r'|scorers?|scores?|scoring|injur(?:y|ies|ied)|wins?|victor(?:y|ies)|defeats?|beats?|beaten'
     r'|managers?|coaches|captains?|stadiums?|qualifiers?|semis?|relegations?|standings?'
     r'|transfers?\b|kickoff|halftime|penalt(y|ies)|own\s*goal|hat-?trick|derby'
-    r'|premier\s*league|world\s*cup|euros?\b|olympic|grand\s*slam|wimbledon'
-    r'|tour\s+de\s+france|davis\s+cup|open\s*championship)\b',
+    r'|premier\s*league|world\s*cup|euros?\b|olympiad|olympic|grand\s*slam|grand\s*prix'
+    r'|wimbledon|arc\s+de\s+triomphe|\barc\b|cheltenham|grand\s+national'
+    r'|asian\s+games|commonwealth\s+games|davis\s+cup|atp\b|wta\b|open\s*championship'
+    r'|highlights?|friendl(?:y|ies)|top\s+flight|versus|vs\b'
+    r'|sprains?|hamstrings?|mcl|acl'
+    r'|challenge\s+cup|fa\s+cup|league\s+cup'
+    r'|no\.\s*\d+|game\s*\d+|week\s*\d+|\d{1,2}\s*[-\u2013]\s*\d{1,2})\b',
     re.IGNORECASE,
 )
 
@@ -88,7 +96,7 @@ _AR_LETTER = re.compile(r'[\u0600-\u06FF]')
 # 'مباريات' matches before 'مباراة' would strip wrongly.
 _AR_SIGNAL_WORDS = sorted((
     'بطولة', 'بطولات', 'دوريات', 'دوري', 'كأس', 'الكأس', 'مباراة', 'مباريات',
-    'تصفيات', 'نهائية', 'نهائي', 'دور المجموعات',
+    'تصفيات', 'نهائية', 'نهائي', 'دور المجموعات', 'سباق', 'سباقات', 'الدوري',
     'لاعب', 'لاعبون', 'لاعبين', 'لاعبه', 'لاعبها', 'نادي', 'أندية', 'اندية',
     'فريق', 'فريقي', 'الفريق', 'منتخب', 'منتخبات', 'المنتخب',
     'مدرب', 'مدربين', 'مهاجم', 'مهاجمين', 'حارس', 'حارس مرمى',
