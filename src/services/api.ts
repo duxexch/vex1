@@ -552,6 +552,120 @@ class VexMobileApiService {
     return result;
   }
 
+  // Telegram Broadcast (winners / matches / auto-ads)
+  public async getTelegramBroadcast(): Promise<{
+    success: boolean;
+    settings: {
+      auto_ad_enabled: boolean;
+      interval_hours: number;
+      quiet_start: number;
+      quiet_end: number;
+      send_winners: boolean;
+      send_matches: boolean;
+      messages: string[];
+      next_message_index: number;
+      last_auto_sent_at: number;
+    };
+    subscribers: { total: number; active: number };
+    recent_subscribers: Array<{
+      chat_id: number;
+      username?: string;
+      first_name?: string;
+      origin_domain?: string;
+      active: boolean;
+      subscribed_at: string;
+      last_sent_at?: string;
+    }>;
+    busy: boolean;
+    history: Array<{
+      id: string;
+      type: string;
+      text_preview: string;
+      sent: number;
+      failed: number;
+      deactivated: number;
+      duration_ms: number;
+      at: string;
+    }>;
+  }> {
+    const res = await fetch('/api/admin/telegram-broadcast', {
+      headers: { 'x-vex-admin': LOTTERY_ADMIN_KEY },
+    });
+    const result = await res.json();
+    if (!res.ok || !result.success) {
+      throw new Error(result.error || 'فشل تحميل إعدادات البث.');
+    }
+    return result;
+  }
+
+  public async saveTelegramBroadcastSettings(data: {
+    auto_ad_enabled?: boolean;
+    interval_hours?: number;
+    quiet_start?: number;
+    quiet_end?: number;
+    send_winners?: boolean;
+    send_matches?: boolean;
+    messages?: string[];
+  }): Promise<{ success: boolean; message?: string }> {
+    const res = await fetch('/api/admin/telegram-broadcast/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-vex-admin': LOTTERY_ADMIN_KEY },
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (!res.ok || !result.success) {
+      throw new Error(result.error || 'فشل حفظ إعدادات البث.');
+    }
+    return result;
+  }
+
+  public async sendTelegramBroadcast(
+    text: string,
+    dryRun = false
+  ): Promise<{ success: boolean; dry_run?: boolean; recipients?: number; sent?: number; failed?: number; deactivated?: number }> {
+    const res = await fetch('/api/admin/telegram-broadcast/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-vex-admin': LOTTERY_ADMIN_KEY },
+      body: JSON.stringify(dryRun ? { dry_run: true } : { text }),
+    });
+    const result = await res.json();
+    if (!res.ok || !result.success) {
+      throw new Error(result.error || 'فشل إرسال البث.');
+    }
+    return result;
+  }
+
+  public async triggerTelegramAutoAd(): Promise<{
+    success: boolean;
+    skipped?: boolean;
+    message?: string;
+    sent?: number;
+    failed?: number;
+  }> {
+    const res = await fetch('/api/admin/telegram-broadcast/trigger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-vex-admin': LOTTERY_ADMIN_KEY },
+    });
+    const result = await res.json();
+    if (!res.ok || !result.success) {
+      throw new Error(result.error || 'فشل تشغيل الإعلان التلقائي.');
+    }
+    return result;
+  }
+
+  public async stopTelegramSubscriber(chatId: number): Promise<{ success: boolean }> {
+    const res = await fetch('/api/admin/telegram-broadcast/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-vex-admin': LOTTERY_ADMIN_KEY },
+      body: JSON.stringify({ chat_id: chatId }),
+    });
+    const result = await res.json();
+    if (!res.ok || !result.success) {
+      throw new Error(result.error || 'فشل إيقاف المشترك.');
+    }
+    return result;
+  }
+
   public async createTelegramVerificationSession(): Promise<TelegramVerificationSession> {
     try {
       const res = await fetch('/api/telegram/session', {

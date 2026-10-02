@@ -38,6 +38,7 @@ import {
   CheckCircle2,
   Sliders,
   Send,
+  Megaphone,
   Upload,
   Palette,
   ShieldCheck,
@@ -305,6 +306,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     | 'compensation'
     | 'phone_requests'
     | 'telegram_bot'
+    | 'telegram_ads'
     | 'ai_agent'
     | 'broadcast'
     | 'ab_testing'
@@ -1013,6 +1015,145 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
       });
     } finally {
       setTestingTelegramBot(false);
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // Telegram Broadcast (Ads / Winners / Matches) State & Handlers
+  // --------------------------------------------------------------------------
+  const [tgAdsLoading, setTgAdsLoading] = useState(false);
+  const [tgAdsSaving, setTgAdsSaving] = useState(false);
+  const [tgAdsSending, setTgAdsSending] = useState(false);
+  const [tgAdsTriggering, setTgAdsTriggering] = useState(false);
+  const [tgAdsEnabled, setTgAdsEnabled] = useState(true);
+  const [tgAdsInterval, setTgAdsInterval] = useState(4);
+  const [tgAdsQuietStart, setTgAdsQuietStart] = useState(0);
+  const [tgAdsQuietEnd, setTgAdsQuietEnd] = useState(9);
+  const [tgAdsWinners, setTgAdsWinners] = useState(true);
+  const [tgAdsMatches, setTgAdsMatches] = useState(true);
+  const [tgAdsMessages, setTgAdsMessages] = useState<string[]>(['']);
+  const [tgAdsSubscribers, setTgAdsSubscribers] = useState({ total: 0, active: 0 });
+  const [tgAdsRecent, setTgAdsRecent] = useState<any[]>([]);
+  const [tgAdsHistory, setTgAdsHistory] = useState<any[]>([]);
+  const [tgAdsBusy, setTgAdsBusy] = useState(false);
+  const [tgAdsLastAutoSent, setTgAdsLastAutoSent] = useState(0);
+  const [tgAdsManualText, setTgAdsManualText] = useState('');
+  const [tgAdsFeedback, setTgAdsFeedback] = useState<{ success: boolean; message: string } | null>(null);
+
+  const loadTelegramBroadcast = async () => {
+    setTgAdsLoading(true);
+    try {
+      const res = await vexApi.getTelegramBroadcast();
+      if (res && res.settings) {
+        setTgAdsEnabled(res.settings.auto_ad_enabled);
+        setTgAdsInterval(res.settings.interval_hours);
+        setTgAdsQuietStart(res.settings.quiet_start);
+        setTgAdsQuietEnd(res.settings.quiet_end);
+        setTgAdsWinners(res.settings.send_winners);
+        setTgAdsMatches(res.settings.send_matches);
+        setTgAdsMessages(res.settings.messages.length ? res.settings.messages : ['']);
+        setTgAdsSubscribers(res.subscribers);
+        setTgAdsRecent(res.recent_subscribers || []);
+        setTgAdsHistory(res.history || []);
+        setTgAdsBusy(Boolean(res.busy));
+        setTgAdsLastAutoSent(res.settings.last_auto_sent_at || 0);
+      }
+    } catch (e) {
+      console.warn('Failed to load telegram broadcast settings:', e);
+    } finally {
+      setTgAdsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'telegram_ads') {
+      loadTelegramBroadcast();
+    }
+  }, [activeTab]);
+
+  const setTgAdsMessageAt = (index: number, value: string) => {
+    setTgAdsMessages((prev) => prev.map((m, i) => (i === index ? value : m)));
+  };
+
+  const handleSaveTelegramAds = async () => {
+    const messages = tgAdsMessages.map((m) => m.trim()).filter(Boolean);
+    if (messages.length === 0) {
+      setTgAdsFeedback({
+        success: false,
+        message: t('أضف رسالة إعلانية واحدة على الأقل.', 'Add at least one ad message.', 'Добавьте хотя бы одно рекламное сообщение.'),
+      });
+      return;
+    }
+    setTgAdsSaving(true);
+    setTgAdsFeedback(null);
+    try {
+      await vexApi.saveTelegramBroadcastSettings({
+        auto_ad_enabled: tgAdsEnabled,
+        interval_hours: tgAdsInterval,
+        quiet_start: tgAdsQuietStart,
+        quiet_end: tgAdsQuietEnd,
+        send_winners: tgAdsWinners,
+        send_matches: tgAdsMatches,
+        messages,
+      });
+      setTgAdsFeedback({
+        success: true,
+        message: t('تم حفظ إعدادات البث بنجاح!', 'Broadcast settings saved!', 'Настройки рассылки сохранены!'),
+      });
+      await loadTelegramBroadcast();
+    } catch (err: any) {
+      setTgAdsFeedback({ success: false, message: err.message || t('فشل الحفظ.', 'Save failed.', 'Ошибка сохранения.') });
+    } finally {
+      setTgAdsSaving(false);
+    }
+  };
+
+  const handleSendTelegramAdNow = async () => {
+    const text = tgAdsManualText.trim();
+    if (!text) {
+      setTgAdsFeedback({
+        success: false,
+        message: t('اكتب نص الرسالة أولاً.', 'Enter the message text first.', 'Сначала введите текст сообщения.'),
+      });
+      return;
+    }
+    setTgAdsSending(true);
+    setTgAdsFeedback(null);
+    try {
+      const res = await vexApi.sendTelegramBroadcast(text);
+      setTgAdsFeedback({
+        success: true,
+        message: t(
+          `تم الإرسال بنجاح! وصلت ${res.sent || 0} رسالة${(res.failed || 0) > 0 ? ` وفشل ${res.failed}` : ''}.`,
+          `Sent! Delivered ${res.sent || 0}${(res.failed || 0) > 0 ? `, failed ${res.failed}` : ''}.`,
+          `Отправлено! Доставлено ${res.sent || 0}${(res.failed || 0) > 0 ? `, ошибок ${res.failed}` : ''}.`
+        ),
+      });
+      setTgAdsManualText('');
+      await loadTelegramBroadcast();
+    } catch (err: any) {
+      setTgAdsFeedback({ success: false, message: err.message || t('فشل الإرسال.', 'Send failed.', 'Ошибка отправки.') });
+    } finally {
+      setTgAdsSending(false);
+    }
+  };
+
+  const handleTriggerTelegramAutoAd = async () => {
+    setTgAdsTriggering(true);
+    setTgAdsFeedback(null);
+    try {
+      const res = await vexApi.triggerTelegramAutoAd();
+      setTgAdsFeedback({
+        success: true,
+        message: res.skipped
+          ? res.message || t('تم التخطي: لا يوجد مشتركون نشطون.', 'Skipped: no active subscribers.', 'Пропущено: нет активных подписчиков.')
+          : t(`تم إرسال الإعلان التلقائي إلى ${res.sent || 0} مشترك.`, `Auto-ad sent to ${res.sent || 0} subscribers.`, `Авто-реклама отправлена ${res.sent || 0} подписчикам.`),
+      });
+      await loadTelegramBroadcast();
+    } catch (err: any) {
+      setTgAdsFeedback({ success: false, message: err.message || t('فشل تشغيل الإعلان.', 'Trigger failed.', 'Ошибка запуска.') });
+    } finally {
+      setTgAdsTriggering(false);
     }
   };
 
@@ -1785,6 +1926,11 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                       id: 'telegram_bot',
                       label: t('بوت تيليجرام وتوثيق الهواتف', 'Telegram Bot Verification', 'Telegram бот и верификация'),
                       icon: Send,
+                    },
+                    {
+                      id: 'telegram_ads',
+                      label: t('إعلانات ورسائل تيليجرام', 'Telegram Ads & Broadcast', 'Telegram реклама и рассылки'),
+                      icon: Megaphone,
                     },
                     { id: 'ai_agent', label: t('وكيل الذكاء الاصطناعي', 'AI Match Agent', 'AI Спортивный аналитик'), icon: Bot },
                     { id: 'broadcast', label: t('بث الإشعارات والرسائل', 'Push Alerts', 'Push-рассылки'), icon: Send },
@@ -5887,6 +6033,339 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                             <div className="text-right text-[11px] font-mono text-slate-400">
                               <span className="block">{item.verified_at ? new Date(item.verified_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</span>
                               <span className="text-[10px] text-emerald-600 font-bold">{t('مقفل بالمحفظة', 'Locked', 'Привязан к кошельку')}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ========================================================= */}
+              {/* TAB: TELEGRAM ADS & BROADCAST                            */}
+              {/* ========================================================= */}
+              {activeTab === 'telegram_ads' && (
+                <div className="space-y-5 animate-fadeIn">
+                  {/* Header Banner */}
+                  <div className="bg-gradient-to-r from-amber-900 via-slate-900 to-slate-950 text-white p-5 rounded-2xl shadow-sm border border-amber-800/40">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 text-amber-400 font-extrabold text-sm sm:text-base">
+                          <Megaphone className="w-5 h-5 text-amber-400" />
+                          <span>{t('إعلانات ورسائل تيليجرام التلقائية', 'Telegram Ads & Auto Broadcast', 'Автореклама и рассылки Telegram')}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                            {tgAdsSubscribers.active}/{tgAdsSubscribers.total} {t('مشترك', 'subscribers', 'подписчиков')}
+                          </span>
+                        </div>
+                        <p className="text-xs text-amber-100/80 max-w-2xl leading-relaxed">
+                          {t(
+                            'رسائل نصية تلقائية كل فترة قابلة للتعديل إلى كل من فتح البوت — إعلانات عن المشروع والمزايا والأرباح + إشعارات الفائزين والمباريات. يتحكم المشترك بإيقافها عبر /stop وإعادة تفعيلها عبر /start.',
+                            'Automatic text messages every configurable interval to everyone who opened the bot — project/feature/profit ads + winners and match alerts. Subscribers control this with /stop and /start.',
+                            'Автоматические текстовые сообщения каждые настраиваемые часы всем, кто открыл бота — реклама проекта/преимуществ/доходов + уведомления о победителях и матчах. Подписчики управляют через /stop и /start.'
+                          )}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={loadTelegramBroadcast}
+                          disabled={tgAdsLoading}
+                          className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all flex items-center gap-1.5"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${tgAdsLoading ? 'animate-spin' : ''}`} />
+                          <span>{t('تحديث', 'Refresh', 'Обновить')}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Feedback */}
+                  {tgAdsFeedback && (
+                    <div
+                      className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center gap-2 animate-fade-in ${
+                        tgAdsFeedback.success
+                          ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                          : 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-300'
+                      }`}
+                    >
+                      {tgAdsFeedback.success ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      )}
+                      <span>{tgAdsFeedback.message}</span>
+                    </div>
+                  )}
+
+                  {/* Stats */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                      <div className="text-[10px] font-bold text-slate-400">{t('مشتركون نشطون', 'Active subscribers', 'Активные подписчики')}</div>
+                      <div className="text-xl font-black text-slate-900 dark:text-white">{tgAdsSubscribers.active}</div>
+                    </div>
+                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                      <div className="text-[10px] font-bold text-slate-400">{t('إجمالي المشتركين', 'Total subscribers', 'Всего подписчиков')}</div>
+                      <div className="text-xl font-black text-slate-900 dark:text-white">{tgAdsSubscribers.total}</div>
+                    </div>
+                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                      <div className="text-[10px] font-bold text-slate-400">{t('آخر إعلان تلقائي', 'Last auto ad', 'Посл. авто-реклама')}</div>
+                      <div className="text-xs font-black text-slate-900 dark:text-white">
+                        {tgAdsLastAutoSent ? new Date(tgAdsLastAutoSent).toLocaleString() : t('لم يبدأ بعد', 'Not yet', 'Ещё нет')}
+                      </div>
+                    </div>
+                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                      <div className="text-[10px] font-bold text-slate-400">{t('حالة المُرسِل', 'Sender state', 'Состояние отправки')}</div>
+                      <div className={`text-xs font-black ${tgAdsBusy ? 'text-amber-500' : 'text-emerald-500'}`}>
+                        {tgAdsBusy ? t('جارٍ الإرسال…', 'Sending…', 'Отправка…') : t('خامل', 'Idle', 'Свободен')}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Settings */}
+                  <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4">
+                    <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                      {t('إعدادات الإعلانات التلقائية', 'Auto-Ad Settings', 'Настройки авто-рекламы')}
+                    </h3>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <label className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 cursor-pointer">
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          {t('تفعيل الإعلانات التلقائية', 'Enable auto-ads', 'Включить авто-рекламу')}
+                        </span>
+                        <input type="checkbox" checked={tgAdsEnabled} onChange={(e) => setTgAdsEnabled(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
+                      </label>
+
+                      <label className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 cursor-pointer">
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          {t('إشعار نتائج الفائزين', 'Winners notifications', 'Уведомления о победителях')}
+                        </span>
+                        <input type="checkbox" checked={tgAdsWinners} onChange={(e) => setTgAdsWinners(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
+                      </label>
+
+                      <label className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 cursor-pointer">
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          {t('إشعارات المباريات والتنبيهات', 'Match notifications', 'Уведомления о матчах')}
+                        </span>
+                        <input type="checkbox" checked={tgAdsMatches} onChange={(e) => setTgAdsMatches(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
+                      </label>
+
+                      <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60">
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          {t('كل كم ساعة؟', 'Every X hours?', 'Каждые X часов?')}
+                        </span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={168}
+                          value={tgAdsInterval}
+                          onChange={(e) => setTgAdsInterval(Math.max(1, Math.min(168, Number(e.target.value) || 1)))}
+                          className="w-20 px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-center"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 sm:col-span-2">
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          {t('ساعة الإرسال الممنوعة (هدوء):', 'Quiet hours (no sends):', 'Часы тишины (без отправки):')}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={0}
+                            max={23}
+                            value={tgAdsQuietStart}
+                            onChange={(e) => setTgAdsQuietStart(Math.max(0, Math.min(23, Number(e.target.value) || 0)))}
+                            className="w-16 px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-center"
+                          />
+                          <span className="text-xs text-slate-400 font-bold">→</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={23}
+                            value={tgAdsQuietEnd}
+                            onChange={(e) => setTgAdsQuietEnd(Math.max(0, Math.min(23, Number(e.target.value) || 0)))}
+                            className="w-16 px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-center"
+                          />
+                          <span className="text-[10px] text-slate-400 font-bold">{t('(0-23)', '(0-23)', '(0-23)')}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Ad templates */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-black text-slate-700 dark:text-slate-300">
+                          {t('قوالب الرسائل (تدور تلقائياً):', 'Message templates (rotated):', 'Шаблоны сообщений (чередуются):')}
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setTgAdsMessages((prev) => [...prev, ''])}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" />
+                          {t('إضافة قالب', 'Add template', 'Добавить')}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-bold">
+                        {t('استخدم {domain} لإظهار نطاق الزائر (مثال: https://{domain})', 'Use {domain} to show the visitor domain (e.g. https://{domain})', 'Используйте {domain} для домена посетителя')}
+                      </p>
+                      {tgAdsMessages.map((msg, idx) => (
+                        <div key={idx} className="flex items-start gap-2">
+                          <textarea
+                            rows={3}
+                            value={msg}
+                            onChange={(e) => setTgAdsMessageAt(idx, e.target.value)}
+                            placeholder={t('نص الإعلان…', 'Ad text…', 'Текст рекламы…')}
+                            className="flex-1 px-3.5 py-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium"
+                          />
+                          {tgAdsMessages.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setTgAdsMessages((prev) => prev.filter((_, i) => i !== idx))}
+                              className="mt-2 p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950"
+                              title={t('حذف', 'Delete', 'Удалить')}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveTelegramAds}
+                        disabled={tgAdsSaving}
+                        className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-black transition-all flex items-center gap-1.5"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        {tgAdsSaving ? t('جارٍ الحفظ…', 'Saving…', 'Сохранение…') : t('حفظ الإعدادات', 'Save settings', 'Сохранить настройки')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleTriggerTelegramAutoAd}
+                        disabled={tgAdsTriggering}
+                        className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-black transition-all flex items-center gap-1.5"
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                        {tgAdsTriggering ? t('جارٍ الإرسال…', 'Sending…', 'Отправка…') : t('تشغيل إعلان تلقائي الآن', 'Send auto-ad now', 'Отправить авто-рекламу')}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Manual send */}
+                  <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
+                    <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                      {t('إرسال رسالة فورية للمشتركين', 'Send immediate message to subscribers', 'Немедленная рассылка подписчикам')}
+                    </h3>
+                    <textarea
+                      rows={3}
+                      value={tgAdsManualText}
+                      onChange={(e) => setTgAdsManualText(e.target.value)}
+                      placeholder={t('اكتب الرسالة النصية…', 'Type the text message…', 'Введите текст сообщения…')}
+                      className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSendTelegramAdNow}
+                      disabled={tgAdsSending}
+                      className="px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-xs font-black transition-all flex items-center gap-1.5"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      {tgAdsSending ? t('جارٍ الإرسال…', 'Sending…', 'Отправка…') : t('إرسال الآن', 'Send now', 'Отправить')}
+                    </button>
+                  </div>
+
+                  {/* Recent subscribers */}
+                  <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
+                    <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                      {t('المشتركون (من فتحوا البوت)', 'Subscribers (bot openers)', 'Подписчики (открывшие бота)')}
+                    </h3>
+                    {tgAdsRecent.length === 0 ? (
+                      <div className="py-5 text-center text-xs text-slate-400 space-y-1">
+                        <p>{t('لا يوجد مشتركون بعد — سيظهر هنا كل من يفتح البوت.', 'No subscribers yet — anyone who opens the bot appears here.', 'Подписчиков пока нет — здесь появятся все, кто открыл бота.')}</p>
+                        <p className="text-[10px]">{t('جرّب إرسال /start للبوت ثم اضغط تحديث.', 'Try sending /start to the bot, then refresh.', 'Отправьте /start боту и обновите.')}</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {tgAdsRecent.map((sub, idx) => (
+                          <div
+                            key={`${sub.chat_id}-${idx}`}
+                            className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-slate-900 dark:text-white" dir="ltr">
+                                  #{sub.chat_id}
+                                </span>
+                                {sub.username && (
+                                  <span className="text-[10px] font-mono text-sky-600 dark:text-sky-400">@{sub.username}</span>
+                                )}
+                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${sub.active ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'}`}>
+                                  {sub.active ? t('نشط', 'Active', 'Активен') : t('متوقف', 'Stopped', 'Остановлен')}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 font-bold mt-0.5">
+                                {sub.origin_domain || t('بدون نطاق', 'No domain', 'Без домена')} · {sub.subscribed_at ? new Date(sub.subscribed_at).toLocaleDateString() : ''}
+                              </div>
+                            </div>
+                            {sub.active && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await vexApi.stopTelegramSubscriber(sub.chat_id);
+                                    await loadTelegramBroadcast();
+                                  } catch {
+                                    // ignore
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950 text-[10px] font-black shrink-0"
+                              >
+                                {t('إيقاف', 'Stop', 'Стоп')}
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* History */}
+                  <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
+                    <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                      {t('سجل آخر البثات', 'Broadcast history', 'История рассылок')}
+                    </h3>
+                    {tgAdsHistory.length === 0 ? (
+                      <p className="py-4 text-center text-xs text-slate-400">{t('لا توجد بثات بعد.', 'No broadcasts yet.', 'Рассылок пока нет.')}</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {tgAdsHistory.slice(0, 15).map((h) => (
+                          <div key={h.id} className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 text-xs space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-black text-slate-900 dark:text-white">
+                                {h.type === 'auto_ad'
+                                  ? t('إعلان تلقائي', 'Auto-ad', 'Авто-реклама')
+                                  : h.type === 'winner'
+                                    ? t('فائزون', 'Winners', 'Победители')
+                                    : h.type === 'match'
+                                      ? t('مباراة', 'Match', 'Матч')
+                                      : t('يدوي', 'Manual', 'Вручную')}
+                              </span>
+                              <span className="text-[10px] font-mono text-slate-400">{h.at ? new Date(h.at).toLocaleString() : ''}</span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate" dir="auto">
+                              {h.text_preview}
+                            </p>
+                            <div className="flex gap-3 text-[10px] font-bold">
+                              <span className="text-emerald-600 dark:text-emerald-400">✓ {h.sent}</span>
+                              {(h.failed || 0) > 0 && <span className="text-rose-600 dark:text-rose-400">✗ {h.failed}</span>}
+                              {(h.deactivated || 0) > 0 && (
+                                <span className="text-slate-400">{t(`متوقفون: ${h.deactivated}`, `Deactivated: ${h.deactivated}`, `Отключено: ${h.deactivated}`)}</span>
+                              )}
+                              <span className="text-slate-400">{(h.duration_ms / 1000).toFixed(1)}s</span>
                             </div>
                           </div>
                         ))}

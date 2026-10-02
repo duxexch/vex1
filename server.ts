@@ -733,6 +733,7 @@ app.post('/api/ai/agent-broadcast', async (req, res) => {
 
   storage.addNotification(newNotif);
   io.emit('notification', newNotif);
+  mirrorMatchNotificationToTelegram(newNotif);
 
   res.json({
     success: true,
@@ -935,6 +936,7 @@ app.post('/api/ai/notifications/smart-dispatch', async (req, res) => {
       };
       storage.addNotification(newNotif);
       io.emit('notification', newNotif);
+      mirrorMatchNotificationToTelegram(newNotif);
 
       return res.json({
         success: true,
@@ -950,6 +952,7 @@ app.post('/api/ai/notifications/smart-dispatch', async (req, res) => {
 
     if (result.success && result.notification) {
       io.emit('notification', result.notification);
+      mirrorMatchNotificationToTelegram(result.notification);
     }
 
     res.json(result);
@@ -2443,11 +2446,11 @@ async function sendTelegramMessage(
 ) {
   if (!telegramConfig.bot_token) return null;
   const url = `https://api.telegram.org/bot${telegramConfig.bot_token}/sendMessage`;
-  const body: any = {
-    chat_id: chatId,
-    text,
-    parse_mode: options?.parse_mode || 'Markdown',
-  };
+  const body: any = { chat_id: chatId, text };
+  // 'none' = plain text (no parse_mode): used by broadcasts so admin-authored
+  // templates can never break Telegram's Markdown parser.
+  const parseMode = options?.parse_mode || 'Markdown';
+  if (parseMode !== 'none') body.parse_mode = parseMode;
 
   if (options?.keyboard) {
     body.reply_markup = {
@@ -2474,6 +2477,312 @@ async function sendTelegramMessage(
   }
 }
 
+// ===================== Telegram Broadcast (Winners / Matches / Auto-Ads) =====
+// Any user who ever opened the bot is a subscriber. /start subscribes (or
+// re-subscribes), /stop unsubscribes. All broadcasts are plain text.
+
+interface TelegramSubscriber {
+  chat_id: number;
+  telegram_id?: number;
+  username?: string;
+  first_name?: string;
+  origin_domain?: string;
+  subscribed_at: string;
+  active: boolean;
+  stopped_at?: string;
+  last_sent_at?: string;
+}
+
+interface TelegramBroadcastHistoryEntry {
+  id: string;
+  type: 'auto_ad' | 'winner' | 'match' | 'manual';
+  text_preview: string;
+  sent: number;
+  failed: number;
+  deactivated: number;
+  duration_ms: number;
+  at: string;
+}
+
+interface TelegramBroadcastSettings {
+  auto_ad_enabled: boolean;
+  interval_hours: number;
+  quiet_start: number;
+  quiet_end: number;
+  send_winners: boolean;
+  send_matches: boolean;
+  messages: string[];
+  next_message_index: number;
+  last_auto_sent_at: number;
+  history: TelegramBroadcastHistoryEntry[];
+}
+
+const TELEGRAM_SUBSCRIBERS_PATH = path.join(process.cwd(), 'data', 'telegram_subscribers.json');
+const TELEGRAM_BROADCAST_PATH = path.join(process.cwd(), 'data', 'telegram_broadcast.json');
+
+const DEFAULT_TELEGRAM_BROADCAST_MESSAGES = [
+  'مرحباً بك في VEX Deals 🎯\n\nمنصة الأرباح الذكية: سحوبات بجوائز حقيقية، إيداعات وسحوبات فورية عبر محفظتك، وتحليلات ذكية للمباريات.\n\n🌐 {domain}\n\nأرسل /stop لإيقاف هذه الرسائل.',
+  '💡 هل تعلم؟\n\nفي VEX Deals يمكنك:\n• ربح جوائز تصل إلى مئات الآلاف من السحوبات اليومية\n• إيداع وسحب أموال فوري بدون انتظار\n• توصيات رياضية مدعومة بالذكاء الاصطناعي\n\nابدأ الآن: {domain}\n\nأرسل /stop لإيقاف هذه الرسائل.',
+  '🏆 فرصتك اليوم في VEX Deals!\n\nسحوبات متتالية بجوائز ضخمة + محفظة إلكترونية آمنة بتوثيق تيليجرام. انضم لآلاف المستخدمين النشطين.\n\n🌐 {domain}\n\nأرسل /stop لإيقاف هذه الرسائل.',
+];
+
+const DEFAULT_TELEGRAM_BROADCAST_SETTINGS: TelegramBroadcastSettings = {
+  auto_ad_enabled: true,
+  interval_hours: 4,
+  quiet_start: 0,
+  quiet_end: 9,
+  send_winners: true,
+  send_matches: true,
+  messages: [...DEFAULT_TELEGRAM_BROADCAST_MESSAGES],
+  next_message_index: 0,
+  last_auto_sent_at: 0,
+  history: [],
+};
+
+let TELEGRAM_SUBSCRIBERS = new Map<number, TelegramSubscriber>();
+let TELEGRAM_BROADCAST_SETTINGS: TelegramBroadcastSettings | null = null;
+let telegramBroadcastBusy = false;
+
+function loadTelegramSubscribersFromFile() {
+  try {
+    if (!fs.existsSync(TELEGRAM_SUBSCRIBERS_PATH)) return;
+    const list: TelegramSubscriber[] = JSON.parse(fs.readFileSync(TELEGRAM_SUBSCRIBERS_PATH, 'utf-8'));
+    if (!Array.isArray(list)) return;
+    for (const s of list) {
+      if (s && typeof s.chat_id === 'number') TELEGRAM_SUBSCRIBERS.set(s.chat_id, s);
+    }
+    if (TELEGRAM_SUBSCRIBERS.size > 0) {
+      console.log(`📢 [Telegram Broadcast] Restored ${TELEGRAM_SUBSCRIBERS.size} subscriber(s) from disk`);
+    }
+  } catch (e) {
+    console.warn('⚠️ [Telegram Broadcast] Unable to restore subscribers', e);
+  }
+}
+
+function saveTelegramSubscribersToFile() {
+  try {
+    fs.writeFileSync(
+      TELEGRAM_SUBSCRIBERS_PATH,
+      JSON.stringify([...TELEGRAM_SUBSCRIBERS.values()], null, 2),
+      'utf-8'
+    );
+  } catch (e) {
+    console.warn('⚠️ [Telegram Broadcast] Unable to persist subscribers', e);
+  }
+}
+
+function getTelegramBroadcastSettings(): TelegramBroadcastSettings {
+  if (TELEGRAM_BROADCAST_SETTINGS) return TELEGRAM_BROADCAST_SETTINGS;
+  let loaded: Partial<TelegramBroadcastSettings> = {};
+  try {
+    if (fs.existsSync(TELEGRAM_BROADCAST_PATH)) {
+      loaded = JSON.parse(fs.readFileSync(TELEGRAM_BROADCAST_PATH, 'utf-8')) || {};
+    }
+  } catch (e) {
+    console.warn('⚠️ [Telegram Broadcast] Bad settings file, using defaults', e);
+  }
+  TELEGRAM_BROADCAST_SETTINGS = {
+    ...DEFAULT_TELEGRAM_BROADCAST_SETTINGS,
+    ...loaded,
+    messages:
+      Array.isArray(loaded.messages) && loaded.messages.length
+        ? loaded.messages.filter((m: any) => typeof m === 'string' && m.trim()).map((m: any) => String(m))
+        : [...DEFAULT_TELEGRAM_BROADCAST_MESSAGES],
+    history: Array.isArray(loaded.history) ? loaded.history.slice(0, 30) : [],
+  };
+  return TELEGRAM_BROADCAST_SETTINGS;
+}
+
+function saveTelegramBroadcastSettings() {
+  try {
+    if (!TELEGRAM_BROADCAST_SETTINGS) return;
+    fs.writeFileSync(
+      TELEGRAM_BROADCAST_PATH,
+      JSON.stringify(TELEGRAM_BROADCAST_SETTINGS, null, 2),
+      'utf-8'
+    );
+  } catch (e) {
+    console.warn('⚠️ [Telegram Broadcast] Unable to persist settings', e);
+  }
+}
+
+function upsertTelegramSubscriber(opts: {
+  chat_id: number;
+  telegram_id?: number;
+  username?: string;
+  first_name?: string;
+  origin_domain?: string;
+  resubscribe?: boolean;
+}) {
+  if (!opts.chat_id || !Number.isFinite(opts.chat_id)) return;
+  const existing = TELEGRAM_SUBSCRIBERS.get(opts.chat_id);
+  if (existing) {
+    if (opts.telegram_id) existing.telegram_id = opts.telegram_id;
+    if (opts.username) existing.username = opts.username;
+    if (opts.first_name) existing.first_name = opts.first_name;
+    if (opts.origin_domain) existing.origin_domain = opts.origin_domain;
+    // Only an explicit /start (resubscribe) may resurrect a stopped subscriber —
+    // any other update must never undo a user's /stop.
+    if (opts.resubscribe) {
+      existing.active = true;
+      delete existing.stopped_at;
+    }
+    TELEGRAM_SUBSCRIBERS.set(opts.chat_id, existing);
+  } else {
+    TELEGRAM_SUBSCRIBERS.set(opts.chat_id, {
+      chat_id: opts.chat_id,
+      telegram_id: opts.telegram_id,
+      username: opts.username || undefined,
+      first_name: opts.first_name || undefined,
+      origin_domain: opts.origin_domain || undefined,
+      subscribed_at: new Date().toISOString(),
+      active: true,
+    });
+  }
+  saveTelegramSubscribersToFile();
+}
+
+function stopTelegramSubscriberByChat(chatId: number) {
+  const existing = TELEGRAM_SUBSCRIBERS.get(chatId);
+  if (existing && existing.active) {
+    existing.active = false;
+    existing.stopped_at = new Date().toISOString();
+    saveTelegramSubscribersToFile();
+  }
+}
+
+function renderBroadcastText(template: string, sub?: TelegramSubscriber): string {
+  return template.replace(/\{domain\}/g, sub?.origin_domain || 'vex.deals');
+}
+
+function isQuietHour(now: Date, s: TelegramBroadcastSettings): boolean {
+  if (s.quiet_start === s.quiet_end) return false;
+  const h = now.getHours();
+  if (s.quiet_start < s.quiet_end) return h >= s.quiet_start && h < s.quiet_end;
+  return h >= s.quiet_start || h < s.quiet_end;
+}
+
+async function sendPlainTelegramMessage(
+  chatId: number,
+  text: string
+): Promise<{ ok: boolean; error_code?: number; deactivated?: boolean }> {
+  let r: any = await sendTelegramMessage(chatId, text, { parse_mode: 'none' });
+  if (r && r.ok) return { ok: true };
+  if (r && r.error_code === 429) {
+    const waitSec = Math.min(Number(r.parameters?.retry_after) || 3, 30);
+    await new Promise((resolve) => setTimeout(resolve, waitSec * 1000));
+    r = await sendTelegramMessage(chatId, text, { parse_mode: 'none' });
+    if (r && r.ok) return { ok: true };
+  }
+  // 403 = user blocked/dead bot: subscriber is gone for good.
+  if (r && r.error_code === 403) return { ok: false, error_code: 403, deactivated: true };
+  return { ok: false, error_code: r?.error_code };
+}
+
+async function broadcastToTelegramSubscribers(
+  type: TelegramBroadcastHistoryEntry['type'],
+  render: (sub: TelegramSubscriber) => string
+): Promise<{ ran: boolean; sent: number; failed: number; deactivated: number; duration_ms: number; busy?: boolean }> {
+  const stats = { ran: false, sent: 0, failed: 0, deactivated: 0, duration_ms: 0 };
+  if (telegramBroadcastBusy) {
+    console.warn(`⚠️ [Telegram Broadcast] Overlap while sending "${type}" — skipped`);
+    return { ...stats, busy: true };
+  }
+  if (!telegramConfig.bot_token || !telegramConfig.is_active) return stats;
+  const subscribers = [...TELEGRAM_SUBSCRIBERS.values()].filter((s) => s.active);
+  if (subscribers.length === 0) return stats;
+
+  telegramBroadcastBusy = true;
+  stats.ran = true;
+  const preview = render(subscribers[0]).replace(/\s+/g, ' ').slice(0, 120);
+  const startedAt = Date.now();
+  try {
+    for (const sub of subscribers) {
+      const text = render(sub).slice(0, 4000);
+      if (text.trim()) {
+        const result = await sendPlainTelegramMessage(sub.chat_id, text);
+        if (result.ok) {
+          stats.sent++;
+          sub.last_sent_at = new Date().toISOString();
+        } else {
+          stats.failed++;
+          if (result.deactivated) {
+            sub.active = false;
+            sub.stopped_at = new Date().toISOString();
+            stats.deactivated++;
+          }
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+  } finally {
+    stats.duration_ms = Date.now() - startedAt;
+    telegramBroadcastBusy = false;
+    saveTelegramSubscribersToFile();
+  }
+
+  const settings = getTelegramBroadcastSettings();
+  settings.history.unshift({
+    id: `BC-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type,
+    text_preview: preview,
+    sent: stats.sent,
+    failed: stats.failed,
+    deactivated: stats.deactivated,
+    duration_ms: stats.duration_ms,
+    at: new Date().toISOString(),
+  });
+  settings.history = settings.history.slice(0, 30);
+  saveTelegramBroadcastSettings();
+  console.log(
+    `📢 [Telegram Broadcast] ${type}: sent=${stats.sent} failed=${stats.failed} deactivated=${stats.deactivated} in ${stats.duration_ms}ms`
+  );
+  return stats;
+}
+
+function maybeSendTelegramAutoAd(force = false): Promise<any> | null {
+  try {
+    const s = getTelegramBroadcastSettings();
+    if (!force && !s.auto_ad_enabled) return null;
+    if (!telegramConfig.bot_token || !telegramConfig.is_active) return null;
+    if (telegramBroadcastBusy) return null;
+    const messages = s.messages.filter((m) => m.trim());
+    if (messages.length === 0) return null;
+    if (![...TELEGRAM_SUBSCRIBERS.values()].some((x) => x.active)) return null;
+    if (!force) {
+      const intervalMs = Math.max(1, s.interval_hours) * 60 * 60 * 1000;
+      if (Date.now() - (s.last_auto_sent_at || 0) < intervalMs) return null;
+      if (isQuietHour(new Date(), s)) return null;
+    }
+    const template = messages[s.next_message_index % messages.length];
+    s.next_message_index = (s.next_message_index + 1) % messages.length;
+    // Reserve BEFORE the async send: the 30s worker tick must never re-enter.
+    s.last_auto_sent_at = Date.now();
+    saveTelegramBroadcastSettings();
+    return broadcastToTelegramSubscribers('auto_ad', (sub) => renderBroadcastText(template, sub));
+  } catch (err) {
+    console.warn('⚠️ [Telegram Broadcast] auto-ad tick failed', err);
+    return null;
+  }
+}
+
+function mirrorMatchNotificationToTelegram(notif: any) {
+  try {
+    if (!notif) return;
+    const s = getTelegramBroadcastSettings();
+    if (!s.send_matches) return;
+    const isMatch = notif.category === 'ai_prediction' || Boolean(notif.data && notif.data.matchId);
+    if (!isMatch) return;
+    if (telegramBroadcastBusy) return;
+    const text = `🔔 ${notif.title || 'تنبيه مباراة'}${notif.message ? `\n\n${notif.message}` : ''}`;
+    void broadcastToTelegramSubscribers('match', () => text);
+  } catch (err) {
+    console.warn('⚠️ [Telegram Broadcast] match mirror failed', err);
+  }
+}
+
+loadTelegramSubscribersFromFile();
+
 // Telegram Polling Daemon
 let telegramPollingActive = false;
 let telegramPollingOffset = 0;
@@ -2492,6 +2801,15 @@ async function handleTelegramUpdate(update: any) {
 
   console.log(`📩 [Telegram Update] from @${telegramUsername} (chat: ${chatId}):`, text || '[Contact]');
 
+  // Capture as a broadcast subscriber: anyone who opened the bot counts.
+  // Existing subscribers keep their /stop state (only /start re-subscribes).
+  upsertTelegramSubscriber({
+    chat_id: chatId,
+    telegram_id: telegramUserId,
+    username: telegramUsername,
+    first_name: telegramFirstName,
+  });
+
   // Case 1: User Shared Contact (Genuine Phone Number from Telegram)
   if (message.contact) {
     const contact = message.contact;
@@ -2508,6 +2826,9 @@ async function handleTelegramUpdate(update: any) {
     // binding — that could attach this contact to another user's session.
     const boundSessionId = telegramUserId ? TELEGRAM_USER_SESSIONS.get(telegramUserId) : undefined;
     const session = boundSessionId ? TELEGRAM_SESSIONS.get(boundSessionId) : undefined;
+    if (session?.origin_domain) {
+      upsertTelegramSubscriber({ chat_id: chatId, origin_domain: session.origin_domain });
+    }
 
     if (!session || Date.now() > session.expires_at) {
       await sendTelegramMessage(
@@ -2587,6 +2908,14 @@ async function handleTelegramUpdate(update: any) {
 
   // Case 2: /start or /start v_SESSION_ID
   if (text.startsWith('/start')) {
+    // Explicit /start always (re)subscribes the user to broadcasts.
+    upsertTelegramSubscriber({
+      chat_id: chatId,
+      telegram_id: telegramUserId,
+      username: telegramUsername,
+      first_name: telegramFirstName,
+      resubscribe: true,
+    });
     const parts = text.split(' ');
     const deepLinkPayload = parts[1] || '';
     if (deepLinkPayload.startsWith('v_')) {
@@ -2616,6 +2945,9 @@ async function handleTelegramUpdate(update: any) {
     const boundDomain = deepLinkPayload.startsWith('v_')
       ? TELEGRAM_SESSIONS.get(deepLinkPayload)?.origin_domain || ''
       : '';
+    if (boundDomain) {
+      upsertTelegramSubscriber({ chat_id: chatId, origin_domain: boundDomain });
+    }
     const domainLine = boundDomain
       ? `🌐 *الموقع الذي طلب توثيق رقمك:* \`${boundDomain}\`\n\n`
       : '';
@@ -2638,6 +2970,17 @@ async function handleTelegramUpdate(update: any) {
       resize_keyboard: true,
       one_time_keyboard: true,
     });
+    return;
+  }
+
+  // Case 2b: /stop — unsubscribe from broadcasts (re-subscribe via /start)
+  if (text === '/stop' || /^\/stop@\w+/.test(text)) {
+    stopTelegramSubscriberByChat(chatId);
+    await sendTelegramMessage(
+      chatId,
+      '🛑 *تم إيقاف رسائل الإعلانات والتنبيهات التلقائية.*\n\nللتفعيل مرة أخرى أرسل /start — سنرحّب بك من جديد.',
+      { parse_mode: 'Markdown' }
+    );
     return;
   }
 
@@ -3077,6 +3420,166 @@ app.post('/api/telegram/simulate-contact', requireTelegramAdmin, (req, res) => {
   });
 });
 
+// 9. Telegram Broadcast / Auto-Ads admin control
+app.get('/api/admin/telegram-broadcast', requireTelegramAdmin, (req, res) => {
+  try {
+    const s = getTelegramBroadcastSettings();
+    const subscribers = [...TELEGRAM_SUBSCRIBERS.values()];
+    res.json({
+      success: true,
+      settings: {
+        auto_ad_enabled: s.auto_ad_enabled,
+        interval_hours: s.interval_hours,
+        quiet_start: s.quiet_start,
+        quiet_end: s.quiet_end,
+        send_winners: s.send_winners,
+        send_matches: s.send_matches,
+        messages: s.messages,
+        next_message_index: s.next_message_index,
+        last_auto_sent_at: s.last_auto_sent_at,
+      },
+      subscribers: {
+        total: subscribers.length,
+        active: subscribers.filter((x) => x.active).length,
+      },
+      recent_subscribers: subscribers
+        .slice(-20)
+        .reverse()
+        .map((x) => ({
+          chat_id: x.chat_id,
+          username: x.username,
+          first_name: x.first_name,
+          origin_domain: x.origin_domain,
+          active: x.active,
+          subscribed_at: x.subscribed_at,
+          last_sent_at: x.last_sent_at,
+        })),
+      busy: telegramBroadcastBusy,
+      history: s.history,
+    });
+  } catch (err) {
+    console.error('[Telegram Broadcast] GET failed:', err);
+    res.status(500).json({ success: false, error: 'Failed to load broadcast settings' });
+  }
+});
+
+app.post('/api/admin/telegram-broadcast/settings', requireTelegramAdmin, (req, res) => {
+  try {
+    const body = req.body || {};
+    const current = getTelegramBroadcastSettings();
+    const errors: string[] = [];
+    const next: TelegramBroadcastSettings = { ...current, messages: [...current.messages], history: current.history };
+
+    if (body.auto_ad_enabled !== undefined) next.auto_ad_enabled = Boolean(body.auto_ad_enabled);
+    if (body.send_winners !== undefined) next.send_winners = Boolean(body.send_winners);
+    if (body.send_matches !== undefined) next.send_matches = Boolean(body.send_matches);
+
+    if (body.interval_hours !== undefined) {
+      const v = Number(body.interval_hours);
+      if (!Number.isFinite(v) || v < 1 || v > 168) errors.push('interval_hours must be between 1 and 168');
+      else next.interval_hours = Math.floor(v);
+    }
+    if (body.quiet_start !== undefined) {
+      const v = Number(body.quiet_start);
+      if (!Number.isInteger(v) || v < 0 || v > 23) errors.push('quiet_start must be 0-23');
+      else next.quiet_start = v;
+    }
+    if (body.quiet_end !== undefined) {
+      const v = Number(body.quiet_end);
+      if (!Number.isInteger(v) || v < 0 || v > 23) errors.push('quiet_end must be 0-23');
+      else next.quiet_end = v;
+    }
+    if (body.messages !== undefined) {
+      if (!Array.isArray(body.messages)) {
+        errors.push('messages must be an array');
+      } else {
+        const msgs = body.messages.map((m: any) => String(m ?? '')).filter((m: string) => m.trim());
+        if (msgs.length === 0) errors.push('at least one non-empty message is required');
+        if (msgs.length > 10) errors.push('maximum of 10 messages allowed');
+        if (msgs.some((m: string) => m.length > 3500)) errors.push('message too long (max 3500 chars)');
+        if (errors.length === 0) next.messages = msgs;
+      }
+    }
+    if (errors.length > 0) {
+      return res.status(400).json({ success: false, error: errors.join('; ') });
+    }
+    TELEGRAM_BROADCAST_SETTINGS = next;
+    saveTelegramBroadcastSettings();
+    res.json({ success: true, message: 'Broadcast settings saved.' });
+  } catch (err) {
+    console.error('[Telegram Broadcast] settings save failed:', err);
+    res.status(500).json({ success: false, error: 'Failed to save broadcast settings' });
+  }
+});
+
+app.post('/api/admin/telegram-broadcast/send', requireTelegramAdmin, async (req, res) => {
+  try {
+    const body = req.body || {};
+    if (body.dry_run) {
+      const count = [...TELEGRAM_SUBSCRIBERS.values()].filter((x) => x.active).length;
+      return res.json({ success: true, dry_run: true, recipients: count });
+    }
+    const text = String(body.text || '').trim();
+    if (!text) return res.status(400).json({ success: false, error: 'text is required' });
+    if (text.length > 4000) return res.status(400).json({ success: false, error: 'text too long (max 4000 chars)' });
+    if (!telegramConfig.bot_token || !telegramConfig.is_active) {
+      return res.status(409).json({ success: false, error: 'Telegram bot is not active' });
+    }
+    if (telegramBroadcastBusy) {
+      return res.status(409).json({ success: false, error: 'A broadcast is already in progress' });
+    }
+    const stats = await broadcastToTelegramSubscribers('manual', () => text);
+    res.json({ success: true, ...stats });
+  } catch (err) {
+    console.error('[Telegram Broadcast] send failed:', err);
+    res.status(500).json({ success: false, error: 'Failed to send broadcast' });
+  }
+});
+
+app.post('/api/admin/telegram-broadcast/trigger', requireTelegramAdmin, async (req, res) => {
+  try {
+    if (telegramBroadcastBusy) {
+      return res.status(409).json({ success: false, error: 'A broadcast is already in progress' });
+    }
+    const result = await maybeSendTelegramAutoAd(true);
+    if (!result) {
+      return res.json({
+        success: true,
+        skipped: true,
+        message: 'Skipped: no active subscribers or bot is inactive.',
+      });
+    }
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[Telegram Broadcast] trigger failed:', err);
+    res.status(500).json({ success: false, error: 'Failed to trigger auto-ad' });
+  }
+});
+
+// Manual subscriber management (also used by tests / ops)
+app.post('/api/admin/telegram-broadcast/subscribe', requireTelegramAdmin, (req, res) => {
+  const chatId = Number(req.body?.chat_id);
+  if (!Number.isFinite(chatId) || chatId <= 0) {
+    return res.status(400).json({ success: false, error: 'chat_id must be a positive number' });
+  }
+  upsertTelegramSubscriber({
+    chat_id: chatId,
+    username: req.body?.username ? String(req.body.username) : undefined,
+    origin_domain: req.body?.origin_domain ? String(req.body.origin_domain) : undefined,
+    resubscribe: true,
+  });
+  res.json({ success: true });
+});
+
+app.post('/api/admin/telegram-broadcast/stop', requireTelegramAdmin, (req, res) => {
+  const chatId = Number(req.body?.chat_id);
+  if (!Number.isFinite(chatId) || chatId <= 0) {
+    return res.status(400).json({ success: false, error: 'chat_id must be a positive number' });
+  }
+  stopTelegramSubscriberByChat(chatId);
+  res.json({ success: true });
+});
+
 // 8. Telegram Webhook Endpoint — REMOVED intentionally: the app drives the bot
 //    exclusively through the authenticated long-polling daemon above. An
 //    unauthenticated webhook could otherwise inject forged updates.
@@ -3313,6 +3816,10 @@ function dispatchLotteryResultsNotification(draw: LotteryDraw) {
   storage.addNotification(newNotif);
   io.emit('notification', newNotif);
   console.log(`🎟️ [Lottery Engine] Results published for ${draw.id}`);
+  // Winners broadcast: every subscriber gets the results straight in Telegram.
+  if (getTelegramBroadcastSettings().send_winners) {
+    void broadcastToTelegramSubscribers('winner', () => `${newNotif.title}\n\n${newNotif.message}`);
+  }
   return newNotif;
 }
 
@@ -3604,11 +4111,15 @@ function startDockerNotificationWorker() {
         console.log(`[Heuristic Worker] Dispatched ${dueDispatched.length} optimal-window notifications!`);
         dueDispatched.forEach((notif) => {
           io.emit('notification', notif);
+          mirrorMatchNotificationToTelegram(notif);
         });
       }
 
       // 2. Lottery scheduler: reminders, auto-close, auto-draw, auto-create
       runLotterySchedulerTick();
+
+      // 2b. Telegram auto-ad broadcast (interval + quiet window checked inside)
+      void maybeSendTelegramAutoAd();
 
       // 3. Pulse active notifications
       const notifs = storage.getNotifications();
