@@ -13,7 +13,6 @@ import {
   Copy,
   ExternalLink,
   ClipboardPaste,
-  Sparkles,
   RefreshCw,
   MessageSquare,
 } from 'lucide-react';
@@ -48,7 +47,6 @@ export const PhoneVerificationModal: React.FC<PhoneVerificationModalProps> = ({
   } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [simulating, setSimulating] = useState(false);
   const [isSuccessStep, setIsSuccessStep] = useState(false);
 
   const isAr = lang === 'ar';
@@ -174,31 +172,12 @@ export const PhoneVerificationModal: React.FC<PhoneVerificationModalProps> = ({
     }
   };
 
-  // Handle Simulation (instant testing for user or reviewer)
-  const handleSimulateContact = async () => {
-    setSimulating(true);
-    setError(null);
-    try {
-      const res = await vexApi.simulateTelegramContact(
-        session?.session_id,
-        '+964770' + Math.floor(1000000 + Math.random() * 9000000),
-        'vex_user'
-      );
-      setContactReceivedNotice({
-        phone: res.phone,
-        code: res.code,
-        telegramUsername: 'vex_user',
-      });
-      setCode(res.code);
-    } catch (err: any) {
-      setError(err.message || 'فشلت عملية المحاكاة.');
-    } finally {
-      setSimulating(false);
-    }
-  };
-
-  const botUsername = session?.bot_username || 'VexVerifyBot';
-  const deepLink = session?.deep_link || `https://t.me/${botUsername}`;
+  const botUsername = session?.bot_username || '';
+  const deepLink = session?.deep_link || '';
+  // No deep link is ever produced unless the server confirmed a real, active,
+  // getMe-verified bot — in that case we show an inactive notice (never a link
+  // to some other bot).
+  const botUnavailable = !session || !session.bot_configured || !deepLink;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in overflow-y-auto">
@@ -339,42 +318,65 @@ export const PhoneVerificationModal: React.FC<PhoneVerificationModalProps> = ({
                       {isAr ? 'فتح البوت ومشاركة جهة الاتصال' : 'Open Bot & Share Contact'}
                     </h4>
                   </div>
-                  <span className="text-[10px] font-mono text-sky-700 dark:text-sky-300 font-bold">
-                    @{botUsername}
-                  </span>
+                  {botUsername && (
+                    <span className="text-[10px] font-mono text-sky-700 dark:text-sky-300 font-bold">
+                      @{botUsername}
+                    </span>
+                  )}
                 </div>
 
-                <p className="text-[11px] text-sky-900/80 dark:text-sky-300/80 leading-relaxed">
-                  {isAr
-                    ? 'انقر على الزر أدناه لفتح بوت تيليجرام الرسمي، ثم اضغط داخل البوت على زر [📲 مشاركة جهة الاتصال] لمشاركة رقم هاتفك الحقيقي بأمان.'
-                    : 'Click below to launch the official Telegram bot, then tap [Share Contact] in the bot to provide your verified phone number.'}
-                </p>
+                {sessionLoading ? (
+                  <div className="p-3 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex items-center gap-2.5">
+                    <RefreshCw className="w-4 h-4 shrink-0 text-slate-500 animate-spin" />
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">
+                      {isAr ? 'جارٍ التحقق من حالة بوت التحقق...' : 'Checking verification bot status...'}
+                    </p>
+                  </div>
+                ) : botUnavailable ? (
+                  /* Inactive-bot state: absolutely no link/button is rendered. */
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                    <p className="text-[11px] text-rose-900 dark:text-rose-200 font-bold leading-relaxed">
+                      {isAr
+                        ? 'بوت التحقق عبر تيليجرام غير مُفعّل حالياً. تواصل مع الإدارة لتفعيل البوت الرسمي ثم أعد فتح هذه النافذة.'
+                        : 'The Telegram verification bot is currently inactive. Contact the admin to activate the official bot, then reopen this window.'}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-[11px] text-sky-900/80 dark:text-sky-300/80 leading-relaxed">
+                      {isAr
+                        ? 'انقر على الزر أدناه لفتح بوت تيليجرام الرسمي، ثم اضغط داخل البوت على زر [📲 مشاركة جهة الاتصال] لمشاركة رقم هاتفك الحقيقي بأمان.'
+                        : 'Click below to launch the official Telegram bot, then tap [Share Contact] in the bot to provide your verified phone number.'}
+                    </p>
 
-                <div className="flex gap-2">
-                  <a
-                    href={deepLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 active:scale-98"
-                  >
-                    <Send className="w-4 h-4" />
-                    <span>{isAr ? 'فتح بوت تيليجرام لتأكيد الرقم' : 'Open Telegram Bot'}</span>
-                    <ExternalLink className="w-3.5 h-3.5 opacity-70" />
-                  </a>
+                    <div className="flex gap-2">
+                      <a
+                        href={deepLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 active:scale-98"
+                      >
+                        <Send className="w-4 h-4" />
+                        <span>{isAr ? 'فتح بوت تيليجرام لتأكيد الرقم' : 'Open Telegram Bot'}</span>
+                        <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+                      </a>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(deepLink);
-                      setCopiedLink(true);
-                      setTimeout(() => setCopiedLink(false), 2000);
-                    }}
-                    title={isAr ? 'نسخ رابط البوت' : 'Copy Bot Link'}
-                    className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 hover:bg-sky-50 transition-colors"
-                  >
-                    {copiedLink ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(deepLink);
+                          setCopiedLink(true);
+                          setTimeout(() => setCopiedLink(false), 2000);
+                        }}
+                        title={isAr ? 'نسخ رابط البوت' : 'Copy Bot Link'}
+                        className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 hover:bg-sky-50 transition-colors"
+                      >
+                        {copiedLink ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Real-time received alert badge */}
@@ -456,27 +458,6 @@ export const PhoneVerificationModal: React.FC<PhoneVerificationModalProps> = ({
                   )}
                 </button>
               </form>
-
-              {/* Instant Test Simulator Mode (for fast testing / demo preview) */}
-              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                <span className="text-[11px] text-slate-400 font-medium">
-                  {isAr ? 'وضع الفحص السريع:' : 'Testing Mode:'}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={handleSimulateContact}
-                  disabled={simulating}
-                  className="text-[11px] font-bold text-sky-600 dark:text-sky-400 hover:text-sky-700 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                >
-                  {simulating ? (
-                    <RefreshCw className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-3 h-3" />
-                  )}
-                  <span>{isAr ? 'تجربة فورية: محاكاة مشاركة جهة الاتصال' : 'Simulate Contact Sharing'}</span>
-                </button>
-              </div>
             </div>
           )}
         </div>

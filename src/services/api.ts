@@ -36,6 +36,7 @@ import {
 import { INITIAL_COMPANIES } from '../data/mockCompanies';
 import { applyBrandingToDocument } from '../utils/dynamicManifest';
 import { generateDefaultCompanyApiMethods } from '../data/defaultApiMethods';
+import { LOTTERY_ADMIN_KEY } from '../../shared/lotteryConfig';
 
 export function getReferralUrl(code: string, companyId?: string): string {
   if (companyId) {
@@ -498,7 +499,9 @@ class VexMobileApiService {
     }>;
   }> {
     try {
-      const res = await fetch('/api/admin/telegram-config');
+      const res = await fetch('/api/admin/telegram-config', {
+        headers: { 'x-vex-admin': LOTTERY_ADMIN_KEY },
+      });
       if (res.ok) {
         return await res.json();
       }
@@ -522,7 +525,7 @@ class VexMobileApiService {
   }): Promise<{ success: boolean; message: string; bot?: any }> {
     const res = await fetch('/api/admin/telegram-config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-vex-admin': LOTTERY_ADMIN_KEY },
       body: JSON.stringify(data),
     });
     const result = await res.json();
@@ -540,7 +543,7 @@ class VexMobileApiService {
   }> {
     const res = await fetch('/api/admin/telegram/test', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-vex-admin': LOTTERY_ADMIN_KEY },
     });
     const result = await res.json();
     if (!res.ok || !result.success) {
@@ -558,29 +561,42 @@ class VexMobileApiService {
       });
       if (res.ok) {
         const data = await res.json();
+        if (data.success && data.deep_link && data.bot_configured) {
+          return {
+            session_id: data.session_id,
+            user_id: this.userId,
+            bot_username: data.bot_username,
+            deep_link: data.deep_link,
+            status: 'pending_telegram',
+            expires_at: data.expires_at,
+            bot_configured: true,
+          };
+        }
+        // Bot not configured (or server refused): NO link is produced — the UI
+        // must show an "inactive bot" notice instead of opening a wrong bot.
         return {
-          session_id: data.session_id,
+          session_id: '',
           user_id: this.userId,
-          bot_username: data.bot_username,
-          deep_link: data.deep_link,
-          status: 'pending_telegram',
-          expires_at: data.expires_at,
-          bot_configured: data.bot_configured,
+          bot_username: '',
+          deep_link: '',
+          status: 'expired',
+          expires_at: Date.now(),
+          bot_configured: false,
         };
       }
     } catch {
       // pass
     }
 
-    // Client fallback session if server unreachable
-    const fallbackId = `v_${Date.now().toString(36)}`;
+    // Server unreachable — never fabricate a deep link pointing to a bot we
+    // cannot verify. The modal renders the inactive-bot state instead.
     return {
-      session_id: fallbackId,
+      session_id: '',
       user_id: this.userId,
-      bot_username: 'VexVerifyBot',
-      deep_link: `https://t.me/VexVerifyBot?start=${fallbackId}`,
-      status: 'pending_telegram',
-      expires_at: Date.now() + 15 * 60 * 1000,
+      bot_username: '',
+      deep_link: '',
+      status: 'expired',
+      expires_at: Date.now(),
       bot_configured: false,
     };
   }
@@ -659,59 +675,12 @@ class VexMobileApiService {
         phone_number: profile.phone_number,
       };
     } catch (err: any) {
-      // Check fallback active OTP if simulator was used offline
-      const rawSession = localStorage.getItem(STORAGE_KEYS.ACTIVE_OTP);
-      if (rawSession) {
-        const session: ActiveOtpSession = JSON.parse(rawSession);
-        if (session.code === cleanCode) {
-          profile.phone_number = session.phone_number;
-          profile.is_phone_verified = true;
-          profile.phone_locked = true;
-          localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profile));
-          localStorage.removeItem(STORAGE_KEYS.ACTIVE_OTP);
-          return {
-            success: true,
-            message: 'تم تأكيد وتثبيت رقم الهاتف في المحفظة بنجاح!',
-            phone_number: profile.phone_number,
-          };
-        }
-      }
+      // No local/OTP fallback: verification codes are ONLY minted by the
+      // Telegram bot contact flow (server-side). Anything else is rejected.
       throw err;
     }
   }
 
-  public async simulateTelegramContact(
-    sessionId?: string,
-    phone?: string,
-    username?: string
-  ): Promise<{ success: boolean; code: string; phone: string; message: string }> {
-    const res = await fetch('/api/telegram/simulate-contact', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId,
-        phone,
-        telegramUsername: username,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      throw new Error(data.error || 'فشلت محاكاة مشاركة جهة الاتصال.');
-    }
-
-    // Also store active OTP locally for offline safety
-    const otpSession: ActiveOtpSession = {
-      action_type: 'phone_verify',
-      code: data.code,
-      phone_number: data.phone,
-      expires_at: Date.now() + 15 * 60 * 1000,
-      resend_available_at: Date.now() + 60 * 1000,
-      attempts: 0,
-    };
-    localStorage.setItem(STORAGE_KEYS.ACTIVE_OTP, JSON.stringify(otpSession));
-
-    return data;
-  }
   public async requestPhoneChange(
     newPhone: string,
     reason: string

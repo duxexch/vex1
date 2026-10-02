@@ -507,6 +507,16 @@ export default function App() {
             presentNotification(newNotif);
           });
 
+          // Bridge Telegram verification events to the DOM: PhoneVerificationModal
+          // listens on window events, while the server broadcasts over socket.io.
+          socket.on('telegram_contact_received', (payload: any) => {
+            window.dispatchEvent(new CustomEvent('telegram_contact_received', { detail: payload }));
+          });
+
+          socket.on('phone_verified', (payload: any) => {
+            window.dispatchEvent(new CustomEvent('phone_verified', { detail: payload }));
+          });
+
           // Heartbeat ping interval to keep Nginx reverse proxy connection alive (every 25 seconds)
           heartbeatInterval = setInterval(() => {
             if (socket?.connected) {

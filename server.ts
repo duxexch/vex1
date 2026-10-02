@@ -2286,7 +2286,8 @@ app.post('/api/admin/phone-change-requests/reject', (req, res) => {
 // TELEGRAM BOT VERIFICATION ENGINE (Token in Admin, Contact Sharing, 6-Digit OTP)
 // ============================================================================
 
-const TELEGRAM_CONFIG_PATH = path.join(process.cwd(), 'telegram-bot-config.json');
+const TELEGRAM_CONFIG_PATH = path.join(process.cwd(), 'data', 'telegram_config.json');
+const TELEGRAM_CONFIG_LEGACY_PATH = path.join(process.cwd(), 'telegram-bot-config.json');
 
 interface ServerTelegramConfig {
   bot_token: string;
@@ -2303,26 +2304,47 @@ let telegramConfig: ServerTelegramConfig = {
   is_active: true,
 };
 
-// Try loading saved config from file
-try {
-  if (fs.existsSync(TELEGRAM_CONFIG_PATH)) {
-    const raw = fs.readFileSync(TELEGRAM_CONFIG_PATH, 'utf-8');
-    const parsed = JSON.parse(raw);
-    telegramConfig = { ...telegramConfig, ...parsed };
-    if (parsed.bot_token) {
-      telegramConfig.is_active = parsed.is_active !== false;
+function readTelegramConfigFile(p: string): Partial<ServerTelegramConfig> | null {
+  try {
+    if (fs.existsSync(p)) {
+      return JSON.parse(fs.readFileSync(p, 'utf-8'));
     }
+  } catch (e) {
+    console.warn(`⚠️ [Telegram] Unable to read ${path.basename(p)}`, e);
   }
-} catch (e) {
-  console.warn('⚠️ [Telegram] Unable to read telegram-bot-config.json', e);
+  return null;
+}
+
+function applyTelegramConfig(parsed: Partial<ServerTelegramConfig>) {
+  telegramConfig = { ...telegramConfig, ...parsed };
+  if (parsed.bot_token) {
+    telegramConfig.is_active = parsed.is_active !== false;
+  }
 }
 
 function saveTelegramConfigToFile() {
   try {
+    fs.mkdirSync(path.dirname(TELEGRAM_CONFIG_PATH), { recursive: true });
     fs.writeFileSync(TELEGRAM_CONFIG_PATH, JSON.stringify(telegramConfig, null, 2), 'utf-8');
   } catch (e) {
-    console.error('❌ [Telegram] Failed to write telegram-bot-config.json:', e);
+    console.error('❌ [Telegram] Failed to write data/telegram_config.json:', e);
   }
+}
+
+// Config source of truth: data/telegram_config.json (persistent). The legacy
+// cwd file is read once as a migration so older saved configs are never lost.
+try {
+  const savedCfg = readTelegramConfigFile(TELEGRAM_CONFIG_PATH);
+  const legacyCfg = readTelegramConfigFile(TELEGRAM_CONFIG_LEGACY_PATH);
+  if (savedCfg?.bot_token || (savedCfg && !legacyCfg?.bot_token)) {
+    applyTelegramConfig(savedCfg);
+  } else if (legacyCfg) {
+    applyTelegramConfig(legacyCfg);
+    saveTelegramConfigToFile();
+    console.log('♻️ [Telegram] Migrated legacy telegram-bot-config.json → data/telegram_config.json');
+  }
+} catch (e) {
+  console.warn('⚠️ [Telegram] Unable to load telegram config', e);
 }
 
 interface ServerTelegramSession {
@@ -2336,6 +2358,7 @@ interface ServerTelegramSession {
   telegram_id?: number;
   telegram_first_name?: string;
   code?: string;
+  bound_telegram_id?: number;
 }
 
 // In-Memory Telegram State
@@ -2349,6 +2372,49 @@ const TELEGRAM_VERIFIED_HISTORY: Array<{
   verified_at: string;
   session_id: string;
 }> = [];
+
+// Sessions/codes persistence — survives server restarts so a verification
+// flow started before a redeploy is never lost (and never re-bound wrongly).
+const TELEGRAM_SESSIONS_PATH = path.join(process.cwd(), 'data', 'telegram_sessions.json');
+
+function saveTelegramSessionsToFile() {
+  try {
+    fs.mkdirSync(path.dirname(TELEGRAM_SESSIONS_PATH), { recursive: true });
+    fs.writeFileSync(
+      TELEGRAM_SESSIONS_PATH,
+      JSON.stringify(Array.from(TELEGRAM_SESSIONS.values()), null, 2),
+      'utf-8'
+    );
+  } catch (e) {
+    console.error('❌ [Telegram] Failed to persist sessions:', e);
+  }
+}
+
+function loadTelegramSessionsFromFile() {
+  try {
+    if (!fs.existsSync(TELEGRAM_SESSIONS_PATH)) return;
+    const list: ServerTelegramSession[] = JSON.parse(fs.readFileSync(TELEGRAM_SESSIONS_PATH, 'utf-8'));
+    if (!Array.isArray(list)) return;
+    const now = Date.now();
+    for (const s of list) {
+      if (!s?.session_id || typeof s.expires_at !== 'number' || s.expires_at < now) continue;
+      TELEGRAM_SESSIONS.set(s.session_id, s);
+      if (s.code && s.status === 'contact_received') {
+        TELEGRAM_ACTIVE_CODES.set(s.code, s);
+      }
+      const bindId = s.telegram_id || s.bound_telegram_id;
+      if (bindId) {
+        TELEGRAM_USER_SESSIONS.set(bindId, s.session_id);
+      }
+    }
+    const kept = TELEGRAM_SESSIONS.size;
+    if (kept > 0) console.log(`🗂️ [Telegram] Restored ${kept} live verification session(s) from disk`);
+  } catch (e) {
+    console.warn('⚠️ [Telegram] Unable to restore sessions from disk', e);
+  }
+}
+
+loadTelegramSessionsFromFile();
 
 // Helper: Mask token for display
 function maskTelegramToken(token: string): string {
@@ -2432,19 +2498,31 @@ async function handleTelegramUpdate(update: any) {
       cleanPhone = '+' + cleanPhone;
     }
 
-    // Find linked session for this Telegram user or find first pending session
-    let sessionId = TELEGRAM_USER_SESSIONS.get(telegramUserId);
-    let session = sessionId ? TELEGRAM_SESSIONS.get(sessionId) : null;
+    // Only a Telegram user bound to a LIVE, unverified session (via the app's
+    // deep link /start payload) may receive a code. No implicit/first-session
+    // binding — that could attach this contact to another user's session.
+    const boundSessionId = telegramUserId ? TELEGRAM_USER_SESSIONS.get(telegramUserId) : undefined;
+    const session = boundSessionId ? TELEGRAM_SESSIONS.get(boundSessionId) : undefined;
 
-    if (!session || session.status === 'verified') {
-      for (const s of Array.from(TELEGRAM_SESSIONS.values())) {
-        if (s.status === 'pending_telegram' && Date.now() < s.expires_at) {
-          session = s;
-          sessionId = s.session_id;
-          break;
-        }
-      }
+    if (!session || Date.now() > session.expires_at) {
+      await sendTelegramMessage(
+        chatId,
+        '⚠️ *لم أجد جلسة تحقق سارية لك.*\n\nالرجاء العودة إلى موقع أو تطبيق VEX Deals والضغط على زر "فتح بوت تيليجرام" أولاً لبدء جلسة جديدة، ثم أعد مشاركة جهة الاتصال هنا.',
+        { parse_mode: 'Markdown', remove_keyboard: true }
+      );
+      return;
     }
+
+    if (session.status === 'verified') {
+      await sendTelegramMessage(
+        chatId,
+        '✅ *رقم هاتفك موثق ومفعل بالفعل في منصة VEX Deals.*\n\nلا حاجة لأي إجراء إضافي.',
+        { parse_mode: 'Markdown', remove_keyboard: true }
+      );
+      return;
+    }
+
+    const sessionId = session.session_id;
 
     // Generate unique 6-digit OTP code
     let code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -2452,34 +2530,18 @@ async function handleTelegramUpdate(update: any) {
       code = Math.floor(100000 + Math.random() * 900000).toString();
     }
 
-    if (!session) {
-      sessionId = `v_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
-      session = {
-        session_id: sessionId,
-        user_id: `user_${telegramUserId}`,
-        created_at: Date.now(),
-        expires_at: Date.now() + 15 * 60 * 1000,
-        status: 'contact_received',
-        phone_number: cleanPhone,
-        telegram_username: telegramUsername,
-        telegram_id: telegramUserId,
-        telegram_first_name: telegramFirstName,
-        code,
-      };
-      TELEGRAM_SESSIONS.set(sessionId, session);
-    } else {
-      session.status = 'contact_received';
-      session.phone_number = cleanPhone;
-      session.telegram_username = telegramUsername;
-      session.telegram_id = telegramUserId;
-      session.telegram_first_name = telegramFirstName;
-      session.code = code;
-    }
+    session.status = 'contact_received';
+    session.phone_number = cleanPhone;
+    session.telegram_username = telegramUsername;
+    session.telegram_id = telegramUserId;
+    session.telegram_first_name = telegramFirstName;
+    session.code = code;
 
     TELEGRAM_ACTIVE_CODES.set(code, session);
     if (telegramUserId) {
       TELEGRAM_USER_SESSIONS.set(telegramUserId, sessionId);
     }
+    saveTelegramSessionsToFile();
 
     // Emit live WebSocket update to the browser
     io.emit('telegram_contact_received', {
@@ -2510,11 +2572,21 @@ async function handleTelegramUpdate(update: any) {
   // Case 2: /start or /start v_SESSION_ID
   if (text.startsWith('/start')) {
     const parts = text.split(' ');
-    let deepLinkPayload = parts[1] || '';
+    const deepLinkPayload = parts[1] || '';
     if (deepLinkPayload.startsWith('v_')) {
-      const sessId = deepLinkPayload;
+      const knownSession = TELEGRAM_SESSIONS.get(deepLinkPayload);
+      if (!knownSession || Date.now() > knownSession.expires_at) {
+        await sendTelegramMessage(
+          chatId,
+          '⌛ *انتهت صلاحية جلسة التحقق.*\n\nالرجاء العودة إلى موقع أو تطبيق VEX Deals والضغط على زر "فتح بوت تيليجرام" مرة أخرى للحصول على رابط جديد.',
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
       if (telegramUserId) {
-        TELEGRAM_USER_SESSIONS.set(telegramUserId, sessId);
+        knownSession.bound_telegram_id = telegramUserId;
+        TELEGRAM_USER_SESSIONS.set(telegramUserId, deepLinkPayload);
+        saveTelegramSessionsToFile();
       }
     }
 
@@ -2603,8 +2675,15 @@ function stopTelegramPolling() {
 
 // TELEGRAM API ENDPOINTS
 
+function requireTelegramAdmin(req: any, res: any, next: any) {
+  if (req.header('x-vex-admin') !== LOTTERY_ADMIN_KEY) {
+    return res.status(403).json({ success: false, error: 'غير مصرح: مفتاح الإدارة مطلوب.' });
+  }
+  next();
+}
+
 // 1. Get Admin Telegram Config
-app.get('/api/admin/telegram-config', (req, res) => {
+app.get('/api/admin/telegram-config', requireTelegramAdmin, (req, res) => {
   res.json({
     success: true,
     config: {
@@ -2622,18 +2701,32 @@ app.get('/api/admin/telegram-config', (req, res) => {
 });
 
 // 2. Save Admin Telegram Config
-app.post('/api/admin/telegram-config', async (req, res) => {
-  const { bot_token, bot_username, is_active } = req.body;
+app.post('/api/admin/telegram-config', requireTelegramAdmin, async (req, res) => {
+  const { bot_username, is_active } = req.body;
+  const inputToken = typeof req.body.bot_token === 'string' ? req.body.bot_token.trim() : '';
 
-  if (!bot_token || !bot_token.trim()) {
+  // Resolve effective token: empty or masked input keeps the stored token
+  // (the admin panel pre-fills the field with a masked value on every load).
+  let effectiveToken = telegramConfig.bot_token;
+  if (inputToken && !inputToken.includes('...')) {
+    effectiveToken = inputToken;
+  } else if (
+    inputToken &&
+    telegramConfig.bot_token &&
+    inputToken !== maskTelegramToken(telegramConfig.bot_token)
+  ) {
+    return res
+      .status(400)
+      .json({ error: 'التوكن المُدخل غير صالح. الصق التوكن كاملاً كما هو من @BotFather.' });
+  }
+
+  if (!effectiveToken) {
     return res.status(400).json({ error: 'توكن بوت تيليجرام مطلوب.' });
   }
 
-  const cleanToken = bot_token.trim();
-
   // Test token with Telegram API getMe
   try {
-    const testRes = await fetch(`https://api.telegram.org/bot${cleanToken}/getMe`);
+    const testRes = await fetch(`https://api.telegram.org/bot${effectiveToken}/getMe`);
     const testData: any = await testRes.json();
 
     if (!testData.ok || !testData.result) {
@@ -2643,9 +2736,18 @@ app.post('/api/admin/telegram-config', async (req, res) => {
     }
 
     const botInfo = testData.result;
+    const requestedUsername = typeof bot_username === 'string' ? bot_username.trim().replace(/^@/, '') : '';
 
-    telegramConfig.bot_token = cleanToken;
-    telegramConfig.bot_username = bot_username?.trim().replace(/^@/, '') || botInfo.username;
+    // A username that does not belong to this token could never receive the
+    // deep-link traffic — reject it so the opened bot is ALWAYS the token's bot.
+    if (requestedUsername && requestedUsername !== botInfo.username) {
+      return res.status(400).json({
+        error: `اسم المستخدم المُدخل (@${requestedUsername}) لا يطابق هذا التوكن. البوت الحقيقي هو @${botInfo.username}. أفرغ الحقل أو صححه.`,
+      });
+    }
+
+    telegramConfig.bot_token = effectiveToken;
+    telegramConfig.bot_username = botInfo.username; // always derived from getMe
     telegramConfig.bot_name = botInfo.first_name;
     telegramConfig.bot_id = botInfo.id;
     telegramConfig.is_active = is_active !== false;
@@ -2685,7 +2787,7 @@ app.post('/api/admin/telegram-config', async (req, res) => {
 });
 
 // 3. Test Bot Connection
-app.post('/api/admin/telegram/test', async (req, res) => {
+app.post('/api/admin/telegram/test', requireTelegramAdmin, async (req, res) => {
   if (!telegramConfig.bot_token) {
     return res.status(400).json({ error: 'لم يتم تعيين توكن البوت بعد.' });
   }
@@ -2710,6 +2812,21 @@ app.post('/api/admin/telegram/test', async (req, res) => {
 // 4. Create Telegram Verification Session for user
 app.post('/api/telegram/session', (req, res) => {
   const { userId } = req.body;
+
+  // Never emit a deep link unless a real, active, getMe-verified bot is configured.
+  const botConfigured = !!(
+    telegramConfig.bot_token &&
+    telegramConfig.is_active &&
+    telegramConfig.bot_username
+  );
+  if (!botConfigured) {
+    return res.json({
+      success: false,
+      bot_configured: false,
+      error: 'بوت التحقق عبر تيليجرام غير مُفعّل حالياً. يرجى التواصل مع الإدارة لتفعيله.',
+    });
+  }
+
   const sessionId = `v_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
 
   const session: ServerTelegramSession = {
@@ -2721,16 +2838,16 @@ app.post('/api/telegram/session', (req, res) => {
   };
 
   TELEGRAM_SESSIONS.set(sessionId, session);
+  saveTelegramSessionsToFile();
 
-  const botUser = telegramConfig.bot_username || 'VexVerifyBot';
-  const deepLink = `https://t.me/${botUser}?start=${sessionId}`;
+  const deepLink = `https://t.me/${telegramConfig.bot_username}?start=${sessionId}`;
 
   res.json({
     success: true,
     session_id: sessionId,
-    bot_username: botUser,
+    bot_username: telegramConfig.bot_username,
     deep_link: deepLink,
-    bot_configured: !!(telegramConfig.bot_token && telegramConfig.is_active),
+    bot_configured: true,
     expires_at: session.expires_at,
   });
 });
@@ -2780,6 +2897,7 @@ app.post('/api/telegram/verify-code', (req, res) => {
   // Success: mark verified
   session.status = 'verified';
   TELEGRAM_ACTIVE_CODES.delete(cleanCode);
+  saveTelegramSessionsToFile();
 
   const verifiedPhone = session.phone_number || '';
 
@@ -2818,8 +2936,10 @@ app.post('/api/telegram/verify-code', (req, res) => {
   });
 });
 
-// 7. Simulate Telegram Contact Sharing (Testing & Dev Mode)
-app.post('/api/telegram/simulate-contact', (req, res) => {
+// 7. Simulate Telegram Contact Sharing (ADMIN/TEST ONLY — never public: this
+//    endpoint can mint a valid OTP without the bot, so it must stay behind the
+//    admin key. The user-facing "Simulate" button has been removed from the UI.)
+app.post('/api/telegram/simulate-contact', requireTelegramAdmin, (req, res) => {
   const { sessionId, phone, telegramUsername } = req.body;
 
   const targetSession = sessionId ? TELEGRAM_SESSIONS.get(sessionId) : null;
@@ -2850,6 +2970,7 @@ app.post('/api/telegram/simulate-contact', (req, res) => {
 
   TELEGRAM_SESSIONS.set(sessId, session);
   TELEGRAM_ACTIVE_CODES.set(code, session);
+  saveTelegramSessionsToFile();
 
   io.emit('telegram_contact_received', {
     sessionId: sessId,
@@ -2867,15 +2988,9 @@ app.post('/api/telegram/simulate-contact', (req, res) => {
   });
 });
 
-// 8. Telegram Webhook Endpoint
-app.post('/api/telegram/webhook', async (req, res) => {
-  try {
-    await handleTelegramUpdate(req.body);
-  } catch (err) {
-    console.error('❌ [Telegram Webhook] Error:', err);
-  }
-  res.sendStatus(200);
-});
+// 8. Telegram Webhook Endpoint — REMOVED intentionally: the app drives the bot
+//    exclusively through the authenticated long-polling daemon above. An
+//    unauthenticated webhook could otherwise inject forged updates.
 
 // ========================================================
 // VEX Mega Lottery 1-Hour Pre-Draw Push Notification Engine
@@ -6226,6 +6341,33 @@ ${secsHtml}
     startDockerNotificationWorker();
     if (telegramConfig.bot_token && telegramConfig.is_active) {
       startTelegramPolling();
+      // Boot-time identity self-check: the username used in user-facing deep
+      // links MUST belong to this exact token — otherwise a wrong bot opens.
+      fetch(`https://api.telegram.org/bot${telegramConfig.bot_token}/getMe`)
+        .then((r) => r.json())
+        .then((d: any) => {
+          if (d?.ok && d.result?.username) {
+            const me = d.result;
+            if (telegramConfig.bot_username && telegramConfig.bot_username !== me.username) {
+              console.warn(
+                `⚠️ [Telegram] Configured username @${telegramConfig.bot_username} does NOT match token bot @${me.username} — correcting to @${me.username}`
+              );
+              telegramConfig.bot_username = me.username;
+              telegramConfig.bot_name = me.first_name;
+              telegramConfig.bot_id = me.id;
+              saveTelegramConfigToFile();
+            } else {
+              console.log(`🤖 [Telegram] Identity verified: @${me.username} (id ${me.id})`);
+            }
+          } else {
+            console.warn('⚠️ [Telegram] getMe failed at boot:', d?.description || 'unknown error');
+          }
+        })
+        .catch(() => {
+          console.warn('⚠️ [Telegram] getMe unreachable at boot (will retry on next save)');
+        });
+    } else {
+      console.log('ℹ️ [Telegram] Bot not configured or inactive — deep links are disabled.');
     }
   });
 }

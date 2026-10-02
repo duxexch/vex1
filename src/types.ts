@@ -387,7 +387,7 @@ export interface TelegramVerificationSession {
   session_id: string;
   user_id: string;
   bot_username: string;
-  deep_link: string;
+  deep_link?: string;
   status: 'pending_telegram' | 'contact_received' | 'verified' | 'expired';
   phone_number?: string;
   telegram_username?: string;
