@@ -562,11 +562,16 @@ class VexMobileApiService {
       quiet_end: number;
       send_winners: boolean;
       send_matches: boolean;
+      personal_wins: boolean;
       messages: string[];
       next_message_index: number;
       last_auto_sent_at: number;
     };
     subscribers: { total: number; active: number };
+    bindings: {
+      total: number;
+      recent: Array<{ user_id: string; username?: string; bound_at: string }>;
+    };
     recent_subscribers: Array<{
       chat_id: number;
       username?: string;
@@ -605,6 +610,7 @@ class VexMobileApiService {
     quiet_end?: number;
     send_winners?: boolean;
     send_matches?: boolean;
+    personal_wins?: boolean;
     messages?: string[];
   }): Promise<{ success: boolean; message?: string }> {
     const res = await fetch('/api/admin/telegram-broadcast/settings', {
@@ -662,6 +668,23 @@ class VexMobileApiService {
     const result = await res.json();
     if (!res.ok || !result.success) {
       throw new Error(result.error || 'فشل إيقاف المشترك.');
+    }
+    return result;
+  }
+
+  // Personal 1:1 message to a single bound client (targeted channel).
+  public async notifyTelegramUser(
+    userId: string,
+    text: string
+  ): Promise<{ success: boolean; bound: boolean; sent: number; failed: number; message?: string }> {
+    const res = await fetch('/api/admin/telegram-broadcast/notify-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-vex-admin': LOTTERY_ADMIN_KEY },
+      body: JSON.stringify({ user_id: userId, text }),
+    });
+    const result = await res.json();
+    if (!res.ok || !result.success) {
+      throw new Error(result.error || 'فشل إرسال الرسالة الشخصية.');
     }
     return result;
   }

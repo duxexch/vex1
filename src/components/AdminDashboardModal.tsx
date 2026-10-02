@@ -1031,13 +1031,18 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   const [tgAdsQuietEnd, setTgAdsQuietEnd] = useState(9);
   const [tgAdsWinners, setTgAdsWinners] = useState(true);
   const [tgAdsMatches, setTgAdsMatches] = useState(true);
+  const [tgAdsPersonalWins, setTgAdsPersonalWins] = useState(true);
   const [tgAdsMessages, setTgAdsMessages] = useState<string[]>(['']);
   const [tgAdsSubscribers, setTgAdsSubscribers] = useState({ total: 0, active: 0 });
+  const [tgAdsBindings, setTgAdsBindings] = useState(0);
   const [tgAdsRecent, setTgAdsRecent] = useState<any[]>([]);
   const [tgAdsHistory, setTgAdsHistory] = useState<any[]>([]);
   const [tgAdsBusy, setTgAdsBusy] = useState(false);
   const [tgAdsLastAutoSent, setTgAdsLastAutoSent] = useState(0);
   const [tgAdsManualText, setTgAdsManualText] = useState('');
+  const [tgAdsPersonalUser, setTgAdsPersonalUser] = useState('');
+  const [tgAdsPersonalText, setTgAdsPersonalText] = useState('');
+  const [tgAdsPersonalSending, setTgAdsPersonalSending] = useState(false);
   const [tgAdsFeedback, setTgAdsFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
   const loadTelegramBroadcast = async () => {
@@ -1051,8 +1056,10 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
         setTgAdsQuietEnd(res.settings.quiet_end);
         setTgAdsWinners(res.settings.send_winners);
         setTgAdsMatches(res.settings.send_matches);
+        setTgAdsPersonalWins(res.settings.personal_wins);
         setTgAdsMessages(res.settings.messages.length ? res.settings.messages : ['']);
         setTgAdsSubscribers(res.subscribers);
+        setTgAdsBindings(res.bindings ? res.bindings.total : 0);
         setTgAdsRecent(res.recent_subscribers || []);
         setTgAdsHistory(res.history || []);
         setTgAdsBusy(Boolean(res.busy));
@@ -1094,6 +1101,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
         quiet_end: tgAdsQuietEnd,
         send_winners: tgAdsWinners,
         send_matches: tgAdsMatches,
+        personal_wins: tgAdsPersonalWins,
         messages,
       });
       setTgAdsFeedback({
@@ -1154,6 +1162,42 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
       setTgAdsFeedback({ success: false, message: err.message || t('فشل تشغيل الإعلان.', 'Trigger failed.', 'Ошибка запуска.') });
     } finally {
       setTgAdsTriggering(false);
+    }
+  };
+
+  const handleSendTelegramPersonal = async () => {
+    const userId = tgAdsPersonalUser.trim();
+    const text = tgAdsPersonalText.trim();
+    if (!userId || !text) {
+      setTgAdsFeedback({
+        success: false,
+        message: t('أدخل معرّف المستخدم ونص الرسالة.', 'Enter user id and message text.', 'Введите ID пользователя и текст сообщения.'),
+      });
+      return;
+    }
+    setTgAdsPersonalSending(true);
+    setTgAdsFeedback(null);
+    try {
+      const res = await vexApi.notifyTelegramUser(userId, text);
+      setTgAdsFeedback(
+        res.bound
+          ? {
+              success: res.sent > 0,
+              message: res.sent
+                ? t('تم إرسال الرسالة الشخصية بنجاح!', 'Personal message delivered!', 'Личное сообщение доставлено!')
+                : t('لم تصل الرسالة (قد يكون البوت محظوراً).', 'Delivery failed (bot may be blocked).', 'Доставка не удалась (бот возможно заблокирован).'),
+            }
+          : {
+              success: false,
+              message: t('هذا المستخدم لم يربط تيليجرام بعد (شغّل رابط التوثيق أولاً).', 'User has no bound Telegram yet (run the verification link first).', 'У пользователя нет привязки Telegram (сначала пройдите верификацию).'),
+            }
+      );
+      if (res.bound) setTgAdsPersonalText('');
+      await loadTelegramBroadcast();
+    } catch (err: any) {
+      setTgAdsFeedback({ success: false, message: err.message || t('فشل الإرسال.', 'Send failed.', 'Ошибка отправки.') });
+    } finally {
+      setTgAdsPersonalSending(false);
     }
   };
 
@@ -6055,7 +6099,8 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                           <Megaphone className="w-5 h-5 text-amber-400" />
                           <span>{t('إعلانات ورسائل تيليجرام التلقائية', 'Telegram Ads & Auto Broadcast', 'Автореклама и рассылки Telegram')}</span>
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
-                            {tgAdsSubscribers.active}/{tgAdsSubscribers.total} {t('مشترك', 'subscribers', 'подписчиков')}
+                            {tgAdsSubscribers.active}/{tgAdsSubscribers.total} {t('مشترك', 'subscribers', 'подписчиков')} · {tgAdsBindings}{' '}
+                            {t('مربوط', 'bound', 'привязано')}
                           </span>
                         </div>
                         <p className="text-xs text-amber-100/80 max-w-2xl leading-relaxed">
@@ -6149,6 +6194,16 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                           {t('إشعارات المباريات والتنبيهات', 'Match notifications', 'Уведомления о матчах')}
                         </span>
                         <input type="checkbox" checked={tgAdsMatches} onChange={(e) => setTgAdsMatches(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
+                      </label>
+
+                      <label className="flex items-center justify-between gap-3 p-3 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900 cursor-pointer sm:col-span-2">
+                        <span className="text-xs font-bold text-sky-800 dark:text-sky-300">
+                          {t('إشعار الفائز الشخصي (لصاحب التذكرة فقط)', 'Personal win notice (winner only)', 'Личное уведомление о выигрыше (только победителю)')}
+                          <span className="block text-[10px] font-medium text-sky-600/80 dark:text-sky-400/80 mt-0.5">
+                            {t('«مبروك ربحت $X» + إشعار صرف الجائزة — لا يرى غير صاحب الحساب', '“You won $X” + claim receipt — nobody else sees it', '«Вы выиграли $X» + чек о выплате — видит только владелец')}
+                          </span>
+                        </span>
+                        <input type="checkbox" checked={tgAdsPersonalWins} onChange={(e) => setTgAdsPersonalWins(e.target.checked)} className="w-4 h-4 accent-sky-600" />
                       </label>
 
                       <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60">
@@ -6278,6 +6333,49 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                     </button>
                   </div>
 
+                  {/* Personal 1:1 message */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-50 to-white dark:from-sky-950/40 dark:to-slate-900 border border-sky-200 dark:border-sky-900 space-y-3">
+                    <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                      <Megaphone className="w-4 h-4 text-sky-500" />
+                      {t('رسالة شخصية لعميل بعينه', 'Personal message to one client', 'Личное сообщение конкретному клиенту')}
+                    </h3>
+                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                      {t(
+                        'تُرسل لشات هذا المستخدم فقط (المستخدمون المربوطون عبر رابط التوثيق). لا يراها أحد غيره.',
+                        'Goes only to this user’s own chat (users bound via the verification link). Nobody else sees it.',
+                        'Отправляется только в чат этого пользователя (привязанного через ссылку верификации).'
+                      )}
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={tgAdsPersonalUser}
+                        onChange={(e) => setTgAdsPersonalUser(e.target.value)}
+                        placeholder={t('معرّف المستخدم (userId)…', 'User id (userId)…', 'ID пользователя…')}
+                        className="sm:w-64 px-3.5 py-2.5 text-xs rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono"
+                      />
+                      <input
+                        type="text"
+                        value={tgAdsPersonalText}
+                        onChange={(e) => setTgAdsPersonalText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSendTelegramPersonal();
+                        }}
+                        placeholder={t('نص الرسالة الشخصية…', 'Personal message text…', 'Текст личного сообщения…')}
+                        className="flex-1 px-3.5 py-2.5 text-xs rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSendTelegramPersonal}
+                        disabled={tgAdsPersonalSending}
+                        className="px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-xs font-black transition-all flex items-center justify-center gap-1.5 shrink-0"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        {tgAdsPersonalSending ? t('جارٍ الإرسال…', 'Sending…', 'Отправка…') : t('إرسال شخصي', 'Send personally', 'Отправить лично')}
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Recent subscribers */}
                   <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
                     <h3 className="text-sm font-black text-slate-900 dark:text-white">
@@ -6352,7 +6450,11 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                     ? t('فائزون', 'Winners', 'Победители')
                                     : h.type === 'match'
                                       ? t('مباراة', 'Match', 'Матч')
-                                      : t('يدوي', 'Manual', 'Вручную')}
+                                      : h.type === 'win_personal'
+                                        ? t('فوز شخصي', 'Personal win', 'Личный выигрыш')
+                                        : h.type === 'personal'
+                                          ? t('رسالة شخصية', 'Personal message', 'Личное сообщение')
+                                          : t('يدوي', 'Manual', 'Вручную')}
                               </span>
                               <span className="text-[10px] font-mono text-slate-400">{h.at ? new Date(h.at).toLocaleString() : ''}</span>
                             </div>

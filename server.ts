@@ -2495,7 +2495,7 @@ interface TelegramSubscriber {
 
 interface TelegramBroadcastHistoryEntry {
   id: string;
-  type: 'auto_ad' | 'winner' | 'match' | 'manual';
+  type: 'auto_ad' | 'winner' | 'match' | 'manual' | 'win_personal' | 'personal';
   text_preview: string;
   sent: number;
   failed: number;
@@ -2511,6 +2511,7 @@ interface TelegramBroadcastSettings {
   quiet_end: number;
   send_winners: boolean;
   send_matches: boolean;
+  personal_wins: boolean;
   messages: string[];
   next_message_index: number;
   last_auto_sent_at: number;
@@ -2519,6 +2520,7 @@ interface TelegramBroadcastSettings {
 
 const TELEGRAM_SUBSCRIBERS_PATH = path.join(process.cwd(), 'data', 'telegram_subscribers.json');
 const TELEGRAM_BROADCAST_PATH = path.join(process.cwd(), 'data', 'telegram_broadcast.json');
+const TELEGRAM_BINDINGS_PATH = path.join(process.cwd(), 'data', 'telegram_bindings.json');
 
 const DEFAULT_TELEGRAM_BROADCAST_MESSAGES = [
   'مرحباً بك في VEX Deals 🎯\n\nمنصة الأرباح الذكية: سحوبات بجوائز حقيقية، إيداعات وسحوبات فورية عبر محفظتك، وتحليلات ذكية للمباريات.\n\n🌐 {domain}\n\nأرسل /stop لإيقاف هذه الرسائل.',
@@ -2533,6 +2535,7 @@ const DEFAULT_TELEGRAM_BROADCAST_SETTINGS: TelegramBroadcastSettings = {
   quiet_end: 9,
   send_winners: true,
   send_matches: true,
+  personal_wins: true,
   messages: [...DEFAULT_TELEGRAM_BROADCAST_MESSAGES],
   next_message_index: 0,
   last_auto_sent_at: 0,
@@ -2542,6 +2545,62 @@ const DEFAULT_TELEGRAM_BROADCAST_SETTINGS: TelegramBroadcastSettings = {
 let TELEGRAM_SUBSCRIBERS = new Map<number, TelegramSubscriber>();
 let TELEGRAM_BROADCAST_SETTINGS: TelegramBroadcastSettings | null = null;
 let telegramBroadcastBusy = false;
+
+// userId -> private Telegram chat (created when the user opens the bot deep
+// link / completes verification). Personal messages (win notices, receipts)
+// go ONLY here — never to other subscribers.
+interface TelegramUserBinding {
+  user_id: string;
+  chat_id: number;
+  telegram_id?: number;
+  username?: string;
+  bound_at: string;
+}
+let TELEGRAM_BINDINGS = new Map<string, TelegramUserBinding>();
+
+function loadTelegramBindingsFromFile() {
+  try {
+    if (!fs.existsSync(TELEGRAM_BINDINGS_PATH)) return;
+    const list: TelegramUserBinding[] = JSON.parse(fs.readFileSync(TELEGRAM_BINDINGS_PATH, 'utf-8'));
+    if (!Array.isArray(list)) return;
+    for (const b of list) {
+      if (b && b.user_id && typeof b.chat_id === 'number') TELEGRAM_BINDINGS.set(b.user_id, b);
+    }
+    if (TELEGRAM_BINDINGS.size > 0) {
+      console.log(`🔗 [Telegram Bindings] Restored ${TELEGRAM_BINDINGS.size} user binding(s)`);
+    }
+  } catch (e) {
+    console.warn('⚠️ [Telegram Bindings] Unable to restore bindings', e);
+  }
+}
+
+function saveTelegramBindingsToFile() {
+  try {
+    fs.writeFileSync(TELEGRAM_BINDINGS_PATH, JSON.stringify([...TELEGRAM_BINDINGS.values()], null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('⚠️ [Telegram Bindings] Unable to persist bindings', e);
+  }
+}
+
+function upsertTelegramBinding(userId: string, chatId?: number, telegramId?: number, username?: string) {
+  if (!userId || !chatId || !Number.isFinite(chatId)) return;
+  const existing = TELEGRAM_BINDINGS.get(userId);
+  if (existing) {
+    existing.chat_id = chatId;
+    if (telegramId) existing.telegram_id = telegramId;
+    if (username) existing.username = username;
+    existing.bound_at = new Date().toISOString();
+  } else {
+    TELEGRAM_BINDINGS.set(userId, {
+      user_id: userId,
+      chat_id: chatId,
+      telegram_id: telegramId,
+      username: username || undefined,
+      bound_at: new Date().toISOString(),
+    });
+  }
+  saveTelegramBindingsToFile();
+}
 
 function loadTelegramSubscribersFromFile() {
   try {
@@ -2721,23 +2780,95 @@ async function broadcastToTelegramSubscribers(
     saveTelegramSubscribersToFile();
   }
 
-  const settings = getTelegramBroadcastSettings();
-  settings.history.unshift({
-    id: `BC-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    type,
-    text_preview: preview,
-    sent: stats.sent,
-    failed: stats.failed,
-    deactivated: stats.deactivated,
-    duration_ms: stats.duration_ms,
-    at: new Date().toISOString(),
-  });
-  settings.history = settings.history.slice(0, 30);
-  saveTelegramBroadcastSettings();
+  pushTelegramBroadcastHistory(type, preview, stats);
   console.log(
     `📢 [Telegram Broadcast] ${type}: sent=${stats.sent} failed=${stats.failed} deactivated=${stats.deactivated} in ${stats.duration_ms}ms`
   );
   return stats;
+}
+
+function pushTelegramBroadcastHistory(
+  type: TelegramBroadcastHistoryEntry['type'],
+  preview: string,
+  stats: { sent: number; failed: number; deactivated?: number; duration_ms?: number }
+) {
+  const settings = getTelegramBroadcastSettings();
+  settings.history.unshift({
+    id: `BC-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type,
+    text_preview: preview.replace(/\s+/g, ' ').slice(0, 120),
+    sent: stats.sent,
+    failed: stats.failed,
+    deactivated: stats.deactivated || 0,
+    duration_ms: stats.duration_ms || 0,
+    at: new Date().toISOString(),
+  });
+  settings.history = settings.history.slice(0, 30);
+  saveTelegramBroadcastSettings();
+}
+
+// Personal (1:1) message to ONE bound user — never reaches other subscribers.
+async function sendTelegramPersonal(
+  userId: string,
+  text: string
+): Promise<{ bound: boolean; sent: boolean; failed: boolean }> {
+  const binding = TELEGRAM_BINDINGS.get(userId);
+  if (!binding) return { bound: false, sent: false, failed: false };
+  if (!telegramConfig.bot_token || !telegramConfig.is_active) return { bound: true, sent: false, failed: false };
+  const result = await sendPlainTelegramMessage(binding.chat_id, text.slice(0, 4000));
+  return { bound: true, sent: result.ok, failed: !result.ok };
+}
+
+// Personal win notice: grouped per winning user, sent only to their own chat.
+async function notifyLotteryWinnersOnTelegram(draw: LotteryDraw) {
+  try {
+    const s = getTelegramBroadcastSettings();
+    if (!s.personal_wins) return;
+    if (!telegramConfig.bot_token || !telegramConfig.is_active) return;
+    const winningTickets = lotteryEngine
+      .getAllTickets()
+      .filter((t) => t.drawId === draw.id && (t.prizeWon || 0) > 0);
+    if (winningTickets.length === 0) return;
+
+    const byUser = new Map<string, { total: number; count: number }>();
+    for (const t of winningTickets) {
+      const cur = byUser.get(t.userId) || { total: 0, count: 0 };
+      cur.total += t.prizeWon || 0;
+      cur.count += 1;
+      byUser.set(t.userId, cur);
+    }
+
+    let sent = 0;
+    let failed = 0;
+    let unbound = 0;
+    const startedAt = Date.now();
+    for (const [uid, info] of byUser) {
+      const msg =
+        `🏆 مبروك! لقد ربحت في سحب ${draw.titleAr}\n\n` +
+        `🎟️ تذاكر فائزة: ${info.count}\n` +
+        `💰 إجمالي الجائزة: $${info.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}\n\n` +
+        `افتح صفحة اليانصيب في VEX Deals للاستلام:\n` +
+        `https://vex.deals/#lottery\n\n` +
+        `(المطالبة بالجائزة متاحة مرة واحدة لكل تذكرة فائزة)`;
+      const r = await sendTelegramPersonal(uid, msg);
+      if (r.sent) sent++;
+      else if (r.failed) failed++;
+      else unbound++;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    if (sent + failed > 0) {
+      pushTelegramBroadcastHistory('win_personal', `🏆 فوز شخصي — ${draw.titleEn || draw.titleAr}`, {
+        sent,
+        failed,
+        duration_ms: Date.now() - startedAt,
+      });
+    }
+    console.log(
+      `🎟️ [Telegram] Personal win notices for ${draw.id}: sent=${sent} failed=${failed} unbound=${unbound}`
+    );
+  } catch (err) {
+    console.warn('⚠️ [Telegram] win notify failed', err);
+  }
 }
 
 function maybeSendTelegramAutoAd(force = false): Promise<any> | null {
@@ -2782,6 +2913,7 @@ function mirrorMatchNotificationToTelegram(notif: any) {
 }
 
 loadTelegramSubscribersFromFile();
+loadTelegramBindingsFromFile();
 
 // Telegram Polling Daemon
 let telegramPollingActive = false;
@@ -2939,6 +3071,10 @@ async function handleTelegramUpdate(update: any) {
         knownSession.bound_telegram_id = telegramUserId;
         TELEGRAM_USER_SESSIONS.set(telegramUserId, deepLinkPayload);
         saveTelegramSessionsToFile();
+        // Durable userId -> chat binding for PERSONAL messages (win notices).
+        if (knownSession.user_id) {
+          upsertTelegramBinding(String(knownSession.user_id), chatId, telegramUserId, telegramUsername);
+        }
       }
     }
 
@@ -3324,6 +3460,18 @@ app.post('/api/telegram/verify-code', (req, res) => {
   TELEGRAM_ACTIVE_CODES.delete(cleanCode);
   saveTelegramSessionsToFile();
 
+  // Re-affirm the userId -> chat binding (private chat id == Telegram user id).
+  const bindingUserId = userId || session.user_id;
+  const bindingChatId = session.telegram_id || session.bound_telegram_id;
+  if (bindingUserId && bindingChatId) {
+    upsertTelegramBinding(
+      String(bindingUserId),
+      bindingChatId,
+      session.telegram_id || undefined,
+      session.telegram_username || undefined
+    );
+  }
+
   const verifiedPhone = session.phone_number || '';
 
   TELEGRAM_VERIFIED_HISTORY.unshift({
@@ -3399,6 +3547,9 @@ app.post('/api/telegram/simulate-contact', requireTelegramAdmin, (req, res) => {
   session.phone_number = cleanPhone;
   session.code = code;
   session.telegram_username = telegramUsername || 'demo_user';
+  // Simulated contact must carry a chat identity so verify can bind the user
+  // for personal messages (tests never perform a real /start deep-link).
+  if (!session.telegram_id && !session.bound_telegram_id) session.telegram_id = 12345678;
 
   TELEGRAM_SESSIONS.set(sessId, session);
   TELEGRAM_ACTIVE_CODES.set(code, session);
@@ -3434,6 +3585,7 @@ app.get('/api/admin/telegram-broadcast', requireTelegramAdmin, (req, res) => {
         quiet_end: s.quiet_end,
         send_winners: s.send_winners,
         send_matches: s.send_matches,
+        personal_wins: s.personal_wins,
         messages: s.messages,
         next_message_index: s.next_message_index,
         last_auto_sent_at: s.last_auto_sent_at,
@@ -3441,6 +3593,17 @@ app.get('/api/admin/telegram-broadcast', requireTelegramAdmin, (req, res) => {
       subscribers: {
         total: subscribers.length,
         active: subscribers.filter((x) => x.active).length,
+      },
+      bindings: {
+        total: TELEGRAM_BINDINGS.size,
+        recent: [...TELEGRAM_BINDINGS.values()]
+          .slice(-10)
+          .reverse()
+          .map((b) => ({
+            user_id: b.user_id,
+            username: b.username,
+            bound_at: b.bound_at,
+          })),
       },
       recent_subscribers: subscribers
         .slice(-20)
@@ -3473,6 +3636,7 @@ app.post('/api/admin/telegram-broadcast/settings', requireTelegramAdmin, (req, r
     if (body.auto_ad_enabled !== undefined) next.auto_ad_enabled = Boolean(body.auto_ad_enabled);
     if (body.send_winners !== undefined) next.send_winners = Boolean(body.send_winners);
     if (body.send_matches !== undefined) next.send_matches = Boolean(body.send_matches);
+    if (body.personal_wins !== undefined) next.personal_wins = Boolean(body.personal_wins);
 
     if (body.interval_hours !== undefined) {
       const v = Number(body.interval_hours);
@@ -3553,6 +3717,36 @@ app.post('/api/admin/telegram-broadcast/trigger', requireTelegramAdmin, async (r
   } catch (err) {
     console.error('[Telegram Broadcast] trigger failed:', err);
     res.status(500).json({ success: false, error: 'Failed to trigger auto-ad' });
+  }
+});
+
+// Personal 1:1 message to ONE bound client (the "targeted" channel — as
+// opposed to broadcasts which go to every subscriber).
+app.post('/api/admin/telegram-broadcast/notify-user', requireTelegramAdmin, async (req, res) => {
+  try {
+    const userId = String(req.body?.user_id || '').trim();
+    const text = String(req.body?.text || '').trim();
+    if (!userId) return res.status(400).json({ success: false, error: 'user_id is required' });
+    if (!text) return res.status(400).json({ success: false, error: 'text is required' });
+    if (text.length > 4000) return res.status(400).json({ success: false, error: 'text too long (max 4000 chars)' });
+    const binding = TELEGRAM_BINDINGS.get(userId);
+    if (!binding) {
+      return res.json({ success: true, bound: false, sent: 0, failed: 0, message: 'User has no bound Telegram chat.' });
+    }
+    if (!telegramConfig.bot_token || !telegramConfig.is_active) {
+      return res.status(409).json({ success: false, error: 'Telegram bot is not active' });
+    }
+    const startedAt = Date.now();
+    const r = await sendTelegramPersonal(userId, text);
+    pushTelegramBroadcastHistory('personal', `📩 رسالة شخصية — ${userId}`, {
+      sent: r.sent ? 1 : 0,
+      failed: r.failed ? 1 : 0,
+      duration_ms: Date.now() - startedAt,
+    });
+    res.json({ success: true, bound: true, sent: r.sent ? 1 : 0, failed: r.failed ? 1 : 0 });
+  } catch (err) {
+    console.error('[Telegram Personal] notify-user failed:', err);
+    res.status(500).json({ success: false, error: 'Failed to send personal message' });
   }
 });
 
@@ -3820,6 +4014,8 @@ function dispatchLotteryResultsNotification(draw: LotteryDraw) {
   if (getTelegramBroadcastSettings().send_winners) {
     void broadcastToTelegramSubscribers('winner', () => `${newNotif.title}\n\n${newNotif.message}`);
   }
+  // Personal win notices: each winner hears ONLY about their own prize.
+  void notifyLotteryWinnersOnTelegram(draw);
   return newNotif;
 }
 
@@ -3949,6 +4145,23 @@ app.post('/api/lottery/claim', (req, res) => {
     companyId ? String(companyId) : undefined
   );
   if (!result.success) return res.status(400).json(result);
+  // Personal receipt: the winner hears that the money reached their wallet.
+  if (getTelegramBroadcastSettings().personal_wins) {
+    void sendTelegramPersonal(
+      String(userId),
+      `✅ تم صرف جائزتك بنجاح!\n\n` +
+        `💰 المبلغ: $${result.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}\n` +
+        `🧾 رقم العملية: ${result.transactionId}\n\n` +
+        `أُضيف المبلغ إلى رصيدك في محفظة VEX Deals.`
+    ).then((r) => {
+      if (r.bound) {
+        pushTelegramBroadcastHistory('personal', `✅ صرف جائزة — ${result.transactionId}`, {
+          sent: r.sent ? 1 : 0,
+          failed: r.failed ? 1 : 0,
+        });
+      }
+    });
+  }
   res.json(result);
 });
 
