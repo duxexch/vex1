@@ -27,6 +27,7 @@ import {
   LotteryIntervalId
 } from '../../types';
 import { lotteryService } from '../../services/lotteryService';
+import { maxLossCap } from '../../../shared/lotteryConfig';
 
 const intervalLabelAr = (minutes: number): string => {
   if (minutes < 60) return `كل ${minutes} دقيقة`;
@@ -484,6 +485,14 @@ export const LotteryAdminManager: React.FC<LotteryAdminManagerProps> = ({
                         </span>
                       </div>
                     ))}
+                    <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-1" title={isAr ? 'قاعدة B: أقصى خسارة مسموحة لكل سحب = 0.5 × الجاكيت الأساسي' : 'Rule B: max house loss per draw = 0.5 x base jackpot'}>
+                      <span className="text-[9px] font-black text-slate-400 uppercase">
+                        {isAr ? 'حد الخسارة (التغطية)' : 'Max Loss (Coverage)'}
+                      </span>
+                      <span className="font-mono font-black text-[10px] text-emerald-600">
+                        ≤ ${maxLossCap(draft.baseJackpot).toLocaleString()}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between gap-2">

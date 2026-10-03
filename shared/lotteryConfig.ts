@@ -60,6 +60,9 @@ export interface LotteryDraw {
   totalPaidOut?: number;
   jackpotPaid?: number;
   isRollover?: boolean;
+  /** vex0.35 coverage (rule B): amount paid beyond this draw's own hold,
+   *  the 0.5 x baseJackpot cap for this cadence, and whether the cap broke. */
+  coverage?: { loss: number; cap: number; breach: boolean };
   reminded60?: boolean;
   reminded30?: boolean;
   /** Demo-history draw seeded at first boot — excluded from platform statistics. */
@@ -126,6 +129,9 @@ export interface LotteryServerState {
   version: number;
   tierAlertSubscriptions: Record<LotteryTierId, boolean>;
   airDropTotal: number;
+  /** vex0.35: unrecovered coverage debt per cadence type, clawed back from
+   *  future rollover carries (never from winner prizes, never below base). */
+  coverageDebt?: Partial<Record<LotteryIntervalId, number>>;
 }
 
 // Shared admin key used by the admin UI (bundled) and checked by the
@@ -471,6 +477,71 @@ export function computePerWinnerPrize(
 ): number {
   if (winnersCount <= 0) return 0;
   return round2(computeTierTotal(tierId, totalPool, jackpotAmount, winnersCount, tiers) / winnersCount);
+}
+
+// ------------------------------------------------------------
+// Coverage rules (vex0.35) — house-loss guardrails per draw.
+//
+// A draw's HOLD is its pool (house seed + paid ticket revenue).
+// Coverage LOSS is what the draw pays beyond that hold — the
+// guaranteed-floor / fixed-prize burn on a thin pool (exactly the
+// quantity runDraw used to warn about). Rule B: loss per draw may
+// never exceed 0.5 x baseJackpot.
+// ------------------------------------------------------------
+
+export const COVERAGE_MAX_LOSS_RATIO = 0.5;
+
+/** Rule B cap for one draw of a cadence whose baseJackpot is `base`. */
+export function maxLossCap(base: number): number {
+  return round2(Math.max(0, base) * COVERAGE_MAX_LOSS_RATIO);
+}
+
+/** Amount paid beyond the draw's own hold (never negative). */
+export function computeCoverageLoss(totalPaidOut: number, totalPool: number): number {
+  return round2(Math.max(0, totalPaidOut - totalPool));
+}
+
+/**
+ * Deterministic zero-revenue floor liability of a tier set: what the house
+ * owes from its own seed if every floor binds and no ticket is sold. The
+ * pool only grows with sales (which shrink floor excess), so this is the
+ * worst case. Percentage tiers owe `max(0, floor - share% x base)`; tier1
+ * owes `max(0, floor - base)` because the jackpot consumes the hold first;
+ * fixed tiers owe nothing at zero winners.
+ */
+export function worstCaseFloorLiability(tiers: LotteryPrizeTier[], base: number): number {
+  let liability = 0;
+  for (const tier of tiers) {
+    const floor = tier.guaranteedAmount || 0;
+    if (floor <= 0) continue;
+    const seedShare =
+      tier.id === 'tier1_jackpot' ? base : ((tier.sharePercent || 0) / 100) * base;
+    liability += Math.max(0, floor - seedShare);
+  }
+  return round2(liability);
+}
+
+/**
+ * Rule B at config time: reject a tier/jackpot combination whose guaranteed
+ * floors could burn more than 0.5 x baseJackpot with zero ticket sales.
+ * Returns an error message, or null when the configuration is covered.
+ */
+export function validateTypeCoverage(type: {
+  id?: string;
+  baseJackpot: number;
+  tiers: LotteryPrizeTier[];
+}): string | null {
+  const cap = maxLossCap(type.baseJackpot);
+  const liability = worstCaseFloorLiability(type.tiers, type.baseJackpot);
+  if (liability > cap) {
+    const name = type.id || 'draw type';
+    return (
+      `Coverage rule B violated for ${name}: guaranteed floors can burn $${liability.toLocaleString('en-US')} ` +
+      `with zero sales, above the cap of 0.5 x baseJackpot = $${cap.toLocaleString('en-US')}. ` +
+      `Raise baseJackpot or lower the tier floors.`
+    );
+  }
+  return null;
 }
 
 // ------------------------------------------------------------

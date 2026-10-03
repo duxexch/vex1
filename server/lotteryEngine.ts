@@ -25,6 +25,9 @@ import {
   computeTierTotal,
   computeLotteryStats,
   generateWinningNumbersFromSeeds,
+  maxLossCap,
+  computeCoverageLoss,
+  validateTypeCoverage,
 } from '../shared/lotteryConfig';
 
 export { LOTTERY_ADMIN_KEY };
@@ -430,7 +433,17 @@ function createDrawIn(
   const serverSeed = crypto.randomBytes(32).toString('hex');
   const intervalMs = type ? type.intervalMinutes * 60000 : cfg.intervalDays * 86400000;
   const closeAtMs = params.closeAt ? new Date(params.closeAt).getTime() : Date.now() + intervalMs;
-  const jackpot = params.initialJackpot ?? type?.baseJackpot ?? cfg.baseJackpot;
+  // Coverage: the seed always covers the tier1 floor, otherwise a draw could
+  // open already unable to pay its own advertised jackpot (over-pool burn).
+  const drawTiers = type ? type.tiers : DEFAULT_PRIZE_TIERS;
+  const tier1Floor = drawTiers.find((t) => t.id === 'tier1_jackpot')?.guaranteedAmount || 0;
+  let jackpot = params.initialJackpot ?? type?.baseJackpot ?? cfg.baseJackpot;
+  if (jackpot < tier1Floor) {
+    console.warn(
+      `[Lottery][COVERAGE] initial jackpot $${jackpot} raised to tier1 floor $${tier1Floor} for ${type?.id || 'manual'} draw`
+    );
+    jackpot = tier1Floor;
+  }
 
   const newDraw: LotteryDraw = {
     id: `DRAW-${new Date().getFullYear()}-${String(nextNumber).padStart(3, '0')}`,
@@ -458,7 +471,7 @@ function createDrawIn(
       nonce: nextNumber,
       verified: false,
     },
-    tiers: type ? type.tiers : DEFAULT_PRIZE_TIERS,
+    tiers: drawTiers,
     isRollover: params.isRollover || false,
     reminded60: false,
     reminded30: false,
@@ -499,7 +512,23 @@ export function ensureActiveDraws(): LotteryDraw[] {
       .filter((d) => d.typeId === type.id && d.status === 'completed')
       .reduce<LotteryDraw | null>((max, d) => (!max || d.drawNumber > max.drawNumber ? d : max), null);
     const tier1Won = prevCompleted ? (prevCompleted.winnersCount?.tier1_jackpot || 0) > 0 : true;
-    const rolled = prevCompleted && !tier1Won ? Math.min(prevCompleted.jackpotAmount, type.baseJackpot * 10) : 0;
+    let rolled = prevCompleted && !tier1Won ? Math.min(prevCompleted.jackpotAmount, type.baseJackpot * 10) : 0;
+    // Coverage rule B: recover any unrecovered breach debt from the part of
+    // the carry that sits above base (the advertised seed is never touched).
+    if (rolled > type.baseJackpot) {
+      const state = getStateStore();
+      const debt = state.coverageDebt?.[type.id] || 0;
+      if (debt > 0) {
+        const claw = Math.min(debt, rolled - type.baseJackpot);
+        rolled = round2(rolled - claw);
+        const left = round2(debt - claw);
+        state.coverageDebt = { ...(state.coverageDebt || {}) };
+        if (left > 0.009) state.coverageDebt[type.id] = left;
+        else delete state.coverageDebt[type.id];
+        saveStateStore(state);
+        console.warn(`[Lottery][COVERAGE] ${type.id}: clawed $${claw} from rollover carry (debt left $${left})`);
+      }
+    }
     const nextJackpot = rolled > type.baseJackpot ? rolled : type.baseJackpot;
     created.push(
       createDrawIn(draws, {
@@ -562,6 +591,11 @@ export function updateDrawTypes(
       }
       type.tiers = entry.tiers;
     }
+
+    // Coverage rule B: the resulting configuration (floors vs baseJackpot)
+    // must stay covered. Config is only persisted after every entry passes.
+    const coverageError = validateTypeCoverage(type);
+    if (coverageError) return { success: false, error: coverageError };
   }
 
   saveConfig(cfg);
@@ -654,8 +688,30 @@ export function runDraw(
   pf.verified = true;
   pf.clientSeed = pf.clientSeed || `community_${draw.ticketsSoldCount}_${new Date(draw.closeAt).getTime()}`;
 
-  if (totalPayout > draw.totalPool) {
-    console.warn(`[Lottery] ${draw.id}: payout $${totalPayout} exceeds pool $${draw.totalPool} (guaranteed floors)`);
+  // Coverage rule B: quantify what this draw paid beyond its own hold and
+  // enforce the 0.5 x baseJackpot cap. Winner prizes are NEVER cut — a breach
+  // is recorded as debt and clawed back from the next rollover carry.
+  const cfgNow = getConfig();
+  const capBase =
+    (draw.typeId && cfgNow.drawTypes?.[draw.typeId]?.baseJackpot) || draw.initialJackpot || 0;
+  const coverageCap = maxLossCap(capBase);
+  const coverageLoss = computeCoverageLoss(totalPayout, draw.totalPool);
+  draw.coverage = { loss: coverageLoss, cap: coverageCap, breach: coverageLoss > coverageCap };
+  if (draw.coverage.breach) {
+    console.error(
+      `[Lottery][COVERAGE] ${draw.id}: paid $${totalPayout} vs hold $${draw.totalPool} — ` +
+        `loss $${coverageLoss} exceeds rule-B cap $${coverageCap} (0.5 x base $${capBase}); recording debt`
+    );
+    if (draw.typeId) {
+      const state = getStateStore();
+      const prev = state.coverageDebt?.[draw.typeId] || 0;
+      state.coverageDebt = { ...(state.coverageDebt || {}), [draw.typeId]: round2(prev + (coverageLoss - coverageCap)) };
+      saveStateStore(state);
+    }
+  } else if (totalPayout > draw.totalPool) {
+    console.warn(
+      `[Lottery] ${draw.id}: payout $${totalPayout} exceeds pool $${draw.totalPool} (guaranteed floors) — within rule-B cap $${coverageCap}`
+    );
   }
 
   storage.saveLotteryTickets(tickets);
@@ -701,7 +757,11 @@ export function updateActiveDrawFields(fields: {
     active.reminded60 = false;
     active.reminded30 = false;
   }
-  if (fields.jackpotAmount && Number.isFinite(fields.jackpotAmount)) active.jackpotAmount = fields.jackpotAmount;
+  if (fields.jackpotAmount && Number.isFinite(fields.jackpotAmount)) {
+    // Coverage: an edited jackpot can never drop below the draw's tier1 floor.
+    const floor = active.tiers.find((t) => t.id === 'tier1_jackpot')?.guaranteedAmount || 0;
+    active.jackpotAmount = Math.max(fields.jackpotAmount, floor);
+  }
   storage.saveLotteryDraws(draws);
   return active;
 }
