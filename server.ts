@@ -43,6 +43,16 @@ const currentDirname = process.cwd();
 
 const app = express();
 const httpServer = createServer(app);
+
+// Canonical host: www.<domain> -> <domain> (301). Edge rules cover most domains already,
+// but www.betjam.sbs was still serving 200 — GSC flags it as a duplicate not selected by canonical.
+app.use((req, res, next) => {
+  const host = req.headers.host || '';
+  if (/^www\./i.test(host)) {
+    return res.redirect(301, `https://${host.replace(/^www\./i, '')}${req.originalUrl}`);
+  }
+  next();
+});
 const io = new Server(httpServer, {
   cors: {
     origin: '*',
@@ -5115,6 +5125,10 @@ ${cmpList}
 - Provably fair lottery systems
 - Referral reward unfreezing
 - Cross-platform money transfers
+
+## Official Network
+${profile.brand} is part of a family of official properties running on the same platform, each with its own editorial focus, self-canonical URLs, sitemap and Search Console property:
+${Object.entries(DOMAIN_META).map(([d, m]) => `- [${m.brand}](https://${d}) - ${m.focus}`).join('\n')}
 
 ## API Endpoints
 - ${url}/api/companies - List all betting companies
