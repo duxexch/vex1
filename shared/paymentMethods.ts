@@ -31,9 +31,13 @@ export function filterPaymentMethodsForCountry(
   const active = methods.filter((m) => m.is_active !== false);
   const country = countryIso ? countryIso.toUpperCase() : null;
   if (!country) return active; // no geo → legacy behavior: show everything
-  return active.filter(
+  const scoped = active.filter(
     (m) =>
       (m.scope || (m.country_iso ? 'country' : 'global')) === 'global' ||
       (m.country_iso || '').toUpperCase() === country
   );
+  // Graceful degradation: a country with no dedicated/global methods (admin
+  // hasn't defined them yet) still sees the full list instead of an empty
+  // deposit/withdraw screen — same as the pre-scope behavior.
+  return scoped.length > 0 ? scoped : active;
 }
