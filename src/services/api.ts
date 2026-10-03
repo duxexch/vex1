@@ -32,12 +32,30 @@ import {
   saveAllPaymentMethodsToFirestore,
   deletePaymentMethodFromFirestore,
   togglePaymentMethodInFirestore,
+  normalizePaymentMethod,
+  filterPaymentMethodsForCountry,
   DEFAULT_PAYMENT_METHODS,
 } from './paymentMethodsService';
 import { INITIAL_COMPANIES } from '../data/mockCompanies';
 import { applyBrandingToDocument } from '../utils/dynamicManifest';
 import { generateDefaultCompanyApiMethods } from '../data/defaultApiMethods';
 import { LOTTERY_ADMIN_KEY } from '../../shared/lotteryConfig';
+import { formatMoney, SUPPORTED_CURRENCIES } from '../../shared/money';
+
+/**
+ * Formats a USD amount with the visitor's active display currency
+ * (persisted by CurrencyContext to localStorage) — for messages composed
+ * here in the service layer where React hooks are unavailable.
+ */
+function displayMoney(amountInUSD: number): string {
+  try {
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('vex_display_currency') : null;
+    const code = saved && SUPPORTED_CURRENCIES[saved] ? saved : 'USD';
+    return formatMoney(amountInUSD, code);
+  } catch {
+    return formatMoney(amountInUSD, 'USD');
+  }
+}
 
 export function getReferralUrl(code: string, companyId?: string): string {
   if (companyId) {
@@ -313,6 +331,27 @@ class VexMobileApiService {
       return data.cohort;
     } catch (e) {
       return null;
+    }
+  }
+
+  /** Push language / detected country / display currency to the server profile. */
+  public async updateUserPreferences(prefs: {
+    language?: string;
+    country_code?: string;
+    country_iso?: string;
+    display_currency?: string;
+    last_country?: string;
+  }): Promise<boolean> {
+    if (!this.userId) return false;
+    try {
+      const res = await fetch(`/api/users/${this.userId}/preferences`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(prefs),
+      });
+      return res.ok;
+    } catch {
+      return false;
     }
   }
 
@@ -2259,7 +2298,7 @@ class VexMobileApiService {
 
     return {
       success: true,
-      message: `تم تحويل مبلغ $${tx.amount} بنجاح إلى حساب ${tx.to_account}`,
+      message: `تم تحويل ${displayMoney(tx.amount)} بنجاح إلى حساب ${tx.to_account}`,
     };
   }
 
@@ -2361,34 +2400,49 @@ class VexMobileApiService {
     }
   }
 
-  public async getPaymentMethods(): Promise<PaymentMethod[]> {
+  /**
+   * Payment-method list. Without a country: the full cross-country list
+   * (used by admin). With countryIso: only that country's methods + globals.
+   * Firestore wins, then server API, then branding, then seeded defaults.
+   */
+  public async getPaymentMethods(countryIso?: string | null): Promise<PaymentMethod[]> {
+    let list: PaymentMethod[] | null = null;
+
     try {
-      // 1. Primary source: Firestore database
+      // 1. Primary source: Firestore database (normalized on read)
       const firestoreMethods = await getPaymentMethodsFromFirestore();
       if (firestoreMethods && firestoreMethods.length > 0) {
-        return firestoreMethods;
+        list = firestoreMethods;
       }
     } catch (err) {
       console.warn('[VexAPI] Could not fetch payment methods from Firestore:', err);
     }
 
-    try {
-      // 2. Server API fallback
-      const res = await fetch('/api/payment-methods');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.paymentMethods && data.paymentMethods.length > 0) {
-          return data.paymentMethods;
+    if (!list) {
+      try {
+        // 2. Server API fallback (normalized server-side; supports ?country=)
+        const res = await fetch('/api/payment-methods');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.paymentMethods && data.paymentMethods.length > 0) {
+            list = data.paymentMethods;
+          }
         }
-      }
-    } catch {}
-
-    const branding = await this.getAppBranding();
-    if ((branding as any).paymentMethods && (branding as any).paymentMethods.length > 0) {
-      return (branding as any).paymentMethods;
+      } catch {}
     }
 
-    return DEFAULT_PAYMENT_METHODS;
+    if (!list) {
+      const branding = await this.getAppBranding();
+      if ((branding as any).paymentMethods && (branding as any).paymentMethods.length > 0) {
+        list = ((branding as any).paymentMethods as PaymentMethod[]).map((m) =>
+          normalizePaymentMethod(m)
+        );
+      }
+    }
+
+    if (!list) list = DEFAULT_PAYMENT_METHODS.map((m) => normalizePaymentMethod(m));
+
+    return countryIso ? filterPaymentMethodsForCountry(list, countryIso) : list;
   }
 
   public async savePaymentMethods(methods: PaymentMethod[]): Promise<void> {
@@ -2755,14 +2809,14 @@ class VexMobileApiService {
     if (isUnfreeze) {
       await this.broadcastNotification(
         '🔓 تم فك تجميد رصيدك 1:1 بنجاح!',
-        `تم التحقق من إيداعك بقيمة $${target.amount} وفك تجميد الرصيد المقابل له ليصبح متاحاً للسحب الفوري في محفظة ${target.company_name}.`,
+        `تم التحقق من إيداعك بقيمة ${displayMoney(target.amount)} وفك تجميد الرصيد المقابل له ليصبح متاحاً للسحب الفوري في محفظة ${target.company_name}.`,
         'compensation',
         { amount: target.amount, companyName: target.company_name, isUnfreeze: true }
       );
     } else {
       await this.broadcastNotification(
         '💰 تم اعتماد طلب التعويض في محفظتك بنجاح!',
-        `وافق المشرف على طلب تعويض الخسارة الخاص بك في ${target.company_name} بمبلغ $${target.amount}. أضيف المبلغ للرصيد المجمد.`,
+        `وافق المشرف على طلب تعويض الخسارة الخاص بك في ${target.company_name} بمبلغ ${displayMoney(target.amount)}. أضيف المبلغ للرصيد المجمد.`,
         'compensation',
         { amount: target.amount, companyName: target.company_name }
       );
@@ -3061,18 +3115,18 @@ class VexMobileApiService {
     // Strict constraint check
     if (amount > availableBal) {
       throw new Error(
-        `الرصيد المتاح للتحويل لتطبيق الشركة هو $${availableBal.toFixed(2)} فقط. ` +
-        `تنبيه أمني: الرصيد المجمد ($${frozenBal.toFixed(2)}) محمي وغير قابل للتحويل المباشر لتطبيق الشركة حتى يتم فك تجميده عبر المكافآت أو النشاط.`
+        `الرصيد المتاح للتحويل لتطبيق الشركة هو ${displayMoney(availableBal)} فقط. ` +
+        `تنبيه أمني: الرصيد المجمد (${displayMoney(frozenBal)}) محمي وغير قابل للتحويل المباشر لتطبيق الشركة حتى يتم فك تجميده عبر المكافآت أو النشاط.`
       );
     }
 
     const minAmount = comp.api_config.min_transfer_amount || 1;
     if (amount < minAmount) {
-      throw new Error(`الحد الأدنى للتحويل عبر API لشركة ${comp.name} هو $${minAmount}.`);
+      throw new Error(`الحد الأدنى للتحويل عبر API لشركة ${comp.name} هو ${displayMoney(minAmount)}.`);
     }
 
     if (comp.api_config.max_transfer_amount && amount > comp.api_config.max_transfer_amount) {
-      throw new Error(`الحد الأقصى للتحويل للعملية الواحدة هو $${comp.api_config.max_transfer_amount}.`);
+      throw new Error(`الحد الأقصى للتحويل للعملية الواحدة هو ${displayMoney(comp.api_config.max_transfer_amount)}.`);
     }
 
     // 5. Deduct strictly from AVAILABLE balance
@@ -3096,7 +3150,7 @@ class VexMobileApiService {
       transactionId: txId,
       timestamp: new Date().toISOString(),
       balanceType: 'available_only',
-      message: `Deposit of $${amount} successfully credited to account #${myAccount.account_number} via ${comp.name} API Gateway`,
+      message: `Deposit of ${displayMoney(amount)} successfully credited to account #${myAccount.account_number} via ${comp.name} API Gateway`,
     };
 
     const newTransfer: Transfer = {
@@ -3122,7 +3176,7 @@ class VexMobileApiService {
 
     // Add in-app notification
     await this.broadcastNotification(
-      `تم تحويل $${amount} إلى تطبيق ${comp.name}`,
+      `تم تحويل ${displayMoney(amount)} إلى تطبيق ${comp.name}`,
       `تم إيداع المبلغ بنجاح في حسابك #${myAccount.account_number} عبر ربط الـ API المباشر. رقم المرجع: ${apiRef}`,
       'transfer'
     );

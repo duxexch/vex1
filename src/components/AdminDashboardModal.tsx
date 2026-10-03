@@ -26,6 +26,8 @@ import { AdminAiAgentsHub } from './AdminAiAgentsHub';
 import { COMPANY_THEMES, getCompanyTheme } from '../data/companyThemes';
 import { autoTranslateCompany } from '../utils/companyTranslator';
 import { vexApi } from '../services/api';
+import { COUNTRY_OPTIONS, flagEmoji, countryByIso } from '../data/countries';
+import { SUPPORTED_CURRENCIES } from '../../shared/money';
 import { LOTTERY_ADMIN_KEY } from '../../shared/lotteryConfig';
 import { generateDefaultCompanyApiMethods } from '../data/defaultApiMethods';
 import {
@@ -489,6 +491,12 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     descriptionAr: '',
     descriptionEn: '',
     is_active: true,
+    scope: 'country' as 'global' | 'country',
+    country_iso: 'EG',
+    currency: 'EGP',
+    type: 'both' as 'deposit' | 'withdraw' | 'both',
+    qr_payload: '',
+    logoUrl: '',
   });
   const [pmSaveSuccess, setPmSaveSuccess] = useState(false);
 
@@ -7274,13 +7282,13 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
-                        {t('إدارة وسائل الدفع المصرية', 'Egyptian Payment Methods Management', 'Управление египетскими способами оплаты')}
+                        {t('إدارة وسائل الدفع', 'Payment Methods Management', 'Управление способами оплаты')}
                       </h3>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                         {t(
-                          'إضافة وتعديل وتعطيل وسائل الدفع المتاحة للمستخدمين (فودافون كاش، إنستا باي، اتصالات كاش، أورانج كاش، وي باي، التحويل البنكي).',
-                          'Add, edit, and toggle active status for Egyptian payment gateways shown to users.',
-                          'Добавление, редактирование и переключение статуса египетских платежных шлюзов.'
+                          'أضف وسائل دفع عامة للجميع أو مخصصة لدولة بعينها (فودافون كاش، إنستا باي، USDT...)، مع رمز QR وتعليمات لكل وسيلة.',
+                          'Add global payment methods or country-specific ones (Vodafone Cash, InstaPay, USDT...) with QR codes and per-method instructions.',
+                          'Добавление общих или страно-ориентированных способов оплаты с QR-кодами.'
                         )}
                       </p>
                     </div>
@@ -7300,6 +7308,12 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                           descriptionAr: '',
                           descriptionEn: '',
                           is_active: true,
+                          scope: 'global',
+                          country_iso: 'EG',
+                          currency: 'USD',
+                          type: 'both',
+                          qr_payload: '',
+                          logoUrl: '',
                         });
                         setIsAddingPm(true);
                       }}
@@ -7466,6 +7480,134 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                           </select>
                         </div>
 
+                        {/* Scope: global vs country-specific */}
+                        <div className="sm:col-span-2">
+                          <label className="block text-slate-600 dark:text-slate-400 font-bold mb-1">
+                            {t('نطاق العرض', 'Availability Scope', 'Область показа')}
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPmForm({ ...pmForm, scope: 'global' })}
+                              className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border ${
+                                pmForm.scope === 'global'
+                                  ? 'bg-emerald-600 border-emerald-600 text-white'
+                                  : 'bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-emerald-400'
+                              }`}
+                            >
+                              <span>🌍</span>
+                              <span>{t('للكل (عالمية)', 'Global (all countries)', 'Для всех стран')}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPmForm({ ...pmForm, scope: 'country', country_iso: pmForm.country_iso || 'EG', currency: pmForm.currency || 'EGP' })}
+                              className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border ${
+                                pmForm.scope === 'country'
+                                  ? 'bg-emerald-600 border-emerald-600 text-white'
+                                  : 'bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-emerald-400'
+                              }`}
+                            >
+                              <span>🏳️</span>
+                              <span>{t('لدولة محددة', 'Specific country', 'Для конкретной страны')}</span>
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                            {t(
+                              '🌍 الوسيلة العامة تظهر لكل الزوار. 🏳️ الوسيلة الخاصة تظهر فقط لزوار تلك الدولة (يُكتشف تلقائيًا عبر GeoIP).',
+                              '🌍 Global methods show to everyone. 🏳️ Country methods only show to visitors of that country (auto-detected via GeoIP).',
+                              '🌍 Общие методы видны всем. 🏳️ Страновые методы — только посетителям этой страны.'
+                            )}
+                          </p>
+                        </div>
+
+                        {/* Country picker (only when scope = country) */}
+                        {pmForm.scope === 'country' && (
+                          <div>
+                            <label className="block text-slate-600 dark:text-slate-400 font-bold mb-1">
+                              {t('الدولة *', 'Country *', 'Страна *')}
+                            </label>
+                            <select
+                              value={pmForm.country_iso}
+                              onChange={(e) => {
+                                const opt = countryByIso(e.target.value);
+                                setPmForm({
+                                  ...pmForm,
+                                  country_iso: e.target.value,
+                                  currency: opt?.currency || pmForm.currency,
+                                });
+                              }}
+                              className="w-full h-10 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl px-3 text-slate-900 dark:text-white font-bold"
+                            >
+                              {COUNTRY_OPTIONS.map((c) => (
+                                <option key={c.iso} value={c.iso}>
+                                  {flagEmoji(c.iso)} {c.nameAr} ({c.iso}) — {c.currency}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Currency */}
+                        <div>
+                          <label className="block text-slate-600 dark:text-slate-400 font-bold mb-1">
+                            {t('العملة', 'Currency', 'Валюта')}
+                          </label>
+                          <select
+                            value={pmForm.currency}
+                            onChange={(e) => setPmForm({ ...pmForm, currency: e.target.value })}
+                            className="w-full h-10 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl px-3 text-slate-900 dark:text-white font-bold"
+                          >
+                            {!SUPPORTED_CURRENCIES[pmForm.currency] && (
+                              <option value={pmForm.currency}>{pmForm.currency}</option>
+                            )}
+                            {Object.values(SUPPORTED_CURRENCIES).map((c) => (
+                              <option key={c.code} value={c.code}>
+                                {c.code} — {c.nameAr || c.name}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                            {t('تُملأ تلقائيًا حسب الدولة المختارة.', 'Auto-filled from the selected country.', 'Заполняется автоматически.')}
+                          </p>
+                        </div>
+
+                        {/* Flows: deposit / withdraw / both */}
+                        <div>
+                          <label className="block text-slate-600 dark:text-slate-400 font-bold mb-1">
+                            {t('تظهر في', 'Shown in', 'Показывать в')}
+                          </label>
+                          <select
+                            value={pmForm.type}
+                            onChange={(e) => setPmForm({ ...pmForm, type: e.target.value as 'deposit' | 'withdraw' | 'both' })}
+                            className="w-full h-10 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl px-3 text-slate-900 dark:text-white font-bold"
+                          >
+                            <option value="both">{t('الإيداع والسحب', 'Deposit & Withdraw', 'Депозит и вывод')}</option>
+                            <option value="deposit">{t('الإيداع فقط', 'Deposit only', 'Только депозит')}</option>
+                            <option value="withdraw">{t('السحب فقط', 'Withdraw only', 'Только вывод')}</option>
+                          </select>
+                        </div>
+
+                        {/* QR payload (optional — falls back to account number) */}
+                        <div className="sm:col-span-2">
+                          <label className="block text-slate-600 dark:text-slate-400 font-bold mb-1">
+                            {t('محتوى رمز QR (اختياري)', 'QR Code Payload (optional)', 'Содержимое QR-кода (необязательно)')}
+                          </label>
+                          <input
+                            type="text"
+                            value={pmForm.qr_payload}
+                            onChange={(e) => setPmForm({ ...pmForm, qr_payload: e.target.value })}
+                            placeholder="TXYZ... أو 010xxxxxxxx أو vexdeals@instapay — يُستخدم رقم الحساب تلقائيًا إن تُرك فارغًا"
+                            className="w-full h-10 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl px-3 text-slate-900 dark:text-white font-mono font-bold text-xs"
+                          />
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                            {t(
+                              '💡 يظهر كرمز QR قابل للمسح داخل بطاقة الدفع، مع زر نسخ سريع بجانبه. اتركه فارغًا لاستخدام رقم الحساب.',
+                              '💡 Shown as a scannable QR inside the payment card with a quick-copy button. Leave empty to use the account number.',
+                              '💡 Отображается как QR в карточке оплаты. Пусто = используется номер счёта.'
+                            )}
+                          </p>
+                        </div>
+
                         {/* Short Description */}
                         <div>
                           <label className="block text-slate-600 dark:text-slate-400 font-bold mb-1">
@@ -7546,6 +7688,12 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                 descriptionAr: pmForm.descriptionAr || finalInstructions,
                                 descriptionEn: pmForm.descriptionEn || '',
                                 is_active: pmForm.is_active,
+                                scope: pmForm.scope,
+                                country_iso: pmForm.scope === 'country' ? pmForm.country_iso : undefined,
+                                currency: pmForm.currency,
+                                type: pmForm.type,
+                                qr_payload: pmForm.qr_payload.trim() || undefined,
+                                logoUrl: pmForm.logoUrl.trim() || undefined,
                                 created_at: new Date().toISOString(),
                                 updated_at: new Date().toISOString(),
                               };
@@ -7566,6 +7714,12 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                       badge: pmForm.badge || m.badge,
                                       descriptionAr: pmForm.descriptionAr || m.descriptionAr,
                                       is_active: pmForm.is_active,
+                                      scope: pmForm.scope,
+                                      country_iso: pmForm.scope === 'country' ? pmForm.country_iso : undefined,
+                                      currency: pmForm.currency,
+                                      type: pmForm.type,
+                                      qr_payload: pmForm.qr_payload.trim() || undefined,
+                                      logoUrl: pmForm.logoUrl.trim() || undefined,
                                       updated_at: new Date().toISOString(),
                                     }
                                   : m
@@ -7611,6 +7765,23 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                               {pm.badge && (
                                 <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
                                   {pm.badge}
+                                </span>
+                              )}
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300">
+                                {(pm.scope || (pm.country_iso ? 'country' : 'global')) === 'global'
+                                  ? `🌍 ${t('للكل', 'Global', 'Все страны')}`
+                                  : `${flagEmoji(pm.country_iso)} ${countryByIso(pm.country_iso)?.nameAr || pm.country_iso || ''}`}
+                              </span>
+                              {pm.currency && (
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-mono">
+                                  {pm.currency}
+                                </span>
+                              )}
+                              {pm.type && pm.type !== 'both' && (
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                                  {pm.type === 'deposit'
+                                    ? t('إيداع فقط', 'Deposit only', 'Только депозит')
+                                    : t('سحب فقط', 'Withdraw only', 'Только вывод')}
                                 </span>
                               )}
                               <span
@@ -7664,6 +7835,12 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                     descriptionAr: pm.descriptionAr || '',
                                     descriptionEn: pm.descriptionEn || '',
                                     is_active: pm.is_active ?? true,
+                                    scope: pm.scope || 'country',
+                                    country_iso: pm.country_iso || 'EG',
+                                    currency: pm.currency || 'EGP',
+                                    type: pm.type || 'both',
+                                    qr_payload: pm.qr_payload || '',
+                                    logoUrl: pm.logoUrl || '',
                                   });
                                   setIsAddingPm(false);
                                 }}

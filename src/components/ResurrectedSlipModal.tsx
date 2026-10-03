@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Share2, Download, CheckCircle, ShieldCheck } from 'lucide-react';
 import { CompensationRequest } from '../types';
+import { useCurrency } from '../context/CurrencyContext';
 
 interface ResurrectedSlipModalProps {
   request: CompensationRequest;
@@ -16,13 +17,14 @@ export const ResurrectedSlipModal: React.FC<ResurrectedSlipModalProps> = ({
 }) => {
   const [downloading, setDownloading] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  const { fmt } = useCurrency();
 
   const handleShare = async () => {
     // In a real app with html2canvas, we'd render the element to canvas.
     // For now, we'll use native web share if available, or just fallback to text
     const text = lang === 'ar' 
-      ? `خسرت رهاني في ${request.company_name} ولكن VEX Deals عوضوني بـ $${request.amount}! سجل واستفد من تأمين الخسائر.`
-      : `Lost my bet on ${request.company_name} but VEX Deals compensated me $${request.amount}! Get loss insurance.`;
+      ? `خسرت رهاني على ${request.company_name} لكن VEX Deals عوّضتني ${fmt(request.amount)}! احصل على تأمين الخسائر.`
+      : `Lost my bet on ${request.company_name} but VEX Deals compensated me ${fmt(request.amount)}! Get loss insurance.`;
     
     if (navigator.share) {
       try {

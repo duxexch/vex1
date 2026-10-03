@@ -1,6 +1,14 @@
 import { collection, doc, setDoc, getDocs, deleteDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebaseClient';
 import { PaymentMethod } from '../types';
+import { normalizePaymentMethod } from '../../shared/paymentMethods';
+
+// Shared helpers (client + server) — re-exported here for existing imports.
+export { normalizePaymentMethod, filterPaymentMethodsForCountry } from '../../shared/paymentMethods';
+
+// The seeded set is Egyptian-local: tag it explicitly so country filtering
+// works against legacy data written before the scope fields existed.
+const EG = { scope: 'country' as const, country_iso: 'EG', currency: 'EGP', type: 'both' as const };
 
 export const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [
   {
@@ -17,6 +25,7 @@ export const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [
     descriptionEn: 'Transfer via Vodafone Cash wallet',
     badge: 'محفظة إلكترونية',
     is_active: true,
+    ...EG,
   },
   {
     id: 'pm_instapay',
@@ -32,6 +41,7 @@ export const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [
     descriptionEn: 'Transfer via payment network from any bank account',
     badge: 'دفع لحظي IPN',
     is_active: true,
+    ...EG,
   },
   {
     id: 'pm_etisalat',
@@ -47,6 +57,7 @@ export const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [
     descriptionEn: 'Etisalat Cash digital wallet',
     badge: 'محفظة إلكترونية',
     is_active: true,
+    ...EG,
   },
   {
     id: 'pm_orange',
@@ -62,6 +73,7 @@ export const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [
     descriptionEn: 'Orange Cash digital wallet',
     badge: 'محفظة إلكترونية',
     is_active: true,
+    ...EG,
   },
   {
     id: 'pm_we',
@@ -77,6 +89,7 @@ export const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [
     descriptionEn: 'WE Pay digital wallet',
     badge: 'محفظة إلكترونية',
     is_active: true,
+    ...EG,
   },
   {
     id: 'pm_bank',
@@ -92,6 +105,7 @@ export const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [
     descriptionEn: 'Direct transfer to any Egyptian bank account or Meeza card',
     badge: 'حساب بنكي / آيبان',
     is_active: true,
+    ...EG,
   },
 ];
 
@@ -113,13 +127,14 @@ export async function getPaymentMethodsFromFirestore(): Promise<PaymentMethod[]>
       const methods: PaymentMethod[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as PaymentMethod;
-        methods.push({
-          ...data,
-          id: docSnap.id,
-          name: data.name || data.nameAr || data.nameEn || docSnap.id,
-          instructions: data.instructions || data.instructionsAr || data.descriptionAr || '',
-          is_active: data.is_active !== undefined ? Boolean(data.is_active) : true,
-        });
+        methods.push(
+          normalizePaymentMethod({
+            ...data,
+            id: docSnap.id,
+            name: data.name || data.nameAr || data.nameEn || docSnap.id,
+            instructions: data.instructions || data.instructionsAr || data.descriptionAr || '',
+          })
+        );
       });
       // Cache locally
       if (typeof window !== 'undefined') {
@@ -136,7 +151,10 @@ export async function getPaymentMethodsFromFirestore(): Promise<PaymentMethod[]>
     const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (cached) {
       try {
-        return JSON.parse(cached);
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((m: PaymentMethod) => normalizePaymentMethod(m));
+        }
       } catch {}
     }
   }
@@ -146,7 +164,7 @@ export async function getPaymentMethodsFromFirestore(): Promise<PaymentMethod[]>
     console.warn('[Firestore] Could not auto-seed payment methods:', err)
   );
 
-  return DEFAULT_PAYMENT_METHODS;
+  return DEFAULT_PAYMENT_METHODS.map((m) => normalizePaymentMethod(m));
 }
 
 /**
@@ -154,14 +172,13 @@ export async function getPaymentMethodsFromFirestore(): Promise<PaymentMethod[]>
  */
 export async function savePaymentMethodToFirestore(method: PaymentMethod): Promise<void> {
   const methodId = method.id || `pm_${Date.now()}`;
-  const payload: PaymentMethod = {
+  const payload: PaymentMethod = normalizePaymentMethod({
     ...method,
     id: methodId,
     name: method.name || method.nameAr || 'New Payment Method',
     instructions: method.instructions || method.instructionsAr || '',
-    is_active: method.is_active !== undefined ? Boolean(method.is_active) : true,
     updated_at: new Date().toISOString(),
-  };
+  });
 
   try {
     await setDoc(doc(db, FIRESTORE_COLLECTION, methodId), payload, { merge: true });
@@ -194,14 +211,13 @@ export async function saveAllPaymentMethodsToFirestore(methods: PaymentMethod[])
   try {
     const promises = methods.map((m) => {
       const mId = m.id || `pm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const payload: PaymentMethod = {
+      const payload: PaymentMethod = normalizePaymentMethod({
         ...m,
         id: mId,
         name: m.name || m.nameAr || 'Payment Method',
         instructions: m.instructions || m.instructionsAr || '',
-        is_active: m.is_active !== undefined ? Boolean(m.is_active) : true,
         updated_at: new Date().toISOString(),
-      };
+      });
       return setDoc(doc(db, FIRESTORE_COLLECTION, mId), payload, { merge: true });
     });
     await Promise.all(promises);
@@ -297,13 +313,14 @@ export function subscribeToPaymentMethods(
           const methods: PaymentMethod[] = [];
           snapshot.forEach((docSnap) => {
             const data = docSnap.data() as PaymentMethod;
-            methods.push({
-              ...data,
-              id: docSnap.id,
-              name: data.name || data.nameAr || data.nameEn || docSnap.id,
-              instructions: data.instructions || data.instructionsAr || data.descriptionAr || '',
-              is_active: data.is_active !== undefined ? Boolean(data.is_active) : true,
-            });
+            methods.push(
+              normalizePaymentMethod({
+                ...data,
+                id: docSnap.id,
+                name: data.name || data.nameAr || data.nameEn || docSnap.id,
+                instructions: data.instructions || data.instructionsAr || data.descriptionAr || '',
+              })
+            );
           });
           onUpdate(methods);
           if (typeof window !== 'undefined') {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Check, Sparkles } from 'lucide-react';
+import { useCurrency } from '../context/CurrencyContext';
 
 interface DetailItem {
   label: string;
@@ -35,8 +36,9 @@ export const SuccessAnimation: React.FC<SuccessAnimationProps> = ({
   amount,
   details,
   onDone,
-  doneText = 'تم بنجاح',
+  doneText = 'تم',
 }) => {
+  const { fmt } = useCurrency();
   return (
     <div className="py-6 px-2 flex flex-col items-center text-center select-none relative overflow-hidden">
       {/* Icon with Expanding Ripple & Radial Burst */}
@@ -183,7 +185,7 @@ export const SuccessAnimation: React.FC<SuccessAnimationProps> = ({
           className="mt-2 inline-block px-4 py-1.5 rounded-2xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/80"
         >
           <span className="text-2xl font-black font-mono text-emerald-700 dark:text-emerald-400">
-            ${amount}
+            {fmt(amount)}
           </span>
         </motion.div>
       )}

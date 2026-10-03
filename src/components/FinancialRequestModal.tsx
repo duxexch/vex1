@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Company, Language, Wallet, PaymentMethod } from '../types';
-import { formatCurrency } from '../utils/currency';
+import { formatCurrency, currencyLabel } from '../utils/currency';
 import { vexApi } from '../services/api';
+import { useCurrency } from '../context/CurrencyContext';
+import { PaymentMethodCard } from './payment/PaymentMethodCard';
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -81,6 +83,7 @@ export const FinancialRequestModal: React.FC<FinancialRequestModalProps> = ({
 }) => {
   const isAr = lang === 'ar';
   const meta = TYPE_META[type] || TYPE_META.deposit;
+  const { geo } = useCurrency();
 
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [amount, setAmount] = useState('');
@@ -108,19 +111,25 @@ export const FinancialRequestModal: React.FC<FinancialRequestModalProps> = ({
       '';
     setSelectedCompanyId(defaultCompany);
     setAmount(prefill && prefill.amount ? String(prefill.amount) : '');
-    if (type === 'deposit') {
+    if (type === 'deposit' || type === 'withdraw') {
       setIsFetchingMethods(true);
       vexApi
-        .getPaymentMethods()
+        .getPaymentMethods(geo.country)
         .then((methods) => {
-          setPaymentMethods(methods || []);
-          const active = (methods || []).filter((m) => m.is_active !== false);
-          if (active.length > 0) setSelectedPmId((prev) => prev || active[0].id);
+          // Country + global scoping happens inside getPaymentMethods;
+          // here we keep only methods relevant to this flow.
+          const visible = (methods || []).filter((m) => {
+            if (m.is_active === false) return false;
+            if (type === 'deposit') return m.type !== 'withdraw';
+            return m.type !== 'deposit';
+          });
+          setPaymentMethods(visible);
+          if (visible.length > 0) setSelectedPmId((prev) => prev || visible[0].id);
         })
         .catch(() => undefined)
         .finally(() => setIsFetchingMethods(false));
     }
-  }, [isOpen, type, wallets, prefill]);
+  }, [isOpen, type, wallets, prefill, geo.country]);
 
   const currentWallet = wallets.find((w) => w.company_id === selectedCompanyId) || wallets[0];
   const availableBal = currentWallet ? Number(currentWallet.available) || 0 : 0;
@@ -183,7 +192,7 @@ export const FinancialRequestModal: React.FC<FinancialRequestModalProps> = ({
         account_number: type === 'prize_claim' ? undefined : accountNumber.trim() || undefined,
         sender_phone: type === 'deposit' ? senderPhone.trim() || undefined : undefined,
         payment_method_name:
-          type === 'deposit' && selectedPm
+          (type === 'deposit' || type === 'withdraw') && selectedPm
             ? isAr
               ? selectedPm.nameAr || selectedPm.name
               : selectedPm.nameEn || selectedPm.name
@@ -344,28 +353,99 @@ export const FinancialRequestModal: React.FC<FinancialRequestModalProps> = ({
                       : 'Notice: Payment methods are being updated by administration.'}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {activePaymentMethods.map((pm) => {
-                      const isSelected = selectedPm?.id === pm.id;
-                      return (
-                        <button
-                          key={pm.id}
-                          type="button"
-                          onClick={() => setSelectedPmId(pm.id)}
-                          className={`p-2.5 rounded-xl border text-right transition-all flex items-center justify-between cursor-pointer ${
-                            isSelected
-                              ? 'bg-emerald-50/90 border-emerald-500 text-emerald-950 shadow-xs ring-1 ring-emerald-500'
-                              : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
-                          }`}
-                        >
-                          <span className="font-bold text-xs truncate">
-                            {isAr ? pm.nameAr || pm.name : pm.nameEn || pm.name}
-                          </span>
-                          {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
-                        </button>
-                      );
-                    })}
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {activePaymentMethods.map((pm) => {
+                        const isSelected = selectedPm?.id === pm.id;
+                        return (
+                          <button
+                            key={pm.id}
+                            type="button"
+                            onClick={() => setSelectedPmId(pm.id)}
+                            className={`p-2.5 rounded-xl border text-right transition-all flex items-center justify-between cursor-pointer ${
+                              isSelected
+                                ? 'bg-emerald-50/90 border-emerald-500 text-emerald-950 shadow-xs ring-1 ring-emerald-500'
+                                : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                            }`}
+                          >
+                            <span className="font-bold text-xs truncate">
+                              {isAr ? pm.nameAr || pm.name : pm.nameEn || pm.name}
+                            </span>
+                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {selectedPm && (
+                      <div className="mt-1 animate-fade-in">
+                        <PaymentMethodCard
+                          method={selectedPm}
+                          lang={lang}
+                          mode="deposit"
+                          onCopyToast={() =>
+                            showToast(isAr ? 'تم نسخ بيانات الدفع' : 'Payment details copied')
+                          }
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {type === 'withdraw' && (
+              <div className="space-y-2 pt-1 border-t border-slate-100">
+                <label className="block font-bold text-slate-700">
+                  {isAr ? 'اختر وسيلة استلام السحب *' : 'Select Withdrawal Method *'}
+                </label>
+                {isFetchingMethods ? (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-500">
+                    {isAr ? 'جاري تحميل وسائل الدفع...' : 'Loading payment methods...'}
                   </div>
+                ) : activePaymentMethods.length === 0 ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs">
+                    {isAr
+                      ? 'لا توجد وسيلة سحب متاحة لدولتك حاليًا. تواصل مع الدعم الفني.'
+                      : 'No withdrawal method available for your country yet. Please contact support.'}
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {activePaymentMethods.map((pm) => {
+                        const isSelected = selectedPm?.id === pm.id;
+                        return (
+                          <button
+                            key={pm.id}
+                            type="button"
+                            onClick={() => setSelectedPmId(pm.id)}
+                            className={`p-2.5 rounded-xl border text-right transition-all flex items-center justify-between cursor-pointer ${
+                              isSelected
+                                ? 'bg-violet-50/90 border-violet-500 text-violet-950 shadow-xs ring-1 ring-violet-500'
+                                : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                            }`}
+                          >
+                            <span className="font-bold text-xs truncate">
+                              {isAr ? pm.nameAr || pm.name : pm.nameEn || pm.name}
+                            </span>
+                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-violet-600 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {selectedPm && (
+                      <div className="mt-1 animate-fade-in">
+                        <PaymentMethodCard
+                          method={selectedPm}
+                          lang={lang}
+                          mode="withdraw"
+                          showAccountAndQr={false}
+                          onCopyToast={() =>
+                            showToast(isAr ? 'تم نسخ البيانات' : 'Details copied')
+                          }
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -397,7 +477,9 @@ export const FinancialRequestModal: React.FC<FinancialRequestModalProps> = ({
                       type === 'prize_claim' ? 'opacity-80' : ''
                     }`}
                   />
-                  <span className="absolute right-3 top-3 text-xs text-slate-400">$</span>
+                  <span className="absolute right-3 top-3 text-xs text-slate-400 font-bold" dir="ltr">
+                    {currencyLabel(displayCurrency).symbol}
+                  </span>
                 </div>
                 {type === 'withdraw' && (
                   <span className="text-[10px] text-slate-500 mt-0.5 block">

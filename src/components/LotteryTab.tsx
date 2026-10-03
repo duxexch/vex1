@@ -36,6 +36,7 @@ import {
   Wallet as UserWallet 
 } from '../types';
 import { lotteryService } from '../services/lotteryService';
+import { useCurrency } from '../context/CurrencyContext';
 import { LotteryPrizeCards } from './lottery/LotteryPrizeCards';
 import { LotteryWinningsHistory } from './lottery/LotteryWinningsHistory';
 import { LotteryTierAlertsModal } from './lottery/LotteryTierAlertsModal';
@@ -63,6 +64,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
   onOpenFinancialRequest,
 }) => {
   const isAr = lang === 'ar';
+  const { fmt, currency } = useCurrency();
 
   // Sub-tabs
   type SubTab = 'play' | 'my_tickets' | 'won_prizes' | 'results' | 'rules';
@@ -206,7 +208,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
         if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
           new Notification(isAr ? '⏳ تنبيه سحب VEX الكبرى (قبل 60 دقيقة)' : '⏳ VEX Mega Draw: 1 Hour Remaining!', {
             body: isAr 
-              ? `باقي ساعة واحدة فقط على سحب VEX الكبرى. الجائزة المتراكمة: $${activeDraw ? activeDraw.jackpotAmount.toLocaleString() : '18,450'}!`
+              ? `باقي ساعة واحدة فقط على سحب VEX الكبرى. الجائزة المتراكمة: ${fmt(activeDraw ? activeDraw.jackpotAmount : 18450)}!`
               : `Only 60 minutes remaining! Pick your winning numbers now.`,
             icon: '/favicon.ico',
           });
@@ -334,8 +336,8 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
       if ((Number(selectedWallet.available) || 0) < activeDraw.ticketPrice) {
         setErrorMessage(
           isAr
-            ? `رصيد محفظة ${selectedWallet.company_name} المتاح ($${(Number(selectedWallet.available) || 0).toFixed(2)}) غير كافٍ لشراء التذكرة ($${activeDraw.ticketPrice.toFixed(2)})`
-            : `Insufficient balance in ${selectedWallet.company_name} wallet ($${(Number(selectedWallet.available) || 0).toFixed(2)}) for ticket ($${activeDraw.ticketPrice.toFixed(2)})`
+            ? `رصيد محفظة ${selectedWallet.company_name} المتاح (${fmt(Number(selectedWallet.available) || 0)}) غير كافٍ لشراء التذكرة (${fmt(activeDraw.ticketPrice)})`
+            : `Insufficient balance in ${selectedWallet.company_name} wallet (${fmt(Number(selectedWallet.available) || 0)}) for ticket (${fmt(activeDraw.ticketPrice)})`
         );
         return;
       }
@@ -384,8 +386,8 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
         if (onCopyToast) {
           onCopyToast(
             isAr
-              ? `✅ تم إيداع جائزة $${(res.amount || 0).toFixed(2)} في محفظتك (مرجع: ${res.transactionId})`
-              : `✅ Prize of $${(res.amount || 0).toFixed(2)} deposited to your wallet (ref: ${res.transactionId})`
+              ? `✅ تم إيداع جائزة ${fmt(res.amount || 0)} في محفظتك (مرجع: ${res.transactionId})`
+              : `✅ Prize of ${fmt(res.amount || 0)} deposited to your wallet (ref: ${res.transactionId})`
           );
         }
         if (onRefreshWallets) onRefreshWallets();
@@ -472,8 +474,8 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
                 }`}
               >
                 <span>{label}</span>
-                <span className="font-mono text-emerald-400">${d.ticketPrice.toFixed(2)}</span>
-                <span className="font-mono text-slate-400">${d.jackpotAmount.toLocaleString('en-US')}</span>
+                <span className="font-mono text-emerald-400">{fmt(d.ticketPrice)}</span>
+                <span className="font-mono text-slate-400">{fmt(d.jackpotAmount)}</span>
               </button>
             );
           })}
@@ -508,10 +510,10 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
                 {isAr ? 'الجائزة الكبرى المتراكمة:' : 'Progressive Jackpot Pool:'}
               </span>
               <span className="text-2xl sm:text-4xl font-black text-amber-400 font-mono tracking-tight drop-shadow-sm">
-                ${activeDraw ? activeDraw.jackpotAmount.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '18,450.00'}
+                {fmt(activeDraw ? activeDraw.jackpotAmount : 18450)}
               </span>
               <span className="text-xs font-black uppercase text-amber-300/80 bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20">
-                {activeDraw?.currency || 'USD'}
+                {currency}
               </span>
             </div>
           </div>
@@ -561,7 +563,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
             </div>
 
             <div className="mt-2 text-[10px] text-slate-400 text-center flex items-center gap-2">
-              <span>{isAr ? 'سعر التذكرة:' : 'Ticket:'} <strong className="text-emerald-400 font-mono">${activeDraw?.ticketPrice.toFixed(2) || '1.00'}</strong></span>
+              <span>{isAr ? 'سعر التذكرة:' : 'Ticket:'} <strong className="text-emerald-400 font-mono">{fmt(activeDraw?.ticketPrice || 1)}</strong></span>
               <span>•</span>
               <span className="font-mono text-slate-400">
                 {activeDraw ? new Date(activeDraw.closeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
@@ -979,14 +981,14 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
                         const w = wallets.find((x) => x.company_id === selectedWalletCompanyId);
                         const bal = Number(w?.available) || 0;
                         return isAr
-                          ? `${w?.company_name || '—'}: $${bal.toFixed(2)}`
-                          : `${w?.company_name || '—'}: $${bal.toFixed(2)}`;
+                          ? `${w?.company_name || '—'}: ${fmt(bal)}`
+                          : `${w?.company_name || '—'}: ${fmt(bal)}`;
                       })()}
                     </span>
                   </div>
                 </div>
                 <span className="text-xs font-black text-slate-900">
-                  ${activeDraw?.ticketPrice.toFixed(2) || '1.00'}
+                  {fmt(activeDraw?.ticketPrice || 1)}
                 </span>
               </button>
             </div>
@@ -1007,7 +1009,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
                 >
                   {wallets.map((w) => (
                     <option key={w.company_id} value={w.company_id}>
-                      {w.company_name} — ${(Number(w.available) || 0).toFixed(2)}
+                      {w.company_name} — {fmt(Number(w.available) || 0)}
                     </option>
                   ))}
                 </select>
@@ -1043,8 +1045,8 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
                   <Ticket className="w-4 h-4" />
                   <span>
                     {isAr 
-                      ? `تأكيد وشراء التذكرة (${selectedPaymentMethod === 'compassion_free_ticket' ? 'مجاناً' : `$${activeDraw?.ticketPrice.toFixed(2) || '1.00'}`})`
-                      : `Confirm & Buy Ticket (${selectedPaymentMethod === 'compassion_free_ticket' ? 'FREE' : `$${activeDraw?.ticketPrice.toFixed(2) || '1.00'}`})`}
+                      ? `تأكيد وشراء التذكرة (${selectedPaymentMethod === 'compassion_free_ticket' ? 'مجاناً' : `${fmt(activeDraw?.ticketPrice || 1)}`})`
+                      : `Confirm & Buy Ticket (${selectedPaymentMethod === 'compassion_free_ticket' ? 'FREE' : `${fmt(activeDraw?.ticketPrice || 1)}`})`}
                   </span>
                 </>
               )}
@@ -1124,7 +1126,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
                           isWinner ? (
                             <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
                               <Trophy className="w-3 h-3 text-emerald-600" />
-                              {isAr ? `فائزة بجائزة $${ticket.prizeWon?.toFixed(2)}` : `Winner: $${ticket.prizeWon?.toFixed(2)}`}
+                              {isAr ? `فائزة بجائزة ${fmt(ticket.prizeWon || 0)}` : `Winner: ${fmt(ticket.prizeWon || 0)}`}
                             </span>
                           ) : (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
@@ -1185,7 +1187,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
                         <span className="block font-medium">
                           {ticket.paymentMethod === 'compassion_free_ticket' 
                             ? (isAr ? 'تذكرة تكافل مجانية' : 'Solidarity Ticket')
-                            : `$${ticket.pricePaid.toFixed(2)}`}
+                            : fmt(ticket.pricePaid)}
                         </span>
                       </div>
                     </div>
@@ -1244,7 +1246,7 @@ export const LotteryTab: React.FC<LotteryTabProps> = ({
                         {isAr ? 'إجمالي الجوائز الموزعة:' : 'Prize Pool:'}
                       </span>
                       <span className="text-sm font-black text-amber-600 font-mono">
-                        ${draw.jackpotAmount.toLocaleString()}
+                        {fmt(draw.jackpotAmount)}
                       </span>
                     </div>
                   </div>

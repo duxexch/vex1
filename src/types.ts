@@ -739,6 +739,16 @@ export interface PaymentMethod {
   minDeposit?: number;
   maxDeposit?: number;
   currency?: string;
+  /** 'global' = shown to every country; 'country' = only country_iso visitors. */
+  scope?: 'global' | 'country';
+  /** ISO-3166-1 alpha-2 when scope === 'country' (e.g. 'EG', 'SA'). */
+  country_iso?: string;
+  /** Explicit QR content (crypto address + network, IPA note...). Defaults to accountNumber. */
+  qr_payload?: string;
+  /** Which flows show this method: deposit / withdraw / both (default both). */
+  type?: 'deposit' | 'withdraw' | 'both';
+  /** Optional logo image URL for the payment card. */
+  logoUrl?: string;
   created_at?: string;
   updated_at?: string;
 }

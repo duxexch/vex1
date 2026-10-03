@@ -30,7 +30,7 @@ import {
 import { useTranslation } from './i18n';
 import { vexApi } from './services/api';
 import { recursiveLocalizeCompanies } from './utils/companyTranslator';
-import { detectUserRegionalCurrency } from './utils/currency';
+import { useCurrency } from './context/CurrencyContext';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
 import { CompaniesTab } from './components/CompaniesTab';
@@ -146,10 +146,25 @@ export default function App() {
     window.addEventListener('popstate', syncTabFromUrl);
     return () => window.removeEventListener('popstate', syncTabFromUrl);
   }, []);
-  const [displayCurrency, setDisplayCurrency] = useState<string>(() => {
-    return localStorage.getItem('vex_display_currency') || detectUserRegionalCurrency();
-  });
+  const { currency: displayCurrency, setCurrency: setDisplayCurrency, geo } = useCurrency();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Persist language + detected country + display currency to the server
+  // profile so per-user messages (Telegram/notifications) use the same
+  // currency and audience cohorts stay accurate. Debounced: fires once the
+  // boot churn settles instead of on every state flip.
+  useEffect(() => {
+    if (!userId) return;
+    const timer = setTimeout(() => {
+      void vexApi.updateUserPreferences({
+        language: lang,
+        last_country: geo.country || undefined,
+        country_iso: userProfile?.country_iso ? undefined : geo.country || undefined,
+        display_currency: displayCurrency,
+      });
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [userId, lang, geo.country, displayCurrency, userProfile?.country_iso]);
 
   const showToast = (msg?: string) => {
     setToastMessage(msg || 'copied');
@@ -157,10 +172,6 @@ export default function App() {
       setToastMessage(null);
     }, 2500);
   };
-
-  useEffect(() => {
-    localStorage.setItem('vex_display_currency', displayCurrency);
-  }, [displayCurrency]);
 
   // App Branding (Admin controllable)
   const [appBranding, setAppBranding] = useState<AppBranding>({

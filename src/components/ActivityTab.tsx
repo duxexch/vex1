@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CompensationAccount, CompensationRequest, FinancialRequest, Language } from '../types';
 import { TRANSLATIONS } from '../data/translations';
+import { useCurrency } from '../context/CurrencyContext';
 import { ActivityTabSkeleton } from './SkeletonLoader';
 import { ShieldCheck, Clock, XCircle, CheckCircle2, DollarSign, PlusCircle, Ticket, Copy, Check, Share2, ArrowDownLeft, ArrowUpRight, Trophy, Landmark } from 'lucide-react';
 import { ResurrectedSlipModal } from './ResurrectedSlipModal';
@@ -27,6 +28,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
   const [shareSlipReq, setShareSlipReq] = useState<CompensationRequest | null>(null);
   const [financialReqs, setFinancialReqs] = useState<FinancialRequest[]>([]);
   const t = TRANSLATIONS[lang] || TRANSLATIONS['ar'];
+  const { fmt } = useCurrency();
 
   // Own financial requests (deposit / withdraw / prize claim) from the server
   useEffect(() => {
@@ -403,7 +405,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
 
                       <div className="text-right rtl:text-left shrink-0">
                         <span className="text-sm font-black font-mono text-slate-900 block">
-                          ${Number(req.amount).toFixed(2)}
+                          {fmt(Number(req.amount))}
                         </span>
                         <span className="text-[10px] text-slate-400 font-mono block">
                           {new Date(req.created_at).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US')}

@@ -3,9 +3,11 @@ import { motion } from 'motion/react';
 import { UnluckyBetPost, Language } from '../types';
 import { Flame, Share2, AlertTriangle, MessageSquare, ThumbsUp } from 'lucide-react';
 import { vexApi } from '../services/api';
+import { useCurrency } from '../context/CurrencyContext';
 
 export const UnluckyWallTab: React.FC<{ lang: Language }> = ({ lang }) => {
   const isAr = lang === 'ar';
+  const { fmt } = useCurrency();
   const [posts, setPosts] = useState<UnluckyBetPost[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -90,7 +92,7 @@ export const UnluckyWallTab: React.FC<{ lang: Language }> = ({ lang }) => {
                 <span className="text-slate-400">• {new Date(post.timestamp).toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}</span>
               </div>
               <div className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-rose-50 text-rose-700 border border-rose-200">
-                {'Loss: $' + (post.lossAmount ?? post.amount ?? 0)}
+                {'Loss: ' + fmt(post.lossAmount ?? post.amount ?? 0)}
               </div>
             </div>
 

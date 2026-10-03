@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Company, Language, Referral, PLATFORM_DOMAIN } from '../types';
 import { TRANSLATIONS } from '../data/translations';
 import { vexApi, generateReferralCode, getReferralUrl } from '../services/api';
+import { useCurrency } from '../context/CurrencyContext';
 import {
   Copy,
   Check,
@@ -39,6 +40,7 @@ export const ReferralsTab: React.FC<ReferralsTabProps> = ({
   const [targetAccount, setTargetAccount] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const { fmt } = useCurrency();
   const [applying, setApplying] = useState(false);
   const [applyMsg, setApplyMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null
@@ -94,7 +96,7 @@ export const ReferralsTab: React.FC<ReferralsTabProps> = ({
       );
       setApplyMsg({
         type: 'success',
-        text: `تم تفعيل كود الإحالة بنجاح! تم فك تجميد $${res.unlockedAmount} وإضافتها إلى رصيدك المتاح.`,
+        text: `تم تفعيل كود الإحالة بنجاح! تم فك تجميد ${fmt(res.unlockedAmount)} وإضافتها إلى رصيدك المتاح.`,
       });
       setInputCode('');
       setTargetAccount('');
@@ -336,7 +338,7 @@ export const ReferralsTab: React.FC<ReferralsTabProps> = ({
                     <div className="text-left rtl:text-right">
                       {ref.unlocked_amount && ref.unlocked_amount > 0 ? (
                         <span className="font-bold text-emerald-700 text-xs block font-mono">
-                          +${ref.unlocked_amount.toFixed(2)} {t.unlockedSuffix}
+                          +{fmt(ref.unlocked_amount)} {t.unlockedSuffix}
                         </span>
                       ) : null}
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 inline-block mt-0.5">

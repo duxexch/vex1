@@ -472,12 +472,25 @@ export const storage = {
     }
     return cohorts.find((c) => c.id === 'cohort_ar_eg') || cohorts[0];
   },
-  updateUserPreferences(userId: string, prefs: { language?: string; country_code?: string; country_iso?: string; phone_number?: string }): any {
+  updateUserPreferences(
+    userId: string,
+    prefs: {
+      language?: string;
+      country_code?: string;
+      country_iso?: string;
+      phone_number?: string;
+      display_currency?: string;
+      last_country?: string;
+    }
+  ): any {
     const profile = this.getUserProfile(userId);
     if (prefs.language) profile.language = prefs.language;
     if (prefs.country_code) profile.country_code = prefs.country_code;
     if (prefs.country_iso) profile.country_iso = prefs.country_iso;
     if (prefs.phone_number) profile.phone_number = prefs.phone_number;
+    if (prefs.display_currency) profile.display_currency = String(prefs.display_currency).toUpperCase().slice(0, 8);
+    // GeoIP observation — never overwrites a possibly manual country_iso.
+    if (prefs.last_country) profile.last_country = String(prefs.last_country).toUpperCase().slice(0, 2);
     this.saveUserProfile(profile);
     return profile;
   },
@@ -605,6 +618,8 @@ export const storage = {
         is_phone_verified: false,
         pin_set: false,
         failed_pin_attempts: 0,
+        display_currency: 'USD',
+        last_country: '',
         created_at: new Date().toISOString(),
         engagementBehavior: {
           hourlyActivity: {

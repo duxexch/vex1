@@ -26,6 +26,7 @@ import {
   triggerJackpotCelebration,
   triggerPrizeWonCelebration
 } from '../../utils/lotteryCelebration';
+import { useCurrency } from '../../context/CurrencyContext';
 
 interface LotteryWinningsHistoryProps {
   lang: Language;
@@ -47,6 +48,7 @@ export const LotteryWinningsHistory: React.FC<LotteryWinningsHistoryProps> = ({
   onManualClaimRequest,
 }) => {
   const isAr = lang === 'ar';
+  const { fmt } = useCurrency();
   const [selectedReceipt, setSelectedReceipt] = useState<LotteryUserWonPrize | null>(null);
   const [copiedTxId, setCopiedTxId] = useState<string | null>(null);
 
@@ -69,8 +71,8 @@ export const LotteryWinningsHistory: React.FC<LotteryWinningsHistoryProps> = ({
     if (onCopyToast) {
       onCopyToast(
         isAr
-          ? `🎉 مبروك الفوز بجائزة [${prize.prizeNameAr}] بقيمة $${prize.amountWon.toFixed(2)}!`
-          : `🎉 Congratulations on winning [${prize.prizeNameEn}] of $${prize.amountWon.toFixed(2)}!`
+          ? `🎉 مبروك الفوز بجائزة [${prize.prizeNameAr}] بقيمة ${fmt(prize.amountWon)}!`
+          : `🎉 Congratulations on winning [${prize.prizeNameEn}] of ${fmt(prize.amountWon)}!`
       );
     }
   };
@@ -326,8 +328,8 @@ export const LotteryWinningsHistory: React.FC<LotteryWinningsHistoryProps> = ({
                         <Wallet className="w-4 h-4" />
                         <span>
                           {isAr
-                            ? `إيداع الجائزة في المحفظة ($${prize.amountWon.toFixed(2)})`
-                            : `Deposit Prize to Wallet ($${prize.amountWon.toFixed(2)})`}
+                            ? `إيداع الجائزة في المحفظة (${fmt(prize.amountWon)})`
+                            : `Deposit Prize to Wallet (${fmt(prize.amountWon)})`}
                         </span>
                       </>
                     )}

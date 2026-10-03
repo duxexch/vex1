@@ -1,5 +1,21 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import { storage } from './storage';
+import { formatMoney, SUPPORTED_CURRENCIES } from '../shared/money';
+
+// Direct per-user notification in the recipient's display currency; the
+// action-log summaries below stay in the source currency (USD).
+function userMoney(usd: number, userId?: string | null): string {
+  try {
+    if (userId) {
+      const prof = storage.getUserProfiles().find((p: any) => p && p.user_id === String(userId));
+      const cur = prof && typeof prof.display_currency === 'string' ? prof.display_currency.toUpperCase() : '';
+      if (cur && SUPPORTED_CURRENCIES[cur]) return formatMoney(usd, cur);
+    }
+  } catch {
+    // fall through to USD
+  }
+  return formatMoney(usd, 'USD');
+}
 
 export interface AiAgentConfig {
   id: string;
@@ -772,8 +788,8 @@ export class AgentEngine {
         if (updated) {
           storage.addNotification({
             id: `NOTIF-APPR-${Date.now()}`,
-            title: `🛡️ تم اعتماد طلب التعويض: $${updated.amount}`,
-            message: `تم اعتماد قسيمة الرهان ${updated.bet_slip_id} لحسابك في ${updated.company_name} وإضافة $${updated.amount} لرصيدك المجمد.`,
+            title: `🛡️ تم اعتماد طلب التعويض: ${userMoney(updated.amount, updated.user_id)}`,
+            message: `تم اعتماد قسيمة الرهان ${updated.bet_slip_id} لحسابك في ${updated.company_name} وإضافة ${userMoney(updated.amount, updated.user_id)} لرصيدك المجمد.`,
             category: 'compensation',
             timestamp,
             read: false,

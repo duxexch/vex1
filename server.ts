@@ -18,6 +18,25 @@ import { GUIDES, getGuide } from './server/i18nGuides';
 import { STATIC_PAGES, STATIC_PAGE_SLUGS, TRUST_NAV } from './server/staticPages';
 import * as lotteryEngine from './server/lotteryEngine';
 import { LOTTERY_ADMIN_KEY, LOTTERY_DRAW_TYPE_IDS, type LotteryDraw, type LotteryIntervalId } from './shared/lotteryConfig';
+import geoip from 'geoip-lite';
+import { currencyForCountry, formatMoney, SUPPORTED_CURRENCIES } from './shared/money';
+import { normalizePaymentMethod, filterPaymentMethodsForCountry } from './shared/paymentMethods';
+
+// Formats a USD amount using the recipient's saved display currency — for
+// direct per-user messages (notifications, personal Telegram). Broadcasts and
+// admin-facing text stay in the source currency (USD).
+function userMoney(usd: number, userId?: string | null): string {
+  try {
+    if (userId) {
+      const prof = storage.getUserProfiles().find((p: any) => p && p.user_id === String(userId));
+      const cur = prof && typeof prof.display_currency === 'string' ? prof.display_currency.toUpperCase() : '';
+      if (cur && SUPPORTED_CURRENCIES[cur]) return formatMoney(usd, cur);
+    }
+  } catch {
+    // fall through to USD
+  }
+  return formatMoney(usd, 'USD');
+}
 
 const currentFilename = '';
 const currentDirname = process.cwd();
@@ -95,6 +114,46 @@ app.use('/api/', (req, res, next) => {
 
   record.count++;
   next();
+});
+
+// ===================== VISITOR COUNTRY (GeoIP) =====================
+// Powers per-country currency display + payment-method localization on
+// ALL five domains. Priority: Cloudflare header (if ever added) → local
+// MaxMind lookup on the visitor IP → unknown (client falls back to tz/locale).
+type RequestGeo = { country: string | null; currency: string; source: 'cf' | 'geoip' | 'none' };
+
+function detectRequestGeo(req: express.Request): RequestGeo {
+  const cf = String(req.headers['cf-ipcountry'] || '').trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(cf) && cf !== 'XX' && cf !== 'T1') {
+    return { country: cf, currency: currencyForCountry(cf), source: 'cf' };
+  }
+  try {
+    const fwd = req.headers['x-forwarded-for'];
+    const firstIp = (typeof fwd === 'string' ? fwd.split(',')[0] : '').trim();
+    const ip = (firstIp || req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+    if (ip) {
+      const hit = geoip.lookup(ip);
+      if (hit && hit.country && /^[A-Z]{2}$/.test(hit.country)) {
+        return { country: hit.country, currency: currencyForCountry(hit.country), source: 'geoip' };
+      }
+    }
+  } catch {
+    // geoip data unavailable — client-side fallback chain takes over
+  }
+  return { country: null, currency: 'USD', source: 'none' };
+}
+
+app.use((req, _res, next) => {
+  (req as express.Request & { geo?: RequestGeo }).geo = detectRequestGeo(req);
+  next();
+});
+
+// Client boot endpoint (GeoIP country + matching display currency).
+app.get('/api/geo', (req, res) => {
+  const geo = (req as express.Request & { geo?: RequestGeo }).geo ||
+    { country: null, currency: 'USD', source: 'none' as const };
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  res.json({ country: geo.country, currency: geo.currency, source: geo.source });
 });
 
 // Lazy Google Gen AI initialization
@@ -468,10 +527,23 @@ app.post('/api/app-branding', (req, res) => {
 });
 
 // Payment Methods Management
+// GET supports ?country=EG → only that country's methods + global ones.
+// Legacy records are normalized (scopeless pre-feature data = Egyptian set)
+// and written back once so stored branding catches up.
 app.get('/api/payment-methods', (req, res) => {
   const branding = storage.getAppBranding();
+  const raw: any[] = Array.isArray(branding.paymentMethods) ? branding.paymentMethods : [];
+  const methods = raw.map((m) => normalizePaymentMethod(m));
+  try {
+    if (JSON.stringify(raw) !== JSON.stringify(methods)) {
+      branding.paymentMethods = methods;
+      storage.saveAppBranding(branding);
+      currentBranding = branding;
+    }
+  } catch {}
+  const country = typeof req.query.country === 'string' ? req.query.country.trim() : '';
   res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=600');
-  res.json({ paymentMethods: branding.paymentMethods || [] });
+  res.json({ paymentMethods: country ? filterPaymentMethodsForCountry(methods, country) : methods });
 });
 
 app.post('/api/payment-methods', (req, res) => {
@@ -480,7 +552,7 @@ app.post('/api/payment-methods', (req, res) => {
     return res.status(400).json({ error: 'Invalid payment methods format' });
   }
   const branding = storage.getAppBranding();
-  branding.paymentMethods = paymentMethods;
+  branding.paymentMethods = paymentMethods.map((m) => normalizePaymentMethod(m));
   storage.saveAppBranding(branding);
   currentBranding = branding;
   io.emit('payment_methods_updated', branding.paymentMethods);
@@ -1095,16 +1167,18 @@ app.post('/api/ai/notifications/dispatch-localized-campaign', (req, res) => {
   }
 });
 
-// 9j. User Preferences (Language & Country update)
+// 9j. User Preferences (Language, Country & display-currency update)
 app.put('/api/users/:userId/preferences', (req, res) => {
   try {
     const { userId } = req.params;
-    const { language, country_code, country_iso, phone_number } = req.body;
+    const { language, country_code, country_iso, phone_number, display_currency, last_country } = req.body;
     const updatedProfile = storage.updateUserPreferences(userId, {
       language,
       country_code,
       country_iso,
       phone_number,
+      display_currency,
+      last_country,
     });
     res.json({ success: true, profile: updatedProfile });
   } catch (err: any) {
@@ -1993,8 +2067,8 @@ app.post('/api/compensation/approve', (req, res) => {
     id: `NOTIF-APP-${Date.now()}`,
     title: isUnfreeze ? '✅ تم فك تجميد رصيدك بنجاح!' : '✅ تم اعتماد طلب التعويض!',
     message: isUnfreeze
-      ? `تم التحقق من إيداعك بقيمة $${updated.amount} وفك تجميد الرصيد المقابل له ليصبح متاحاً للسحب الفوري.`
-      : `تم اعتماد طلب التعويض بقيمة $${updated.amount} وإضافته لرصيدك المجمد بنجاح.`,
+      ? `تم التحقق من إيداعك بقيمة ${userMoney(updated.amount, updated.user_id)} وفك تجميد الرصيد المقابل له ليصبح متاحاً للسحب الفوري.`
+      : `تم اعتماد طلب التعويض بقيمة ${userMoney(updated.amount, updated.user_id)} وإضافته لرصيدك المجمد بنجاح.`,
     category: 'compensation',
     timestamp: new Date().toISOString(),
     read: false,
@@ -2063,8 +2137,8 @@ app.post('/api/compensation/bulk-approve', (req, res) => {
           id: `NOTIF-APP-${Date.now()}-${id}`,
           title: isUnfreeze ? '✅ تم فك تجميد رصيدك بنجاح!' : '✅ تم اعتماد طلب التعويض!',
           message: isUnfreeze
-            ? `تم التحقق من إيداعك بقيمة $${updated.amount} وفك تجميد الرصيد المقابل له ليصبح متاحاً للسحب الفوري.`
-            : `تم اعتماد طلب التعويض بقيمة $${updated.amount} وإضافته لرصيدك المجمد بنجاح.`,
+            ? `تم التحقق من إيداعك بقيمة ${userMoney(updated.amount, updated.user_id)} وفك تجميد الرصيد المقابل له ليصبح متاحاً للسحب الفوري.`
+            : `تم اعتماد طلب التعويض بقيمة ${userMoney(updated.amount, updated.user_id)} وإضافته لرصيدك المجمد بنجاح.`,
           category: 'compensation',
           timestamp,
           read: false,
@@ -2375,7 +2449,7 @@ app.post('/api/financial/requests', (req, res) => {
   const userNotif = {
     id: `NOTIF-FIN-SUB-${now}`,
     title: '📨 تم استلام طلبك المالي',
-    message: `تم استلام طلب ${financialTypeLabel(type)} بقيمة ${newRequest.amount} — بانتظار مراجعة الإدارة. سيصلك إشعار فور الاعتماد أو الرفض.`,
+    message: `تم استلام طلب ${financialTypeLabel(type)} بقيمة ${userMoney(newRequest.amount, userId)} — بانتظار مراجعة الإدارة. سيصلك إشعار فور الاعتماد أو الرفض.`,
     category: 'finance',
     timestamp: new Date().toISOString(),
     read: false,
@@ -2398,7 +2472,7 @@ app.post('/api/financial/requests', (req, res) => {
   void sendFinancialUserTelegram(
     userId,
     `📩 تم استلام طلبك المالي\n\n` +
-      `📌 ${financialTypeLabel(type)} — $${newRequest.amount}\n` +
+      `📌 ${financialTypeLabel(type)} — ${userMoney(newRequest.amount, userId)}\n` +
       `⏳ الحالة: بانتظار مراجعة الإدارة\n\n` +
       `سيصلك إشعار فور اتخاذ القرار.`
   );
@@ -2484,7 +2558,7 @@ app.post('/api/admin/financial-requests/approve', (req, res) => {
   const notif = {
     id: `NOTIF-FIN-APP-${Date.now()}`,
     title: '✅ تم اعتماد طلبك المالي',
-    message: `اعتمدت الإدارة ${financialTypeLabel(updated.type)} بقيمة ${updated.amount} — سيتم تحديث محفظتك تلقائياً.`,
+    message: `اعتمدت الإدارة ${financialTypeLabel(updated.type)} بقيمة ${userMoney(updated.amount, updated.user_id)} — سيتم تحديث محفظتك تلقائياً.`,
     category: 'finance',
     timestamp: new Date().toISOString(),
     read: false,
@@ -2496,10 +2570,10 @@ app.post('/api/admin/financial-requests/approve', (req, res) => {
 
   const approveTgText = ticketAlreadyClaimed
     ? `⚠️ متابعة طلبك المالي\n\n` +
-      `📌 ${financialTypeLabel(updated.type)} — $${updated.amount}\n` +
+      `📌 ${financialTypeLabel(updated.type)} — ${userMoney(updated.amount, updated.user_id)}\n` +
       `الطلب اعتمدناه، لكن تذكرة الجائزة كانت مطالَ بها مسبقاً — لن يُضاف المبلغ إلى رصيدك. تواصل مع الإدارة للتفاصيل.`
     : `✅ تم اعتماد طلبك المالي\n\n` +
-      `📌 ${financialTypeLabel(updated.type)} — $${updated.amount}\n` +
+      `📌 ${financialTypeLabel(updated.type)} — ${userMoney(updated.amount, updated.user_id)}\n` +
       (updated.meta?.transaction_id ? `🧾 رقم العملية: ${updated.meta.transaction_id}\n` : '') +
       `💳 سيتم تحديث رصيدك تلقائياً — افتح الموقع أو التطبيق لتطبيق الرصيد.`;
   void sendFinancialUserTelegram(updated.user_id, approveTgText);
@@ -2558,7 +2632,7 @@ app.post('/api/admin/financial-requests/reject', (req, res) => {
   void sendFinancialUserTelegram(
     updated.user_id,
     `❌ تم رفض طلبك المالي\n\n` +
-      `📌 ${financialTypeLabel(updated.type)} — $${updated.amount}\n` +
+      `📌 ${financialTypeLabel(updated.type)} — ${userMoney(updated.amount, updated.user_id)}\n` +
       `📝 السبب: ${updated.rejection_reason || 'لم تتم استيفاء شروط الطلب'}\n\n` +
       `يمكنك تقديم طلب جديد بعد مراجعة الشروط.`
   );
@@ -3212,7 +3286,7 @@ async function notifyLotteryWinnersOnTelegram(draw: LotteryDraw) {
       const msg =
         `🏆 مبروك! لقد ربحت في سحب ${draw.titleAr}\n\n` +
         `🎟️ تذاكر فائزة: ${info.count}\n` +
-        `💰 إجمالي الجائزة: $${info.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}\n\n` +
+        `💰 إجمالي الجائزة: ${userMoney(info.total, uid)}\n\n` +
         `افتح صفحة اليانصيب في VEX Deals للاستلام:\n` +
         `https://vex.deals/#lottery\n\n` +
         `(المطالبة بالجائزة متاحة مرة واحدة لكل تذكرة فائزة)`;
@@ -4547,7 +4621,7 @@ app.post('/api/lottery/claim', (req, res) => {
     void sendTelegramPersonal(
       String(userId),
       `✅ تم صرف جائزتك بنجاح!\n\n` +
-        `💰 المبلغ: $${result.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}\n` +
+        `💰 المبلغ: ${userMoney(result.amount, userId)}\n` +
         `🧾 رقم العملية: ${result.transactionId}\n\n` +
         `أُضيف المبلغ إلى رصيدك في محفظة VEX Deals.`
     ).then((r) => {
@@ -7481,6 +7555,17 @@ ${secsHtml}
     <meta name="bot" content="index, follow, ai-answer-engine-optimized" />
     <meta name="ai-content-declaration" content="VEX Deals loyalty compensation platform" />`;
       html = html.replace('</head>', `${gscMeta}\n  </head>`);
+
+      // Visitor country for the SPA (currency + payment-method localization).
+      // Runs before the React bundle so first paint already knows the country.
+      const reqGeo = (req as express.Request & { geo?: RequestGeo }).geo ||
+        { country: null, currency: 'USD', source: 'none' };
+      const geoScript = `<script>window.__VEX_GEO=${JSON.stringify({
+        country: reqGeo.country,
+        currency: reqGeo.currency,
+        source: 'ssr',
+      })};</script>`;
+      html = html.replace('</head>', `${geoScript}\n  </head>`);
 
       // Inject Organization + Breadcrumb + Speakable schema
       const orgSchema = `

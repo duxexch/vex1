@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Company, Language, Wallet, PaymentMethod } from '../types';
 import { TRANSLATIONS } from '../data/translations';
-import { formatCurrency } from '../utils/currency';
+import { formatCurrency, currencyLabel } from '../utils/currency';
 import { vexApi } from '../services/api';
+import { useCurrency } from '../context/CurrencyContext';
+import { PaymentMethodCard } from './payment/PaymentMethodCard';
 import {
   ArrowDownLeft,
   Upload,
@@ -11,11 +13,7 @@ import {
   X,
   ShieldCheck,
   DollarSign,
-  Copy,
-  Check,
-  CreditCard,
   Sparkles,
-  Info,
 } from 'lucide-react';
 
 interface DirectDepositUnfreezeModalProps {
@@ -43,7 +41,6 @@ export const DirectDepositUnfreezeModal: React.FC<DirectDepositUnfreezeModalProp
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [selectedPmId, setSelectedPmId] = useState<string>('');
   const [isFetchingMethods, setIsFetchingMethods] = useState<boolean>(true);
-  const [copiedField, setCopiedField] = useState<boolean>(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [senderPhone, setSenderPhone] = useState('');
@@ -51,24 +48,27 @@ export const DirectDepositUnfreezeModal: React.FC<DirectDepositUnfreezeModalProp
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const { geo } = useCurrency();
 
   const t = TRANSLATIONS[lang] || TRANSLATIONS['ar'];
   const currentWallet = wallets.find((w) => w.company_id === selectedCompanyId);
   const frozenBal = currentWallet ? Number(currentWallet.frozen) : 0;
 
-  // Fetch dynamic payment methods from Firestore service
+  // Fetch dynamic payment methods scoped to the visitor's country (GeoIP).
   useEffect(() => {
     if (isOpen) {
       setIsFetchingMethods(true);
       vexApi
-        .getPaymentMethods()
+        .getPaymentMethods(geo.country)
         .then((methods) => {
-          if (methods && methods.length > 0) {
-            setPaymentMethods(methods);
-            const activeMethods = methods.filter((m) => m.is_active !== false);
-            if (activeMethods.length > 0 && !selectedPmId) {
-              setSelectedPmId(activeMethods[0].id);
-            }
+          const visible = (methods || []).filter(
+            (m) => m.is_active !== false && m.type !== 'withdraw'
+          );
+          if (visible.length > 0) {
+            setPaymentMethods(visible);
+            if (!selectedPmId) setSelectedPmId(visible[0].id);
+          } else {
+            setPaymentMethods([]);
           }
         })
         .catch((err) => {
@@ -78,18 +78,10 @@ export const DirectDepositUnfreezeModal: React.FC<DirectDepositUnfreezeModalProp
           setIsFetchingMethods(false);
         });
     }
-  }, [isOpen]);
+  }, [isOpen, geo.country]);
 
   const activePaymentMethods = paymentMethods.filter((pm) => pm.is_active !== false);
   const selectedPm = activePaymentMethods.find((pm) => pm.id === selectedPmId) || activePaymentMethods[0];
-
-  const handleCopy = (text: string) => {
-    if (!text) return;
-    navigator.clipboard.writeText(text);
-    setCopiedField(true);
-    showToast(lang === 'ar' ? 'تم نسخ رقم الحساب/المحفظة بنجاح!' : 'Account/Wallet number copied!');
-    setTimeout(() => setCopiedField(false), 2500);
-  };
 
   const getLocalizedText = (key: string, defaultAr: string, defaultEn: string, defaultEs: string, defaultRu: string) => {
     if (lang === 'ar') return defaultAr;
@@ -365,67 +357,19 @@ export const DirectDepositUnfreezeModal: React.FC<DirectDepositUnfreezeModalProp
 
                   {/* Selected Gateway Details & Instructions Card */}
                   {selectedPm && (
-                    <div className="mt-2 p-3 bg-gradient-to-br from-emerald-50/60 to-slate-50 border border-emerald-200 rounded-2xl space-y-2 shadow-2xs animate-fade-in">
-                      <div className="flex items-center justify-between border-b border-emerald-100 pb-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <CreditCard className="w-4 h-4 text-emerald-700" />
-                          <span className="font-bold text-xs text-emerald-950">
-                            {lang === 'ar' ? selectedPm.nameAr || selectedPm.name : selectedPm.nameEn || selectedPm.name}
-                          </span>
-                        </div>
-                        {selectedPm.badge && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                            {selectedPm.badge}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Account Number & 1-Click Copy */}
-                      <div className="flex items-center justify-between bg-white border border-emerald-100 p-2.5 rounded-xl">
-                        <div className="space-y-0.5">
-                          <span className="text-[10px] text-slate-500 block">
-                            {getLocalizedText('transfer_to', 'رقم المحفظة / الحساب للتحويل إليه:', 'Transfer to Wallet / Account:', 'Transferir a:', 'Перевести на:')}
-                          </span>
-                          <span className="font-mono font-bold text-sm text-slate-900 tracking-wide select-all">
-                            {selectedPm.accountNumber}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(selectedPm.accountNumber)}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-xs"
-                          title="نسخ رقم الحساب"
-                        >
-                          {copiedField ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-white" />
-                              <span>{getLocalizedText('copied', 'تم النسخ', 'Copied', 'Copiado', 'Скопировано')}</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5" />
-                              <span>{getLocalizedText('copy', 'نسخ', 'Copy', 'Copiar', 'Копировать')}</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      {/* Account Holder Name */}
-                      <div className="text-[11px] text-slate-600 flex items-center gap-1.5">
-                        <span className="font-bold text-slate-700">{getLocalizedText('holder', 'المستفيد:', 'Beneficiary:', 'Beneficiario:', 'Получатель:')}</span>
-                        <span className="font-semibold text-emerald-900">{selectedPm.holderName}</span>
-                      </div>
-
-                      {/* Dynamic Instructions Callout */}
-                      <div className="p-2.5 bg-emerald-100/50 border border-emerald-200/80 rounded-xl space-y-1">
-                        <div className="flex items-center gap-1.5 font-bold text-[11px] text-emerald-900">
-                          <Info className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                          <span>{getLocalizedText('pm_instructions', 'تعليمات التحويل والإيداع:', 'Deposit Instructions:', 'Instrucciones:', 'Инструкции:')}</span>
-                        </div>
-                        <p className="text-[11px] text-emerald-950 leading-relaxed font-medium">
-                          {selectedPm.instructions || selectedPm.instructionsAr || selectedPm.descriptionAr || getLocalizedText('def_inst', 'قم بالتحويل على الرقم أعلاه ثم سجل تفاصيل الإيداع أدناه.', 'Transfer to the account above then submit your details below.', 'Transfiera al número anterior y envíe sus datos.', 'Переведите средства и отправьте детали ниже.')}
-                        </p>
-                      </div>
+                    <div className="mt-2 animate-fade-in">
+                      <PaymentMethodCard
+                        method={selectedPm}
+                        lang={lang}
+                        mode="deposit"
+                        onCopyToast={() =>
+                          showToast(
+                            lang === 'ar'
+                              ? 'تم نسخ رقم الحساب/المحفظة بنجاح!'
+                              : 'Account/Wallet number copied!'
+                          )
+                        }
+                      />
                     </div>
                   )}
                 </>
@@ -452,7 +396,9 @@ export const DirectDepositUnfreezeModal: React.FC<DirectDepositUnfreezeModalProp
                     onChange={(e) => setDepositAmount(e.target.value)}
                     className="w-full pl-3 pr-8 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-mono font-bold focus:outline-none focus:border-emerald-500"
                   />
-                  <span className="absolute right-3 top-3 text-xs text-slate-400">$</span>
+                  <span className="absolute right-3 top-3 text-xs text-slate-400 font-bold" dir="ltr">
+                    {currencyLabel(displayCurrency).symbol}
+                  </span>
                 </div>
               </div>
 
